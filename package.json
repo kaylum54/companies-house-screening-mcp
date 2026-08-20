@@ -41,7 +41,10 @@
     "test:coverage": "vitest run --coverage",
     "test:live": "CH_LIVE_SMOKE=1 vitest run tests/live.smoke.test.ts",
     "record-fixtures": "tsx scripts/record-fixtures.ts",
-    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+    "prepublishOnly": "npm run typecheck && npm run docs:check && npm run test && npm run build",
+    "docs:generate": "tsx scripts/generate-tool-docs.ts && tsx scripts/generate-recipes.ts",
+    "docs:check": "tsx scripts/generate-tool-docs.ts --check && tsx scripts/generate-recipes.ts --check",
+    "measure": "tsx scripts/measure-projections.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

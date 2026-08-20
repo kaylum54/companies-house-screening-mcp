@@ -6,6 +6,20 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added — phase 4, generated documentation
+
+- `docs/tools`: a reference page per tool, generated from the running server
+  over a real MCP client, so what is documented is what a host is actually
+  told rather than what the schemas were meant to say.
+- `docs/recipes`: five worked examples — supplier screening, director conflict
+  check, invoice verification, debtor risk screen, competitor filing watch.
+  Every call on every page is executed when the docs are built; the responses
+  are real output, and a recipe that stops working stops generating.
+- `npm run docs:check` exits 1 on any difference from what is committed. Wired
+  into CI ahead of the tests, into `prepublishOnly`, and into the test suite so
+  the failure arrives locally first.
+- `npm run measure` for the projection size table.
+
 ### Added — phase 3, the composite tools
 
 - `company_snapshot`. Profile, serving officers, charges and insolvency in one

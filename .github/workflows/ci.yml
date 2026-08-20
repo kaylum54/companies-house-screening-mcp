@@ -38,6 +38,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # The reference in docs/tools and the worked examples in docs/recipes are
+      # generated from the running server. This fails the build when a schema
+      # or a description changed and the pages did not, which is the mechanism
+      # that keeps the documentation from going stale.
+      - name: Documentation is up to date
+        run: npm run docs:check
+
       # Build first: tests/bin.test.ts exercises the compiled entry point as a
       # real process and skips itself when dist is absent. Testing before
       # building would silently skip it in the one place it matters most.

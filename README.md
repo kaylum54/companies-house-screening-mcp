@@ -4,10 +4,10 @@ An MCP server for the UK [Companies House public data API](https://developer.com
 Read-only, rate-limit aware, and designed around the questions people ask
 rather than the endpoints the API happens to expose.
 
-> **Status: phase 3 of 6.** All eleven tools work, including the two that fan
-> out server-side. Usable from a host today with an API key. Not yet published
-> to npm — generated documentation, the worked recipes, the eval suite and the
-> release pipeline are phases 4 to 6. The roadmap is at the bottom.
+> **Status: phase 4 of 6.** All eleven tools work, the reference is generated
+> from the running server, and the five worked examples execute on every build.
+> Usable from a host today with an API key. Not yet published to npm — the
+> tool-selection eval suite and the release pipeline are phases 5 and 6.
 
 ## Why another API wrapper
 
@@ -48,6 +48,10 @@ flags as wrong.
 | `company_snapshot` | Profile, officers, charges and insolvency in one call, with signals. |
 | `screen_companies` | Up to 50 companies in, one row each out, nothing dropped quietly. |
 
+Full reference: [docs/tools](docs/tools/README.md). Worked examples:
+[docs/recipes](docs/recipes/README.md) — supplier screening, director conflict
+checks, invoice verification, debtor risk, competitor filing watch.
+
 **The signals are facts, not a rating.** This server does not score companies
 and will not tell you whether one is safe to trade with — it reports what it
 found on the register, with the date or the name behind each observation, and
@@ -69,7 +73,7 @@ takes `verbose` to return the untouched payload alongside the shaped one.
 | `CompaniesHouseError` | Every failure carries a stable code, a plain sentence and a next step. |
 | Projections | Upstream read defensively field by field; output validated strictly against the published schema. |
 
-218 tests, no network, no API key required to run them.
+223 tests, no network, no API key required to run them.
 
 ## Running it from a host
 
@@ -111,7 +115,15 @@ npm install
 npm test
 npm run typecheck
 npm run build
+npm run docs:generate
 ```
+
+**The documentation is generated and gated.** `docs/tools` is rendered from the
+running server over a real MCP client, and every call in `docs/recipes` is
+executed when the pages are built. `npm run docs:check` fails if what is
+committed differs, CI runs it before the tests, and the suite runs the same
+comparison so the failure arrives while you still have the change in front of
+you. Change a tool description and you regenerate, or the build goes red.
 
 The suite runs offline against recorded fixtures, so a fresh clone works with
 nothing configured. Fixtures are currently hand-authored to the documented
@@ -130,7 +142,7 @@ user finds the drift instead.
 
 ## Design notes
 
-Eight decisions are written up in [docs/adr](docs/adr):
+Nine decisions are written up in [docs/adr](docs/adr):
 
 1. [Recording architecture decisions](docs/adr/0001-record-architecture-decisions.md)
 2. [The sliding-window rate limiter and its safety margin](docs/adr/0002-sliding-window-rate-limiter.md)
@@ -140,6 +152,7 @@ Eight decisions are written up in [docs/adr](docs/adr):
 6. [Why the result payload is sent twice](docs/adr/0006-duplicated-result-payload.md)
 7. [Signals, not scores](docs/adr/0007-signals-not-scores.md)
 8. [Partial results, and never dropping anything quietly](docs/adr/0008-partial-results-and-budget-honesty.md)
+9. [Generated documentation, gated in CI](docs/adr/0009-documentation-is-generated-and-gated.md)
 
 ## Scope
 
@@ -157,8 +170,8 @@ read-only.
 | 1 | Client, auth, rate limiter, cache, error mapping, fixtures | done |
 | 2 | Nine primitive tools with Zod schemas and shaped projections | done |
 | 3 | `company_snapshot` and `screen_companies` | done |
-| 4 | Generated tool docs with a CI drift check, five worked recipes | next |
-| 5 | Tool-selection eval suite, live smoke test in CI, remaining ADRs | |
+| 4 | Generated tool docs with a CI drift check, five worked recipes | done |
+| 5 | Tool-selection eval suite, live smoke test in CI, remaining ADRs | next |
 | 6 | npm and Docker release with provenance | |
 
 ## Licence
