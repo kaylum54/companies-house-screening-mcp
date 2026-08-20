@@ -6,6 +6,33 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed — fixtures are now recorded from the live API
+
+- Fixtures come from real Companies House responses: Royal Mail Group Limited
+  (04138203) for an active company, Marine and General Mutual Life Assurance
+  Society (00000006) for a dissolved one, Carillion PLC (03782379) for
+  insolvency. Subjects are institutions and widely-reported failures rather
+  than small trading businesses, because the names appear in generated
+  documentation and the framing around public data would otherwise be ours.
+- The recorder picks whichever officer holds the most appointments, so the
+  officer-network fixture demonstrates the tool instead of showing a company
+  secretary with one appointment.
+- Recipes rewritten to describe what the register shows rather than to allege
+  what it means, and to carry an explicit note that nothing is asserted about
+  any company or person beyond the register itself.
+
+### Fixed — found by recording real data
+
+- The projection saving was measured against invented fixtures at 29–42%.
+  Against real payloads it is **36–72%**: per-item ETags, filing-transaction
+  arrays and identity-verification blocks are heavier than anything that was
+  guessed. README and the regression test updated to the measured range.
+- 00000006 was documented as an active trading company. It has been dissolved
+  since 2018.
+- Discovered and pinned: a company profile's `has_charges` flag can report
+  false while the charges endpoint returns fifteen. The charges section is
+  authoritative and no signal reads the flag.
+
 ### Fixed
 
 - `npm run test:live` failed on Windows. The script used the bash-only

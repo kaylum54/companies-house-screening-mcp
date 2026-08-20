@@ -9,19 +9,25 @@
  * what appears in the page. A recipe that stops working stops generating, and
  * `docs:check` fails the build.
  *
- * The honest caveat, stated in every page: the upstream responses come from
- * the repository's fixtures, which are hand-authored to the documented shape
- * rather than recorded from the live register. So the *shapes*, the *derived
- * fields* and the *behaviour* are real; the companies are invented. Once
- * `npm run record-fixtures` has run against a real key, these pages become
- * real output about real companies with no change to this script.
+ * The upstream data behind them comes from fixtures recorded from the live
+ * Companies House API, so these pages describe real companies.
+ *
+ * That last fact carries an editorial obligation. The register is public and
+ * the data is Open Government Licence, but the *narrative* around it would be
+ * mine — and "the supplier who cannot be trusted" or "the director who
+ * concealed a conflict" is a story about real named people, invented to make a
+ * documentation page read well. So the subjects are institutions and
+ * widely-reported corporate failures rather than small trading businesses, and
+ * the prose describes what the register shows instead of alleging what it
+ * means. A shared directorship is a fact; what it implies is not.
  */
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { harnessRoutes } from '../tests/helpers/harness.js';
+import { loadEnvFile } from '../src/env-file.js';
 import type { FakeResponseSpec } from '../tests/helpers/fake-fetch.js';
+import { harnessRoutes } from '../tests/helpers/harness.js';
 import type { GeneratedFile } from './lib/generate.js';
 import { apply, GENERATED_BANNER, parseMode, reportAndExit } from './lib/generate.js';
 
@@ -33,6 +39,7 @@ const fixture = (relativePath: string): unknown =>
 
 const PROFILE = fixture('company/profile-active.json');
 const DISSOLVED = fixture('company/profile-dissolved.json');
+const INSOLVENT_PROFILE = fixture('company/profile-insolvent.json');
 const OFFICERS = fixture('officers/officers-list.json');
 const CHARGES = fixture('charges/charges-outstanding.json');
 const INSOLVENCY = fixture('insolvency/insolvency-case.json');
@@ -43,32 +50,49 @@ const FILING_HISTORY = fixture('filing-history/filing-history.json');
 type Routes = [RegExp, FakeResponseSpec][];
 
 /**
- * One route table for every recipe, so the invented companies behave the same
- * way on every page.
+ * One route table for every recipe, keyed by company number.
  *
- * Ordering matters — the specific paths have to come before the general ones,
- * because `/company/00000006` matches the charges URL too. Routing by company
- * number rather than returning one profile for everything is not fussiness: an
- * earlier version of this file returned the same profile regardless, and the
- * generated page showed a name resolving to the wrong company, which is
- * exactly the failure the no-names rule exists to prevent. Documentation that
- * demonstrates the bug you designed against is worse than no documentation.
+ * Ordering matters — specific paths come before general ones, because
+ * `/company/04138203` matches the charges URL too. Routing by number rather
+ * than answering every request with the same profile is not fussiness: an
+ * earlier version of this file did the latter, and the generated page showed a
+ * name resolving to the wrong company — exactly the failure the no-names rule
+ * exists to prevent. Documentation that demonstrates the bug you designed
+ * against is worse than no documentation.
  *
- * 00000006 — active, trading, two charges of which one is outstanding, no
- * insolvency history (the API answers 404 for that, and the server reads it
- * as "none").
- * SC123456 — dissolved, filings overdue, an insolvency case.
+ * 04138203  Royal Mail Group Limited — active, five officers, fifteen charges
+ *           of which two are outstanding, no insolvency (a 404, which the
+ *           server reads as "none").
+ * 03782379  Carillion PLC — in compulsory liquidation since 2018.
+ * 00000006  Marine and General Mutual Life Assurance Society — incorporated
+ *           1862, dissolved 2018. The Companies House docs' own example.
+ * 14240638  Royal Mail Limited — the exact-match target in a search.
  */
 const ROUTES: Routes = [
-  [/\/company\/SC123456\/charges/, { body: CHARGES }],
-  [/\/company\/SC123456\/insolvency/, { body: INSOLVENCY }],
-  [/\/company\/SC123456\/officers/, { body: OFFICERS }],
-  [/\/company\/SC123456/, { body: DISSOLVED }],
-  [/\/company\/00000006\/charges/, { body: CHARGES }],
+  [/\/company\/04138203\/charges/, { body: CHARGES }],
+  [/\/company\/04138203\/insolvency/, { status: 404 }],
+  [/\/company\/04138203\/officers/, { body: OFFICERS }],
+  [/\/company\/04138203\/filing-history/, { body: FILING_HISTORY }],
+  [/\/company\/04138203/, { body: PROFILE }],
+  [/\/company\/03782379\/charges/, { status: 404 }],
+  [/\/company\/03782379\/insolvency/, { body: INSOLVENCY }],
+  [/\/company\/03782379\/officers/, { status: 404 }],
+  [/\/company\/03782379/, { body: INSOLVENT_PROFILE }],
+  [/\/company\/00000006\/charges/, { status: 404 }],
   [/\/company\/00000006\/insolvency/, { status: 404 }],
-  [/\/company\/00000006\/officers/, { body: OFFICERS }],
-  [/\/company\/00000006\/filing-history/, { body: FILING_HISTORY }],
-  [/\/company\/00000006/, { body: PROFILE }],
+  [/\/company\/00000006/, { body: DISSOLVED }],
+  [
+    /\/company\/14240638/,
+    {
+      body: {
+        company_number: '14240638',
+        company_name: 'ROYAL MAIL LIMITED',
+        company_status: 'active',
+        type: 'ltd',
+        date_of_creation: '2022-07-18'
+      }
+    }
+  ],
   [/\/officers\/[^/]+\/appointments/, { body: APPOINTMENTS }],
   [/\/search\/companies/, { body: SEARCH }]
 ];
@@ -94,125 +118,132 @@ interface Recipe {
 const RECIPES: Recipe[] = [
   {
     slug: 'supplier-onboarding-check',
-    title: 'Screening a list of new suppliers',
-    question: 'Thirty names came in from procurement. Which ones need a closer look?',
-    intro: `This is the question the server was built for. Paste the list, get one row per company, and spend your attention on the rows that have something on them.
+    title: 'Screening a list of companies',
+    question: 'A list of names came in from procurement. Which entries need a closer look?',
+    intro: `This is the question the server was built for. Paste the list, get one row per company, and spend your attention on the rows with something on them.
 
-The important behaviour is what happens to the awkward entries. A name matching several companies is never guessed at — it comes back under \`unresolved\` with its candidates so you can ask. Nothing is dropped to make the table tidy.`,
+The behaviour worth studying is what happens to the awkward entries. A name matching several companies is never guessed at: it comes back under \`unresolved\` with its candidates so you can ask which was meant. Nothing is dropped to make the table tidy.`,
     steps: [
       {
         narrative:
-          'Pass the list exactly as it arrived — company numbers, full names and half-remembered names all mixed together.',
+          'Pass the list exactly as it arrived — company numbers, full names and half-remembered names mixed together.',
         tool: 'screen_companies',
-        args: {
-          companies: ['00000006', 'Example Fixture Dormant Limited', 'Example Fixture']
-        },
+        args: { companies: ['04138203', 'Royal Mail Limited', 'Royal Mail'] },
         reading: `Read it in three parts.
 
-\`screened\` carries the rows that resolved cleanly, each with its signal codes. \`signal_count\` of zero means nothing on the signal list was found — not that the company is sound.
+\`screened\` holds the rows that resolved cleanly, each with its signal codes. A \`signal_count\` of zero means nothing on the signal list was found — not that the company is sound.
 
-\`unresolved\` is the one to act on. "Example Fixture" matched several companies and none exactly, so the server stopped and handed back the candidates rather than picking one. Ask procurement which they meant.
+\`unresolved\` is the row to act on. "Royal Mail" matches thousands of companies and none exactly, so the server stopped and handed back candidates rather than picking one. That refusal is the point: a plausible wrong company number returns a real company that nothing downstream would flag.
 
-\`sections_used\` says what the signals could see. Officers are off by default because they cost an extra request per company; pass \`include_officers: true\` when the question is about who runs these businesses rather than what they owe.`
+\`sections_used\` says what the signals could see. Officers are off by default because they cost an extra request per company; pass \`include_officers: true\` when the question is about who runs these businesses rather than what is registered against them.`
       }
     ],
-    closing: `**If the list is long.** The rate limit is 600 requests per five minutes, and screening costs three per company by default. \`screen_companies\` works out what it can afford, screens that, and returns the rest under \`not_screened\` with the reset time — so a table that comes back short always says why.`
+    closing: `**If the list is long.** The limit is 600 requests per five minutes and screening costs three per company by default. \`screen_companies\` works out what it can afford, screens that, and returns the rest under \`not_screened\` with the reset time — so a table that comes back short always says why.`
   },
 
   {
     slug: 'director-conflict-check',
-    title: 'Finding an undeclared shared directorship',
-    question: 'Does anyone on this board also sit on a company we are already dealing with?',
-    intro: `Two calls. List the board, then follow one officer across every company they are appointed to.
+    title: 'Mapping an officer across companies',
+    question: 'Which other companies is this director appointed to?',
+    intro: `Two calls. List the board, then follow one officer across every company they hold an appointment at.
 
-The join that makes this work is the officer ID. Companies House never returns it as a field — it exists only inside the appointments URL — so this server digs it out of the link and puts it on every officer. Without that, a board you have just listed is a dead end.`,
+This is a routine due-diligence step: understanding a group structure, a related-party check, or working out whether a name on two contracts is the same person. The register publishes all of it; the tool joins it up.
+
+The join that makes it work is the officer ID. Companies House never returns it as a field — it exists only inside the appointments URL — so this server digs it out of the link and puts it on every officer. Without that, a board you have just listed is a dead end.`,
     steps: [
       {
         narrative: 'List the board. Resigned officers come back too, which is usually what you want here.',
         tool: 'get_officers',
-        args: { company_number: '00000006' },
-        reading:
-          'Each officer carries an `officer_id`. Service addresses are withheld — they are personal data and are almost never what the question needs. Pass `verbose: true` if you genuinely need them.'
+        args: { company_number: '04138203' },
+        reading: `Each officer carries an \`officer_id\`. Service addresses are withheld — they are personal data and are rarely what the question needs. Pass \`verbose: true\` if you genuinely need them.
+
+Note \`active_count\` and \`resigned_count\`: they describe the whole register, not the page in front of you. \`pagination.has_more\` says there is more to fetch.`
       },
       {
-        narrative: 'Take an officer ID and ask what else they run.',
+        narrative: 'Take an officer ID and ask what else they are appointed to.',
         tool: 'get_officer_appointments',
-        args: { officer_id: 'aBcD1234EfGh5678IjKl' },
-        reading: `\`active_appointment_count\` is derived from the returned page. Each row carries the company status, so a director with a trail of dissolved companies is visible without a second call per company.
+        args: { officer_id: 'gBfDMtBVo3nHfig_wVfjaOA9o1M' },
+        reading: `\`active_appointment_count\` is derived from the returned page. Each row carries the company status, so a pattern of dissolved companies would be visible without a second call each. Here the appointments sit across one corporate group, which is what a group directorship looks like on the register.
 
-Run this across a whole board and intersect the company numbers against your own customer list. That intersection is the answer to the original question.`
+Run this across a whole board and intersect the company numbers with your own customer or supplier list. That intersection is the answer.`
       }
     ],
-    closing: `**A caution about identity.** Companies House officer records are per-appointment-identity, not per-person. The same human filed under two spellings of their name has two officer IDs and will not join up here. Date of birth — month and year only — is usually what separates a real match from a coincidence.`
+    closing: `**A caution about identity.** Companies House officer records are per-appointment-identity, not per-person. The same human filed under two spellings has two officer IDs and will not join up here, and two different people sharing a name will not be told apart by name alone. Date of birth — month and year only — is usually what distinguishes them.
+
+**And about inference.** A shared directorship is a fact. What it means is not: group structures, professional non-executive directors and common company-secretarial providers all produce overlaps of no significance whatsoever.`
   },
 
   {
     slug: 'invoice-verification',
-    title: 'Checking a new contractor before paying an invoice',
-    question: 'This invoice arrived from a company we have never used. Is any of it real?',
-    intro: `One call. \`company_snapshot\` fetches the profile, the serving officers, the charges and the insolvency history together and returns them with the signals it found.
+    title: 'Verifying a company on an invoice',
+    question: 'Does this company exist, is it trading, and does the address match?',
+    intro: `One call. \`company_snapshot\` fetches the profile, the serving officers, the charges and the insolvency history together, and returns them with the signals it found.
 
-The specific things worth checking against the invoice: the company exists, it is active, the registered office matches, and it was not incorporated three weeks ago.`,
+The things worth checking against an invoice: the company exists, its status is active, the registered office matches what is printed, and it was not incorporated three weeks ago.`,
     steps: [
       {
-        narrative: 'Take the company number from the bottom of the invoice — UK companies are required to print it.',
+        narrative:
+          'Take the company number from the bottom of the invoice — UK companies are required to print it.',
         tool: 'company_snapshot',
-        args: { company_number: '00000006' },
-        reading: `\`registered_office_address\` is flattened to one line so it can be compared with what is printed on the invoice without reassembling nine fields.
+        args: { company_number: '04138203' },
+        reading: `\`registered_office_address\` is flattened to one line so it can be compared with what is printed, without reassembling nine fields.
 
-\`age_years\` and the \`incorporated_within_last_year\` signal are the pair worth reading together on a first invoice from an unknown supplier.
+\`age_years\` and the \`incorporated_within_last_year\` signal are the pair to read together on a first invoice from an unfamiliar supplier.
 
-\`sections_included\` says what was actually read. If the charges call had failed, the section would appear under \`sections_unavailable\` instead, and an absent charge signal would mean "not checked" rather than "none".`
+\`sections_included\` says what was actually read. Insolvency appears there even though this company has none: Companies House answers 404 for a company with no insolvency case, and the server reads that as "none" rather than as a fault. Had the call genuinely failed, the section would appear under \`sections_unavailable\` instead — and an absent signal would then mean "not checked" rather than "nothing found".`
       }
     ],
-    closing: `**What this cannot tell you.** Whether the company is good for the money. The register shows filings, charges and officers; it does not show the bank balance or the order book. The signals are facts, not a rating, and the judgement stays with you — see [ADR 7](../adr/0007-signals-not-scores.md).`
+    closing: `**What this cannot tell you.** Whether the company is good for the money. The register shows filings, charges and officers; it does not show the bank balance or the order book. The signals are facts, not a rating, and the judgement stays with you — see [ADR 7](../adr/0007-signals-not-scores.md).
+
+**One caveat found in real data.** The profile's own \`has_charges\` flag reported false for this company while its charges endpoint returned fifteen. The charges section is authoritative; the flag is not, and no signal is derived from it.`
   },
 
   {
     slug: 'debtor-risk-screen',
-    title: 'Re-checking an aged debtor',
-    question: 'This customer has stopped paying. Has something changed on the register?',
-    intro: `A company going quiet is often visible on the register before it is visible in your inbox. The pattern to look for is a charge registered recently, accounts going overdue, or an insolvency case appearing.`,
+    title: 'What insolvency looks like on the register',
+    question: 'A company has entered an insolvency process. What does the register show?',
+    intro: `When a company fails, the register records it: the status changes, filings fall overdue, and an insolvency case appears with the practitioner appointed to it. Knowing the shape of that record is what lets you recognise it early elsewhere.
+
+The example is Carillion, whose 2018 compulsory liquidation is among the most publicly documented corporate failures in the UK. Nothing on this page is news about it.`,
     steps: [
       {
-        narrative: 'Snapshot the debtor.',
+        narrative: 'Snapshot the company.',
         tool: 'company_snapshot',
-        args: { company_number: 'SC123456' },
-        reading: `Several signals at once here, ordered by how much they matter.
+        args: { company_number: '03782379' },
+        reading: `Several signals at once, ordered by how much they matter. \`insolvency_proceedings\` comes from the company status; \`insolvency_history\` and \`accounts_overdue\` come from the profile.
 
-\`outstanding_count\` on charges is derived by this server: Companies House reports how many charges have been satisfied and never how many have not, which is the number you actually want. The names in \`holders\` tell you who is ahead of you if it comes to a distribution.
+Note what the ordering is *not*: nothing here combines signals into a score. A company with three signals is not "worse" than one with two by any arithmetic this server performs, and it declines to pretend otherwise.
 
-\`floating_charge_over_all_assets\` is worth reading closely on a debtor. It means a lender has security over everything.`
+Look at \`sections_unavailable\` too. The officers call failed here, so that section is named as unread and is absent from \`sections_included\` — which means the officer-based signals are *unknown* rather than *clear*. That distinction is the whole reason both fields exist.`
       },
       {
-        narrative: 'When there is an insolvency case, pull the detail — the practitioner is who you would need to contact.',
+        narrative: 'Pull the insolvency detail — the practitioner is who a creditor would need to contact.',
         tool: 'get_insolvency',
-        args: { company_number: 'SC123456' },
-        reading:
-          'Note that a company with no insolvency history returns a not-found error here rather than an empty list. That is a quirk of the API and it means exactly what it sounds like. `company_snapshot` smooths it over; this tool does not.'
+        args: { company_number: '03782379' },
+        reading: `A company with no insolvency history returns a not-found error from this tool rather than an empty list. That is a quirk of the API and it means exactly what it sounds like; \`company_snapshot\` smooths it over, this tool does not.`
       }
     ],
-    closing: `**Do not read a signal as a prediction.** Overdue accounts sometimes mean an ill accountant. A company can be perfectly current on filings the month before it collapses. These are the facts on the register, and they are worth a phone call, not a conclusion.`
+    closing: `**Do not read a signal as a prediction.** Overdue accounts often mean an ill accountant rather than a failing business, and a company can be perfectly current on its filings the month before it collapses. These are facts on a public register, worth a phone call rather than a conclusion.`
   },
 
   {
     slug: 'competitor-filing-watch',
-    title: 'Watching a competitor’s filing cadence',
-    question: 'When did they last file accounts, and what have they been doing since?',
-    intro: `Filing history is the closest thing on the register to a timeline. Accounts tell you the year end and how big the company claims to be; mortgage filings tell you when it borrowed; officer filings tell you when people arrived and left.`,
+    title: 'Reading a filing cadence',
+    question: 'When did they last file accounts, and what has been filed since?',
+    intro: `Filing history is the closest thing on the register to a timeline. Accounts give the year end and the size bracket a company files under; mortgage filings show when it borrowed; officer filings show when people arrived and left.`,
     steps: [
       {
-        narrative: 'Pull the recent history. Filter by category when you only care about one kind of event.',
+        narrative: 'Pull the recent history. Filter by category when only one kind of event matters.',
         tool: 'get_filing_history',
-        args: { company_number: '00000006', items_per_page: 5 },
-        reading: `\`description\` is a Companies House template key such as \`accounts-with-accounts-type-small\`, with the values that fill it alongside. It is not translated into English here on purpose: rendering it properly needs a template file Companies House ships separately, and a partial local translation would render some filings wrongly with nobody able to tell which.
+        args: { company_number: '04138203', items_per_page: 5 },
+        reading: `\`description\` is a Companies House template key such as \`accounts-with-accounts-type-full\`, with the values that fill it alongside. It is not translated into English here on purpose: rendering it properly needs a template file Companies House ships separately, and a partial local translation would render some filings wrongly with nobody able to tell which.
 
-\`accounts-with-accounts-type-small\` is itself informative — it is the filing of a company below the small-company thresholds.
+The key is informative in itself — \`accounts-type-full\` is a company filing full accounts rather than the abridged or micro-entity form.
 
 \`has_document\` says a filed document exists. Fetching the PDF needs the separate Companies House document API, which is out of scope for this server today.`
       }
     ],
-    closing: `**For a running watch,** cache TTLs are the thing to know: filing history is cached for six hours, the shortest of any section, because it is what changes when anything happens. Pass \`verbose: true\` or set \`CH_CACHE_ENABLED=false\` if you need this second's answer.`
+    closing: `**For a running watch,** the cache TTLs are what to know: filing history is cached for six hours, the shortest of any section, because it is what changes when anything happens. Set \`CH_CACHE_ENABLED=false\` if you need this second's answer.`
   }
 ];
 
@@ -275,12 +306,12 @@ ${recipe.intro}
 
 > **About the responses below.** They are real output from this server — every
 > call on this page is executed when the documentation is generated, and
-> whatever comes back is what you see. The *upstream* data behind them comes
-> from the repository's test fixtures, which are hand-authored to the
-> documented Companies House shape rather than recorded from the live
-> register. So the field names, the derived values and the behaviour are
-> genuine; the companies are invented. See
-> [tests/fixtures/README.md](../../tests/fixtures/README.md).
+> whatever comes back is what you see. The upstream data comes from fixtures
+> recorded from the live Companies House API, so the companies are real and
+> the facts are public record, published under the Open Government Licence
+> v3.0. The framing around them is illustrative: this project makes no claim
+> about any company or person named here beyond what the register itself
+> states.
 
 ## Walkthrough
 
@@ -315,11 +346,16 @@ and CI fails.
 |---|---|
 ${rows}
 
+The companies shown are real and the data is public record under the Open
+Government Licence v3.0. Nothing here asserts anything about them beyond what
+the register states.
+
 The tool-by-tool reference is in [docs/tools](../tools/README.md).
 `;
 }
 
 export async function generateRecipes(): Promise<GeneratedFile[]> {
+  loadEnvFile(join(ROOT, '.env'));
   const pages = await Promise.all(RECIPES.map((recipe) => runRecipe(recipe)));
   return [{ path: join(RECIPES_DIR, 'README.md'), contents: renderIndex() }, ...pages];
 }

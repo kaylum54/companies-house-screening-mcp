@@ -8,10 +8,14 @@ and CI fails.
 
 | Recipe | The question |
 |---|---|
-| [Screening a list of new suppliers](supplier-onboarding-check.md) | Thirty names came in from procurement. Which ones need a closer look? |
-| [Finding an undeclared shared directorship](director-conflict-check.md) | Does anyone on this board also sit on a company we are already dealing with? |
-| [Checking a new contractor before paying an invoice](invoice-verification.md) | This invoice arrived from a company we have never used. Is any of it real? |
-| [Re-checking an aged debtor](debtor-risk-screen.md) | This customer has stopped paying. Has something changed on the register? |
-| [Watching a competitor’s filing cadence](competitor-filing-watch.md) | When did they last file accounts, and what have they been doing since? |
+| [Screening a list of companies](supplier-onboarding-check.md) | A list of names came in from procurement. Which entries need a closer look? |
+| [Mapping an officer across companies](director-conflict-check.md) | Which other companies is this director appointed to? |
+| [Verifying a company on an invoice](invoice-verification.md) | Does this company exist, is it trading, and does the address match? |
+| [What insolvency looks like on the register](debtor-risk-screen.md) | A company has entered an insolvency process. What does the register show? |
+| [Reading a filing cadence](competitor-filing-watch.md) | When did they last file accounts, and what has been filed since? |
+
+The companies shown are real and the data is public record under the Open
+Government Licence v3.0. Nothing here asserts anything about them beyond what
+the register states.
 
 The tool-by-tool reference is in [docs/tools](../tools/README.md).

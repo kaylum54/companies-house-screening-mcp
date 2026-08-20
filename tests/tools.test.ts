@@ -77,13 +77,13 @@ describe('find_company', () => {
   it('returns a shortlist and flags that disambiguation is needed', async () => {
     harness = await harnessAlways({ body: SEARCH });
     const result = structured(
-      await harness.client.callTool({ name: 'find_company', arguments: { query: 'example fixture' } })
+      await harness.client.callTool({ name: 'find_company', arguments: { query: 'royal mail' } })
     );
 
     expect(result['disambiguation_needed']).toBe(true);
-    expect(result['companies']).toHaveLength(3);
+    expect(result['companies']).toHaveLength(5);
     expect(harness.calls[0]?.url).toContain('/search/companies');
-    expect(harness.calls[0]?.url).toContain('q=example+fixture');
+    expect(harness.calls[0]?.url).toContain('q=royal+mail');
   });
 
   it('accepts a company number as a query too', async () => {
@@ -110,12 +110,12 @@ describe('get_company', () => {
   it('returns a shaped profile with derived flags', async () => {
     harness = await harnessAlways({ body: PROFILE });
     const result = structured(
-      await harness.client.callTool({ name: 'get_company', arguments: { company_number: '00000006' } })
+      await harness.client.callTool({ name: 'get_company', arguments: { company_number: '04138203' } })
     );
 
-    expect(result['name']).toBe('EXAMPLE FIXTURE TRADING LIMITED');
-    expect(result['age_years']).toBe(28);
-    expect(result['flags']).toMatchObject({ is_active: true, has_charges: true });
+    expect(result['name']).toBe('ROYAL MAIL GROUP LIMITED');
+    expect(result['age_years']).toBe(25);
+    expect(result['flags']).toMatchObject({ is_active: true, accounts_overdue: false });
     expect(result['meta']).toMatchObject({ cached: false, stale: false, licence: 'OGL-v3.0' });
   });
 
@@ -134,7 +134,7 @@ describe('get_company', () => {
     const error = errorPayload(
       await harness.client.callTool({
         name: 'get_company',
-        arguments: { company_number: 'Example Fixture Trading Limited' }
+        arguments: { company_number: 'Royal Mail Group Limited' }
       })
     );
 
@@ -158,14 +158,14 @@ describe('get_company', () => {
     harness = await harnessSequence([{ body: PROFILE }, { body: PROFILE }]);
 
     const quiet = structured(
-      await harness.client.callTool({ name: 'get_company', arguments: { company_number: '00000006' } })
+      await harness.client.callTool({ name: 'get_company', arguments: { company_number: '04138203' } })
     );
     expect(quiet['raw']).toBeUndefined();
 
     const loud = structured(
       await harness.client.callTool({
         name: 'get_company',
-        arguments: { company_number: '00000006', verbose: true }
+        arguments: { company_number: '04138203', verbose: true }
       })
     );
     expect(loud['raw']).toEqual(PROFILE);
@@ -186,7 +186,7 @@ describe('get_company', () => {
   it('reports a bad API key as configuration rather than a transient fault', async () => {
     harness = await harnessAlways({ status: 401 });
     const error = errorPayload(
-      await harness.client.callTool({ name: 'get_company', arguments: { company_number: '00000006' } })
+      await harness.client.callTool({ name: 'get_company', arguments: { company_number: '04138203' } })
     );
 
     expect(error.code).toBe('AUTH_INVALID');
@@ -196,7 +196,7 @@ describe('get_company', () => {
   it('surfaces the remaining rate-limit budget so a long run can pace itself', async () => {
     harness = await harnessAlways({ body: PROFILE });
     const result = structured(
-      await harness.client.callTool({ name: 'get_company', arguments: { company_number: '00000006' } })
+      await harness.client.callTool({ name: 'get_company', arguments: { company_number: '04138203' } })
     );
 
     const meta = result['meta'] as Record<string, unknown>;
@@ -208,27 +208,27 @@ describe('the remaining retrieval tools', () => {
   it('get_officers hides service addresses by default and exposes officer ids', async () => {
     harness = await harnessAlways({ body: OFFICERS });
     const result = structured(
-      await harness.client.callTool({ name: 'get_officers', arguments: { company_number: '00000006' } })
+      await harness.client.callTool({ name: 'get_officers', arguments: { company_number: '04138203' } })
     );
 
     const officers = result['officers'] as Record<string, unknown>[];
-    expect(officers[0]?.['officer_id']).toBe('aBcD1234EfGh5678IjKl');
+    expect(officers[0]?.['officer_id']).toBe('vKBmO0VKB84EFn2fjjCSWgLFHbY');
     expect(officers[0]?.['address']).toBeUndefined();
   });
 
   it('get_charges derives the outstanding count', async () => {
     harness = await harnessAlways({ body: CHARGES });
     const result = structured(
-      await harness.client.callTool({ name: 'get_charges', arguments: { company_number: '00000006' } })
+      await harness.client.callTool({ name: 'get_charges', arguments: { company_number: '04138203' } })
     );
 
-    expect(result['outstanding_count']).toBe(1);
+    expect(result['outstanding_count']).toBe(2);
   });
 
   it('get_psc returns natures of control', async () => {
     harness = await harnessAlways({ body: PSC });
     const result = structured(
-      await harness.client.callTool({ name: 'get_psc', arguments: { company_number: '00000006' } })
+      await harness.client.callTool({ name: 'get_psc', arguments: { company_number: '04138203' } })
     );
 
     const controllers = result['controllers'] as Record<string, unknown>[];
@@ -238,7 +238,7 @@ describe('the remaining retrieval tools', () => {
   it('get_insolvency returns the practitioners', async () => {
     harness = await harnessAlways({ body: INSOLVENCY });
     const result = structured(
-      await harness.client.callTool({ name: 'get_insolvency', arguments: { company_number: 'SC123456' } })
+      await harness.client.callTool({ name: 'get_insolvency', arguments: { company_number: '03782379' } })
     );
 
     expect(result['case_count']).toBe(1);
@@ -254,7 +254,7 @@ describe('the remaining retrieval tools', () => {
     );
 
     expect(harness.calls[0]?.url).toContain('category=accounts');
-    expect((result['filings'] as unknown[]).length).toBe(3);
+    expect((result['filings'] as unknown[]).length).toBe(5);
   });
 
   it('get_officer_appointments counts active appointments', async () => {
@@ -262,12 +262,12 @@ describe('the remaining retrieval tools', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'get_officer_appointments',
-        arguments: { officer_id: 'aBcD1234EfGh5678IjKl' }
+        arguments: { officer_id: 'gBfDMtBVo3nHfig_wVfjaOA9o1M' }
       })
     );
 
-    expect(result['active_appointment_count']).toBe(2);
-    expect(harness.calls[0]?.url).toContain('/officers/aBcD1234EfGh5678IjKl/appointments');
+    expect(result['active_appointment_count']).toBe(8);
+    expect(harness.calls[0]?.url).toContain('/officers/gBfDMtBVo3nHfig_wVfjaOA9o1M/appointments');
   });
 
   it('get_officer_appointments escapes the officer id into the path', async () => {
@@ -283,12 +283,12 @@ describe('the remaining retrieval tools', () => {
   it('find_officer returns candidate ids for a name', async () => {
     harness = await harnessAlways({ body: OFFICER_SEARCH });
     const result = structured(
-      await harness.client.callTool({ name: 'find_officer', arguments: { query: 'alice fixture' } })
+      await harness.client.callTool({ name: 'find_officer', arguments: { query: 'smith' } })
     );
 
     const officers = result['officers'] as Record<string, unknown>[];
-    expect(officers[0]?.['officer_id']).toBe('aBcD1234EfGh5678IjKl');
-    expect(officers[0]?.['appointment_count']).toBe(3);
+    expect(officers[0]?.['officer_id']).toBe('XR-3FAMZFTo1jT9bydQh4WWKKvI');
+    expect(officers[0]?.['appointment_count']).toBe(1);
   });
 });
 

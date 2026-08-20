@@ -21,9 +21,10 @@ are. It is also bad in three specific ways:
   onboard" becomes search, then profile, then officers, then charges, then
   insolvency — five round trips and five chances to lose the thread.
 - Companies House payloads carry structure no model reads — `links`, `etag`,
-  `kind`, nine-key address objects. Shaping them away saves between 29% and
-  42% depending on the endpoint, measured rather than assumed
-  (`npx tsx scripts/measure-projections.ts`).
+  `kind`, per-item ETags, filing-transaction arrays, nine-key address objects.
+  Shaping them away saves between 36% and 72% depending on the endpoint,
+  measured against real recorded responses rather than assumed (`npm run
+  measure`).
 
 So this server exposes eleven tools shaped around questions, two of which
 (`company_snapshot` and `screen_companies`) do the fan-out server-side and
@@ -73,7 +74,7 @@ takes `verbose` to return the untouched payload alongside the shaped one.
 | `CompaniesHouseError` | Every failure carries a stable code, a plain sentence and a next step. |
 | Projections | Upstream read defensively field by field; output validated strictly against the published schema. |
 
-245 tests, no network, no API key required to run them.
+259 tests, no network, no API key required to run them.
 
 ## Running it from a host
 
@@ -126,10 +127,10 @@ committed differs, CI runs it before the tests, and the suite runs the same
 comparison so the failure arrives while you still have the change in front of
 you. Change a tool description and you regenerate, or the build goes red.
 
-The suite runs offline against recorded fixtures, so a fresh clone works with
-nothing configured. Fixtures are currently hand-authored to the documented
-shape — see [tests/fixtures/README.md](tests/fixtures/README.md) for what that
-means and how to replace them with real recordings.
+The suite runs offline against fixtures recorded from the live Companies House
+API, so a fresh clone works with nothing configured. `npm run record-fixtures`
+re-records them — see [tests/fixtures/README.md](tests/fixtures/README.md) for
+which companies they come from and why those were chosen.
 
 Once you hold a key, copy `.env.example` to `.env` and fill it in:
 

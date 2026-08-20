@@ -1,49 +1,144 @@
 {
-  "kind": "search#companies",
-  "total_results": 3,
-  "items_per_page": 20,
-  "start_index": 0,
-  "page_number": 1,
   "items": [
     {
       "kind": "searchresults#company",
-      "title": "EXAMPLE FIXTURE TRADING LIMITED",
-      "company_number": "00000006",
+      "description_identifier": [
+        "incorporated-on"
+      ],
       "company_status": "active",
+      "date_of_creation": "2022-07-18",
       "company_type": "ltd",
-      "date_of_creation": "1998-03-17",
-      "address_snippet": "1 Fixture Street, Testfield, Manchester, M1 1AA",
+      "company_number": "14240638",
       "address": {
-        "address_line_1": "1 Fixture Street",
-        "locality": "Manchester",
-        "postal_code": "M1 1AA",
-        "country": "England"
+        "address_line_1": "Farringdon Road",
+        "country": "England",
+        "locality": "London",
+        "postal_code": "EC1A 1AA",
+        "premises": "185"
       },
-      "description": "00000006 - Incorporated on 17 March 1998",
-      "links": { "self": "/company/00000006" }
+      "title": "ROYAL MAIL LIMITED",
+      "address_snippet": "185 Farringdon Road, London, England, EC1A 1AA",
+      "description": "14240638 - Incorporated on 18 July 2022",
+      "links": {
+        "self": "/company/14240638"
+      },
+      "snippet": "",
+      "matches": {
+        "snippet": []
+      }
     },
     {
       "kind": "searchresults#company",
-      "title": "EXAMPLE FIXTURE HOLDINGS LIMITED",
-      "company_number": "07654321",
+      "description_identifier": [
+        "incorporated-on"
+      ],
       "company_status": "active",
+      "date_of_creation": "2013-09-06",
       "company_type": "ltd",
-      "date_of_creation": "2011-05-09",
-      "address_snippet": "1 Fixture Street, Manchester, M1 1AA",
-      "description": "07654321 - Incorporated on 9 May 2011",
-      "links": { "self": "/company/07654321" }
+      "company_number": "08680755",
+      "address": {
+        "address_line_1": "Farringdon Road",
+        "country": "United Kingdom",
+        "locality": "London",
+        "postal_code": "EC1A 1AA",
+        "premises": "185"
+      },
+      "title": "INTERNATIONAL DISTRIBUTION SERVICES LIMITED",
+      "address_snippet": "185 Farringdon Road, London, United Kingdom, EC1A 1AA",
+      "description": "08680755 - Incorporated on 6 September 2013",
+      "links": {
+        "self": "/company/08680755"
+      },
+      "snippet": "ROYAL MAIL PLC",
+      "matches": {
+        "snippet": []
+      }
     },
     {
       "kind": "searchresults#company",
-      "title": "EXAMPLE FIXTURE DORMANT LIMITED",
-      "company_number": "SC123456",
-      "company_status": "dissolved",
+      "description_identifier": [
+        "incorporated-on"
+      ],
+      "company_status": "active",
+      "date_of_creation": "1995-08-04",
       "company_type": "ltd",
-      "date_of_creation": "2011-06-02",
-      "date_of_cessation": "2024-01-16",
-      "address_snippet": "44 Placeholder Road, Glasgow, G1 1AA",
-      "description": "SC123456 - Dissolved on 16 January 2024",
-      "links": { "self": "/company/SC123456" }
+      "company_number": "03087786",
+      "address": {
+        "address_line_1": "Farringdon Road",
+        "country": "United Kingdom",
+        "locality": "London",
+        "postal_code": "EC1A 1AA",
+        "premises": "185"
+      },
+      "title": "RM (INTERNATIONAL) LIMITED",
+      "address_snippet": "185 Farringdon Road, London, United Kingdom, EC1A 1AA",
+      "description": "03087786 - Incorporated on 4 August 1995",
+      "links": {
+        "self": "/company/03087786"
+      },
+      "snippet": "ROYAL MAIL LIMITED",
+      "matches": {
+        "snippet": []
+      }
+    },
+    {
+      "kind": "searchresults#company",
+      "description_identifier": [
+        "incorporated-on"
+      ],
+      "company_status": "active",
+      "date_of_creation": "2007-07-10",
+      "company_type": "ltd",
+      "company_number": "06307726",
+      "address": {
+        "address_line_1": "Farringdon Road",
+        "country": "United Kingdom",
+        "locality": "London",
+        "postal_code": "EC1A 1AA",
+        "premises": "185"
+      },
+      "title": "ROYAL MAIL COURIER SERVICES LTD",
+      "address_snippet": "185 Farringdon Road, London, United Kingdom, EC1A 1AA",
+      "description": "06307726 - Incorporated on 10 July 2007",
+      "links": {
+        "self": "/company/06307726"
+      },
+      "snippet": "",
+      "matches": {
+        "snippet": []
+      }
+    },
+    {
+      "kind": "searchresults#company",
+      "description_identifier": [
+        "incorporated-on"
+      ],
+      "company_status": "active",
+      "date_of_creation": "1999-01-11",
+      "company_type": "ltd",
+      "company_number": "03693913",
+      "address": {
+        "address_line_1": "Farringdon Road",
+        "country": "United Kingdom",
+        "locality": "London",
+        "postal_code": "EC1A 1AA",
+        "premises": "185"
+      },
+      "title": "ROYAL MAIL ENTERPRISES LIMITED",
+      "address_snippet": "185 Farringdon Road, London, United Kingdom, EC1A 1AA",
+      "description": "03693913 - Incorporated on 11 January 1999",
+      "links": {
+        "self": "/company/03693913"
+      },
+      "snippet": "",
+      "matches": {
+        "snippet": []
+      }
     }
-  ]
+  ],
+  "kind": "search#companies",
+  "page_number": 1,
+  "items_per_page": 5,
+  "total_results": 7139,
+  "start_index": 0
 }

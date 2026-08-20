@@ -8,7 +8,7 @@ import { loadFixture } from './helpers/support.js';
 const NOW = Date.parse('2026-08-20T00:00:00.000Z');
 
 const profileOf = (fixture: string) =>
-  projectCompanyProfile(loadFixture(fixture), '00000006', NOW);
+  projectCompanyProfile(loadFixture(fixture), '04138203', NOW);
 
 const codes = (signals: { code: SignalCode }[]): SignalCode[] => signals.map((signal) => signal.code);
 
@@ -59,7 +59,7 @@ describe('deriveSignals', () => {
   it('reports a dissolved company with the date', () => {
     const signals = deriveSignals({ profile: profileOf('company/profile-dissolved.json'), now: NOW });
     expect(codes(signals)).toContain('dissolved');
-    expect(signals.find((signal) => signal.code === 'dissolved')?.detail).toContain('2024-01-16');
+    expect(signals.find((signal) => signal.code === 'dissolved')?.detail).toContain('2018-07-10');
   });
 
   it('separates formal insolvency proceedings from merely not being active', () => {
@@ -98,19 +98,47 @@ describe('deriveSignals', () => {
     expect(signals.find((signal) => signal.code === 'accounts_overdue')?.detail).toContain('2026-01-31');
   });
 
-  it('names who holds an outstanding charge', () => {
-    const charges = projectCharges(loadFixture('charges/charges-outstanding.json'), '00000006');
+  it('names who holds an outstanding charge, and only the outstanding ones', () => {
+    const charges = projectCharges(loadFixture('charges/charges-outstanding.json'), '04138203');
     const signals = deriveSignals({ profile: profileOf('company/profile-active.json'), charges, now: NOW });
 
     const charge = signals.find((signal) => signal.code === 'outstanding_charges');
-    expect(charge?.detail).toContain('EXAMPLE FIXTURE BANK PLC');
-    expect(charge?.detail).not.toContain('EXAMPLE FIXTURE ASSET FINANCE');
+    expect(charge?.detail).toContain('2 outstanding charges');
+    expect(charge?.detail).toContain('Rmcpp Trustees Limited');
+    // A charge settled in 2022 is not something to raise with anybody.
+    expect(charge?.detail).not.toContain('David Grant Hargrave');
+  });
+
+  it('reads the charges section rather than the profile flag', () => {
+    // Royal Mail's profile reports has_charges: false while its charges
+    // endpoint returns fifteen. The flag cannot be trusted and this signal
+    // must never be rewired to use it.
+    const charges = projectCharges(loadFixture('charges/charges-outstanding.json'), '04138203');
+    const profile = profileOf('company/profile-active.json');
+
+    expect(profile.flags.has_charges).toBe(false);
+    expect(codes(deriveSignals({ profile, charges, now: NOW }))).toContain('outstanding_charges');
   });
 
   it('flags a floating charge only while it is outstanding', () => {
-    const charges = projectCharges(loadFixture('charges/charges-outstanding.json'), '00000006');
+    // No charge in the recorded fixture declares that it covers everything, so
+    // the positive case is constructed. The negative case below is the one
+    // that matters: a settled floating charge must not raise anything.
+    const outstanding = projectCharges(
+      {
+        total_count: 1,
+        satisfied_count: 0,
+        items: [
+          {
+            status: 'outstanding',
+            particulars: { contains_floating_charge: true, floating_charge_covers_all: true }
+          }
+        ]
+      },
+      '04138203'
+    );
     expect(
-      codes(deriveSignals({ profile: profileOf('company/profile-active.json'), charges, now: NOW }))
+      codes(deriveSignals({ profile: profileOf('company/profile-active.json'), charges: outstanding, now: NOW }))
     ).toContain('floating_charge_over_all_assets');
 
     const settled = projectCharges(
@@ -124,7 +152,7 @@ describe('deriveSignals', () => {
           }
         ]
       },
-      '00000006'
+      '04138203'
     );
     expect(
       codes(deriveSignals({ profile: profileOf('company/profile-active.json'), charges: settled, now: NOW }))
@@ -134,7 +162,7 @@ describe('deriveSignals', () => {
   it('flags a company whose officers have all resigned', () => {
     const officers = projectOfficers(
       { items: [{ name: 'GONE, Person', officer_role: 'director', resigned_on: '2019-01-01' }] },
-      '00000006',
+      '04138203',
       false
     );
     expect(
@@ -145,7 +173,7 @@ describe('deriveSignals', () => {
   it('does not claim no active officers when the list is simply empty', () => {
     // An empty officers response means the page was empty, which is not the
     // same as every director having walked out.
-    const officers = projectOfficers({ items: [] }, '00000006', false);
+    const officers = projectOfficers({ items: [] }, '04138203', false);
     expect(
       codes(deriveSignals({ profile: profileOf('company/profile-active.json'), officers, now: NOW }))
     ).not.toContain('no_active_officers');
@@ -160,7 +188,7 @@ describe('deriveSignals', () => {
           { name: 'OLD, C', officer_role: 'director', resigned_on: '2019-01-01' }
         ]
       },
-      '00000006',
+      '04138203',
       false
     );
     const signals = deriveSignals({ profile: profileOf('company/profile-active.json'), officers, now: NOW });
@@ -208,7 +236,7 @@ describe('deriveSignals', () => {
 
     const fromCases = deriveSignals({
       profile: profileOf('company/profile-active.json'),
-      insolvency: { company_number: '00000006', case_count: 2, cases: [] },
+      insolvency: { company_number: '04138203', case_count: 2, cases: [] },
       now: NOW
     });
     expect(fromCases.find((signal) => signal.code === 'insolvency_history')?.detail).toContain('2 insolvency');

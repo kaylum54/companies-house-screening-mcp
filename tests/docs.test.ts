@@ -53,14 +53,24 @@ describe('generated documentation', () => {
     }
   });
 
-  it('states in every recipe that the underlying data is fixture data', async () => {
-    // These pages show real output from real code against invented companies.
-    // A reader who mistakes the second half for real companies has been
-    // misled, so the caveat is asserted rather than trusted to survive edits.
+  it('disclaims any assertion about the real companies it names', async () => {
+    // These pages name real companies and real officers. The data is public
+    // record under the Open Government Licence, but the framing around it is
+    // ours, and a reader must not come away thinking the project is making a
+    // claim about anybody. The disclaimer is asserted rather than trusted to
+    // survive an edit.
+    //
+    // This assertion previously required the words "the companies are
+    // invented", which stopped being true the day the fixtures were recorded
+    // from the live API — and it failed, which is exactly what it was for.
     for (const name of await readdir(join(DOCS, 'recipes'))) {
-      if (!name.endsWith('.md') || name === 'README.md') continue;
-      const contents = await readFile(join(DOCS, 'recipes', name), 'utf8');
-      expect(contents, name).toContain('the companies are invented');
+      if (!name.endsWith('.md')) continue;
+      // Collapse the blockquote markers too — the disclaimer is inside a `>`
+      // block, and `>` is not whitespace, so it survives a naive collapse and
+      // lands in the middle of the sentence being matched.
+      const contents = (await readFile(join(DOCS, 'recipes', name), 'utf8')).replace(/[\s>]+/g, ' ');
+      expect(contents, name).toContain('Open Government Licence');
+      expect(contents, name).toMatch(/no claim about any company or person|Nothing here asserts anything about them/);
     }
   });
 

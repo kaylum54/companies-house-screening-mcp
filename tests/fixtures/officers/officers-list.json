@@ -1,58 +1,160 @@
 {
-  "kind": "officer-list",
-  "active_count": 2,
-  "resigned_count": 1,
-  "inactive_count": 0,
-  "total_results": 3,
-  "items_per_page": 35,
-  "start_index": 0,
-  "etag": "1122334455667788990011223344556677889900",
-  "links": { "self": "/company/00000006/officers" },
+  "active_count": 10,
+  "etag": "216e3607be709dab9c316e4a8e389e2f347ac5a0",
   "items": [
     {
-      "name": "FIXTURE, Alice Jane",
-      "officer_role": "director",
-      "appointed_on": "2015-02-11",
-      "occupation": "Company Director",
-      "nationality": "British",
-      "country_of_residence": "England",
-      "date_of_birth": { "month": 7, "year": 1979 },
+      "etag": "216e3607be709dab9c316e4a8e389e2f347ac5a0",
       "address": {
-        "address_line_1": "1 Fixture Street",
-        "locality": "Manchester",
-        "postal_code": "M1 1AA",
-        "country": "England"
+        "address_line_1": "Farringdon Road",
+        "country": "United Kingdom",
+        "locality": "London",
+        "postal_code": "EC1A 1AA",
+        "premises": "185"
       },
-      "links": { "officer": { "appointments": "/officers/aBcD1234EfGh5678IjKl/appointments" } }
-    },
-    {
-      "name": "PLACEHOLDER, Brian",
+      "appointed_on": "2025-06-30",
+      "is_pre_1992_appointment": false,
+      "links": {
+        "self": "/company/04138203/appointments/SUjlkB3KHNpPb86Qlxhi8GTKdts",
+        "officer": {
+          "appointments": "/officers/vKBmO0VKB84EFn2fjjCSWgLFHbY/appointments"
+        }
+      },
+      "name": "NEWMAN, Matthew",
       "officer_role": "secretary",
-      "appointed_on": "2018-09-03",
-      "address": {
-        "address_line_1": "1 Fixture Street",
-        "locality": "Manchester",
-        "postal_code": "M1 1AA",
-        "country": "England"
-      },
-      "links": { "officer": { "appointments": "/officers/mNoP9012QrSt3456UvWx/appointments" } }
+      "person_number": "337580740001"
     },
     {
-      "name": "SAMPLE, Carol",
-      "officer_role": "director",
-      "appointed_on": "2012-05-20",
-      "resigned_on": "2019-11-30",
-      "occupation": "Consultant",
-      "nationality": "British",
-      "country_of_residence": "Wales",
-      "date_of_birth": { "month": 1, "year": 1968 },
+      "etag": "653470ba546bced015e671e7ecba34da91c3689f",
       "address": {
-        "address_line_1": "12 Example Avenue",
-        "locality": "Cardiff",
-        "postal_code": "CF10 1AA",
-        "country": "Wales"
+        "address_line_1": "Farringdon Road",
+        "country": "United Kingdom",
+        "locality": "London",
+        "postal_code": "EC1A 1AA",
+        "premises": "185"
       },
-      "links": { "officer": { "appointments": "/officers/yZaB7890CdEf1234GhIj/appointments" } }
+      "appointed_on": "2026-01-21",
+      "is_pre_1992_appointment": false,
+      "country_of_residence": "England",
+      "date_of_birth": {
+        "month": 3,
+        "year": 1975
+      },
+      "links": {
+        "self": "/company/04138203/appointments/YDjyjn1Z7oyu9EXwHzYHj1slwYw",
+        "officer": {
+          "appointments": "/officers/gBfDMtBVo3nHfig_wVfjaOA9o1M/appointments"
+        }
+      },
+      "name": "ABLIN, Paul",
+      "nationality": "British",
+      "officer_role": "director",
+      "person_number": "344585980001",
+      "identity_verification_details": {
+        "appointment_verification_end_on": "9999-12-31",
+        "appointment_verification_start_on": "2026-01-22"
+      }
+    },
+    {
+      "etag": "5d20986d3a5a2ad23ea54f59ff40ac5b38beb27f",
+      "address": {
+        "address_line_1": "Farringdon Road",
+        "country": "United Kingdom",
+        "locality": "London",
+        "postal_code": "EC1A 1AA",
+        "premises": "185"
+      },
+      "appointed_on": "2025-06-09",
+      "is_pre_1992_appointment": false,
+      "country_of_residence": "Czech Republic",
+      "date_of_birth": {
+        "month": 11,
+        "year": 1982
+      },
+      "links": {
+        "self": "/company/04138203/appointments/eL-Mk3461VPZGqyb_IufzGjSIyM",
+        "officer": {
+          "appointments": "/officers/M5DWmkoVrhG-KmNrrd3MX_ZAt8I/appointments"
+        }
+      },
+      "name": "BILEK, Jan",
+      "nationality": "Czech",
+      "officer_role": "director",
+      "person_number": "336777530001",
+      "identity_verification_details": {
+        "appointment_verification_end_on": "9999-12-31",
+        "appointment_verification_start_on": "2025-11-27"
+      }
+    },
+    {
+      "etag": "c49ddaddf5781e66eadcbe696d970c36054c0757",
+      "address": {
+        "address_line_1": "Farringdon Road",
+        "country": "United Kingdom",
+        "locality": "London",
+        "postal_code": "EC1A 1AA",
+        "premises": "185"
+      },
+      "appointed_on": "2025-06-09",
+      "is_pre_1992_appointment": false,
+      "country_of_residence": "Czech Republic",
+      "date_of_birth": {
+        "month": 9,
+        "year": 1987
+      },
+      "links": {
+        "self": "/company/04138203/appointments/yHIUMVOQmbnazhFkWy1eCqQ9bvI",
+        "officer": {
+          "appointments": "/officers/NHaoQdAGIuyuRyyP_RGF1gi6VMY/appointments"
+        }
+      },
+      "name": "JANCA, Marek",
+      "nationality": "Czech",
+      "officer_role": "director",
+      "person_number": "336777550001",
+      "identity_verification_details": {
+        "appointment_verification_end_on": "9999-12-31",
+        "appointment_verification_start_on": "2025-11-27"
+      }
+    },
+    {
+      "etag": "40438dc8d62f1682e841fff9dba6d929fcaa5568",
+      "address": {
+        "address_line_1": "Farringdon Road",
+        "country": "United Kingdom",
+        "locality": "London",
+        "postal_code": "EC1A 1AA",
+        "premises": "185"
+      },
+      "appointed_on": "2025-06-09",
+      "is_pre_1992_appointment": false,
+      "country_of_residence": "Czech Republic",
+      "date_of_birth": {
+        "month": 7,
+        "year": 1975
+      },
+      "links": {
+        "self": "/company/04138203/appointments/WjY_o1Xzd19Jp1hMzWFtPOsoJCY",
+        "officer": {
+          "appointments": "/officers/DJDzsJ2ikUdVkdCjB2hBG0ypuTg/appointments"
+        }
+      },
+      "name": "KRETINSKY, Daniel",
+      "nationality": "Czech",
+      "officer_role": "director",
+      "person_number": "294777190001",
+      "identity_verification_details": {
+        "appointment_verification_end_on": "9999-12-31",
+        "appointment_verification_start_on": "2025-11-27"
+      }
     }
-  ]
+  ],
+  "items_per_page": 5,
+  "kind": "officer-list",
+  "links": {
+    "self": "/company/04138203/officers"
+  },
+  "resigned_count": 54,
+  "inactive_count": 0,
+  "start_index": 0,
+  "total_results": 64
 }

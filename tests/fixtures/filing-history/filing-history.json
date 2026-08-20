@@ -1,45 +1,100 @@
 {
   "filing_history_status": "filing-history-available",
-  "total_count": 3,
-  "items_per_page": 25,
-  "start_index": 0,
-  "etag": "aabbccddeeff00112233445566778899aabbccdd",
   "items": [
     {
-      "date": "2025-12-14",
-      "category": "accounts",
-      "subcategory": "small",
-      "type": "AA",
-      "description": "accounts-with-accounts-type-small",
-      "description_values": { "made_up_date": "2025-03-31" },
-      "action_date": "2025-03-31",
-      "pages": 9,
-      "barcode": "XA1B2C3D",
-      "transaction_id": "MzQ1Njc4OTAxMmFkaXF6a2N4",
+      "transaction_id": "MzUwMjU4NDIzMWFkaXF6a2N4",
+      "barcode": "XEV2PNWA",
+      "type": "TM01",
+      "date": "2026-02-03",
+      "category": "officers",
+      "subcategory": "termination",
+      "description": "termination-director-company-with-name-termination-date",
+      "description_values": {
+        "officer_name": "Michael David Snape",
+        "termination_date": "2026-01-30"
+      },
+      "pages": 1,
+      "action_date": "2026-01-30",
       "links": {
-        "self": "/company/00000006/filing-history/MzQ1Njc4OTAxMmFkaXF6a2N4",
-        "document_metadata": "https://frontend-doc-api.company-information.service.gov.uk/document/aBcDeF"
+        "self": "/company/04138203/filing-history/MzUwMjU4NDIzMWFkaXF6a2N4",
+        "document_metadata": "https://document-api.company-information.service.gov.uk/document/etRoMTRPJ_2h8V5nW5CiiMypfrxibZsdBSuBwu9ONps"
       }
     },
     {
-      "date": "2025-09-01",
-      "category": "confirmation-statement",
-      "type": "CS01",
-      "description": "confirmation-statement-with-no-updates",
-      "description_values": { "made_up_date": "2025-08-31" },
-      "pages": 3,
-      "links": { "self": "/company/00000006/filing-history/NDU2Nzg5MDEyM2FkaXF6a2N4" }
+      "transaction_id": "MzUwMDc0MTg3MGFkaXF6a2N4",
+      "barcode": "XEU7ZJY2",
+      "type": "AP01",
+      "date": "2026-01-22",
+      "category": "officers",
+      "subcategory": "appointments",
+      "description": "appoint-person-director-company-with-name-date",
+      "description_values": {
+        "officer_name": "Mr Paul Ablin",
+        "appointment_date": "2026-01-21"
+      },
+      "pages": 2,
+      "action_date": "2026-01-21",
+      "links": {
+        "self": "/company/04138203/filing-history/MzUwMDc0MTg3MGFkaXF6a2N4",
+        "document_metadata": "https://document-api.company-information.service.gov.uk/document/U6laWfWVzrrTSxEvzjsRrW_3ZWOBo8JmpXNXH-i-dxQ"
+      }
     },
     {
-      "date": "2021-04-20",
-      "category": "mortgage",
-      "type": "MR01",
-      "description": "legacy",
+      "transaction_id": "MzQ5NTAxNjkzNWFkaXF6a2N4",
+      "barcode": "AEHM3XYY",
+      "type": "AA",
+      "date": "2025-12-22",
+      "category": "accounts",
+      "description": "accounts-with-accounts-type-full",
       "description_values": {
-        "description": "Registration of a charge, created on 14 April 2021"
+        "made_up_date": "2025-03-30"
       },
-      "pages": 5,
-      "links": { "self": "/company/00000006/filing-history/NTY3ODkwMTIzNGFkaXF6a2N4" }
+      "pages": 74,
+      "action_date": "2025-03-30",
+      "paper_filed": true,
+      "links": {
+        "self": "/company/04138203/filing-history/MzQ5NTAxNjkzNWFkaXF6a2N4",
+        "document_metadata": "https://document-api.company-information.service.gov.uk/document/T2cPI9TgWbh0tIJt7C2H6xigyDQk9LX3HyMRgymgr-8"
+      }
+    },
+    {
+      "transaction_id": "MzQ5MTMwMzA5OWFkaXF6a2N4",
+      "barcode": "XEG748IH",
+      "type": "CS01",
+      "date": "2025-11-27",
+      "category": "confirmation-statement",
+      "description": "confirmation-statement-with-updates",
+      "description_values": {
+        "made_up_date": "2025-11-11"
+      },
+      "pages": 4,
+      "action_date": "2025-11-11",
+      "links": {
+        "self": "/company/04138203/filing-history/MzQ5MTMwMzA5OWFkaXF6a2N4",
+        "document_metadata": "https://document-api.company-information.service.gov.uk/document/66z9ZzLUWUyPJX2FTwWhwCDGbbgLirLuPzA-cnTraZM"
+      }
+    },
+    {
+      "transaction_id": "MzQ3ODA1NTAxMWFkaXF6a2N4",
+      "barcode": "XE9B8B23",
+      "type": "AP01",
+      "date": "2025-08-20",
+      "category": "officers",
+      "subcategory": "appointments",
+      "description": "appoint-person-director-company-with-name-date",
+      "description_values": {
+        "officer_name": "Mr Dwain Mcdonald",
+        "appointment_date": "2025-08-01"
+      },
+      "pages": 2,
+      "action_date": "2025-08-01",
+      "links": {
+        "self": "/company/04138203/filing-history/MzQ3ODA1NTAxMWFkaXF6a2N4",
+        "document_metadata": "https://document-api.company-information.service.gov.uk/document/qBzr42fR0Vfr_lB5zcXewi3iTJWxRi2q4WU5_5DNwTs"
+      }
     }
-  ]
+  ],
+  "items_per_page": 5,
+  "start_index": 0,
+  "total_count": 284
 }

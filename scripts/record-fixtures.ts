@@ -10,16 +10,30 @@
  * honest answer to "is our understanding of this API correct", and anything
  * surprising in it is worth chasing down before it becomes a bug.
  *
- * Two fixtures cannot be recorded from a fixed company number, because they
- * need a company that is actually dissolved and one that actually has an
- * insolvency case. Point the script at real examples with:
+ * Subjects are chosen deliberately, and the choice is an editorial one as much
+ * as a technical one. These names end up in public documentation, so the
+ * examples are institutions and widely-reported corporate failures rather than
+ * small trading businesses: the register entry for Royal Mail or Carillion is
+ * already among the most-read public records in the country, and an
+ * illustrative example there imputes nothing to anybody. A two-director corner
+ * shop used as "the supplier you should worry about" would.
  *
+ *   active      04138203  Royal Mail Group Limited — officers, charges and PSC
+ *                         all populated, so every section records something.
+ *   dissolved   00000006  Marine and General Mutual Life Assurance Society,
+ *                         incorporated 1862 and long dissolved. This is the
+ *                         Companies House documentation's own example company.
+ *   insolvency  03782379  Carillion PLC, in liquidation.
+ *
+ * Override any of them:
+ *
+ *   CH_FIXTURE_COMPANY=00000000
  *   CH_FIXTURE_DISSOLVED_COMPANY=SC000000
  *   CH_FIXTURE_INSOLVENT_COMPANY=00000000
  *
- * in the same .env.
- *
- * Without those the script records everything else and says which it skipped.
+ * Page sizes are capped so a fixture stays readable in a diff. Royal Mail has
+ * fifteen charges and thirty-five officers; five of each is enough to exercise
+ * every field.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -31,7 +45,7 @@ import type { ResourceKind } from '../src/http/cache.js';
 import type { QueryParams } from '../src/http/client.js';
 import { CompaniesHouseClient } from '../src/http/client.js';
 import { officerIdFromItem } from '../src/domain/format.js';
-import { arr, obj } from '../src/domain/read.js';
+import { arr, num, obj } from '../src/domain/read.js';
 import { createLogger } from '../src/telemetry/logger.js';
 
 interface FixtureSpec {
@@ -41,37 +55,60 @@ interface FixtureSpec {
   resource: ResourceKind;
 }
 
-/**
- * Company 00000006 is the example used throughout the Companies House
- * developer documentation, which makes it a reasonable stable target.
- */
-const SUBJECT = '00000006';
+const env = (name: string, fallback: string): string => {
+  const value = process.env[name];
+  return value === undefined || value.trim() === '' ? fallback : value.trim();
+};
+
+const SUBJECT = env('CH_FIXTURE_COMPANY', '04138203');
+const DISSOLVED = env('CH_FIXTURE_DISSOLVED_COMPANY', '00000006');
+const INSOLVENT = env('CH_FIXTURE_INSOLVENT_COMPANY', '03782379');
+
+const PAGE = 5;
 
 const FIXTURES: FixtureSpec[] = [
   { file: 'company/profile-active.json', path: `/company/${SUBJECT}`, resource: 'company-profile' },
-  { file: 'officers/officers-list.json', path: `/company/${SUBJECT}/officers`, resource: 'officers' },
-  { file: 'charges/charges-outstanding.json', path: `/company/${SUBJECT}/charges`, resource: 'charges' },
+  {
+    file: 'officers/officers-list.json',
+    path: `/company/${SUBJECT}/officers`,
+    query: { items_per_page: PAGE },
+    resource: 'officers'
+  },
+  {
+    file: 'charges/charges-outstanding.json',
+    path: `/company/${SUBJECT}/charges`,
+    query: { items_per_page: PAGE },
+    resource: 'charges'
+  },
   {
     file: 'psc/psc-list.json',
     path: `/company/${SUBJECT}/persons-with-significant-control`,
+    query: { items_per_page: PAGE },
     resource: 'psc'
   },
   {
     file: 'filing-history/filing-history.json',
     path: `/company/${SUBJECT}/filing-history`,
-    query: { items_per_page: 5 },
+    query: { items_per_page: PAGE },
     resource: 'filing-history'
+  },
+  { file: 'company/profile-dissolved.json', path: `/company/${DISSOLVED}`, resource: 'company-profile' },
+  { file: 'company/profile-insolvent.json', path: `/company/${INSOLVENT}`, resource: 'company-profile' },
+  {
+    file: 'insolvency/insolvency-case.json',
+    path: `/company/${INSOLVENT}/insolvency`,
+    resource: 'insolvency'
   },
   {
     file: 'search/companies.json',
     path: '/search/companies',
-    query: { q: 'limited', items_per_page: 5 },
+    query: { q: 'royal mail', items_per_page: PAGE },
     resource: 'search'
   },
   {
     file: 'search/officers.json',
     path: '/search/officers',
-    query: { q: 'smith', items_per_page: 5 },
+    query: { q: 'smith', items_per_page: PAGE },
     resource: 'search'
   }
 ];
@@ -122,39 +159,40 @@ async function main(): Promise<void> {
   // The appointments fixture needs an officer ID, which only exists inside a
   // URL in the officers response, so it is derived from what we just recorded
   // rather than hardcoded and left to rot.
-  const officerId = arr(obj(officersPayload)['items'])
+  //
+  // Of the officers available, take the one sitting on the most companies. The
+  // first officer in the list is often the company secretary with a single
+  // appointment, which makes a poor example for the tool whose entire purpose
+  // is following a person across companies.
+  const officerIds = arr(obj(officersPayload)['items'])
     .map((item) => officerIdFromItem(item))
-    .find((id): id is string => id !== undefined);
+    .filter((id): id is string => id !== undefined);
 
-  if (officerId === undefined) {
-    skipped.push('officers/appointments.json (no officer id in the recorded officers response)');
+  let best: { id: string; count: number } | undefined;
+  for (const id of officerIds) {
+    try {
+      const { data } = await client.get<unknown>({
+        path: `/officers/${encodeURIComponent(id)}/appointments`,
+        resource: 'officer-appointments',
+        bypassCache: true
+      });
+      const count = num(obj(data)['total_results']) ?? 0;
+      if (best === undefined || count > best.count) best = { id, count };
+    } catch {
+      // An officer whose appointments cannot be read is simply not a candidate.
+    }
+  }
+
+  if (best === undefined) {
+    skipped.push('officers/appointments.json (no readable officer id in the recorded officers response)');
   } else {
+    logger.info('chose the best-connected officer for the appointments fixture', {
+      appointments: best.count
+    });
     await record({
       file: 'officers/appointments.json',
-      path: `/officers/${encodeURIComponent(officerId)}/appointments`,
+      path: `/officers/${encodeURIComponent(best.id)}/appointments`,
       resource: 'officer-appointments'
-    });
-  }
-
-  const dissolved = process.env['CH_FIXTURE_DISSOLVED_COMPANY'];
-  if (dissolved === undefined || dissolved.trim() === '') {
-    skipped.push('company/profile-dissolved.json (set CH_FIXTURE_DISSOLVED_COMPANY)');
-  } else {
-    await record({
-      file: 'company/profile-dissolved.json',
-      path: `/company/${dissolved.trim()}`,
-      resource: 'company-profile'
-    });
-  }
-
-  const insolvent = process.env['CH_FIXTURE_INSOLVENT_COMPANY'];
-  if (insolvent === undefined || insolvent.trim() === '') {
-    skipped.push('insolvency/insolvency-case.json (set CH_FIXTURE_INSOLVENT_COMPANY)');
-  } else {
-    await record({
-      file: 'insolvency/insolvency-case.json',
-      path: `/company/${insolvent.trim()}/insolvency`,
-      resource: 'insolvency'
     });
   }
 
@@ -167,7 +205,7 @@ async function main(): Promise<void> {
   }
 
   logger.info('recording finished — review the diff before committing', {
-    recorded: FIXTURES.length + (officerId === undefined ? 0 : 1),
+    recorded: FIXTURES.length + (best === undefined ? 0 : 1),
     skipped: skipped.length
   });
 }

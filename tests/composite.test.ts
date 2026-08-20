@@ -55,13 +55,13 @@ describe('company_snapshot', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'company_snapshot',
-        arguments: { company_number: '00000006' }
+        arguments: { company_number: '04138203' }
       })
     );
 
-    expect(result['name']).toBe('EXAMPLE FIXTURE TRADING LIMITED');
+    expect(result['name']).toBe('ROYAL MAIL GROUP LIMITED');
     expect(result['officers']).toBeDefined();
-    expect(result['charges']).toMatchObject({ outstanding_count: 1 });
+    expect(result['charges']).toMatchObject({ outstanding_count: 2 });
     expect(result['insolvency']).toMatchObject({ case_count: 1 });
     expect(harness.calls).toHaveLength(4);
   });
@@ -71,10 +71,10 @@ describe('company_snapshot', () => {
     harness = await harnessRoutes(FULL_ROUTES);
     await harness.client.callTool({
       name: 'company_snapshot',
-      arguments: { company_number: '00000006' }
+      arguments: { company_number: '04138203' }
     });
 
-    expect(harness.calls[0]?.url).toMatch(/\/company\/00000006$/);
+    expect(harness.calls[0]?.url).toMatch(/\/company\/04138203$/);
   });
 
   it('spends only one request when the company does not exist', async () => {
@@ -95,13 +95,15 @@ describe('company_snapshot', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'company_snapshot',
-        arguments: { company_number: '00000006' }
+        arguments: { company_number: '04138203' }
       })
     );
 
+    // Five officers on the recorded page, none of them resigned, against 54
+    // resigned across the whole register.
     const officers = result['officers'] as { active: unknown[]; resigned_count?: number };
-    expect(officers.active).toHaveLength(2);
-    expect(officers.resigned_count).toBe(1);
+    expect(officers.active).toHaveLength(5);
+    expect(officers.resigned_count).toBe(54);
   });
 
   it('treats a 404 on charges as "none" rather than as a fault', async () => {
@@ -117,7 +119,7 @@ describe('company_snapshot', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'company_snapshot',
-        arguments: { company_number: '00000006' }
+        arguments: { company_number: '04138203' }
       })
     );
 
@@ -137,11 +139,11 @@ describe('company_snapshot', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'company_snapshot',
-        arguments: { company_number: '00000006' }
+        arguments: { company_number: '04138203' }
       })
     );
 
-    expect(result['name']).toBe('EXAMPLE FIXTURE TRADING LIMITED');
+    expect(result['name']).toBe('ROYAL MAIL GROUP LIMITED');
     expect(result['officers']).toBeUndefined();
     expect(result['sections_unavailable']).toEqual([
       { section: 'officers', code: 'UPSTREAM_UNAVAILABLE', message: expect.any(String) }
@@ -155,7 +157,7 @@ describe('company_snapshot', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'company_snapshot',
-        arguments: { company_number: '00000006', include_officers: false }
+        arguments: { company_number: '04138203', include_officers: false }
       })
     );
 
@@ -173,7 +175,7 @@ describe('company_snapshot', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'company_snapshot',
-        arguments: { company_number: 'SC123456' }
+        arguments: { company_number: '00000006' }
       })
     );
 
@@ -181,8 +183,9 @@ describe('company_snapshot', () => {
     const codes = signals.map((signal) => signal.code);
     expect(codes).toContain('dissolved');
     expect(codes).toContain('insolvency_history');
-    expect(codes).toContain('accounts_overdue');
     expect(codes).toContain('outstanding_charges');
+    // Ordered by materiality: the company being gone comes before its debts.
+    expect(codes[0]).toBe('dissolved');
   });
 
   it('refuses a company name here too', async () => {
@@ -190,7 +193,7 @@ describe('company_snapshot', () => {
     const error = errorPayload(
       await harness.client.callTool({
         name: 'company_snapshot',
-        arguments: { company_number: 'Example Fixture Trading Limited' }
+        arguments: { company_number: 'Royal Mail Group Limited' }
       })
     );
 
@@ -203,7 +206,7 @@ describe('company_snapshot', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'company_snapshot',
-        arguments: { company_number: '00000006' }
+        arguments: { company_number: '04138203' }
       })
     );
 
@@ -218,7 +221,7 @@ describe('screen_companies', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'screen_companies',
-        arguments: { companies: ['00000006', 'SC123456'] }
+        arguments: { companies: ['04138203', '00000006'] }
       })
     );
 
@@ -229,18 +232,36 @@ describe('screen_companies', () => {
   });
 
   it('resolves a name only when the match is unambiguous', async () => {
-    harness = await harnessRoutes(FULL_ROUTES);
+    // Routed by company number rather than answering every /company/ request
+    // with the same profile: otherwise this test would pass while the tool
+    // resolved to one company and reported another, which is the exact failure
+    // the no-names rule exists to prevent.
+    harness = await harnessRoutes([
+      [
+        /\/company\/14240638/,
+        {
+          body: {
+            company_number: '14240638',
+            company_name: 'ROYAL MAIL LIMITED',
+            company_status: 'active',
+            type: 'ltd',
+            date_of_creation: '2022-07-18'
+          }
+        }
+      ],
+      ...FULL_ROUTES
+    ]);
     const result = structured(
       await harness.client.callTool({
         name: 'screen_companies',
-        arguments: { companies: ['Example Fixture Trading Limited'] }
+        arguments: { companies: ['Royal Mail Limited'] }
       })
     );
 
     const screened = result['screened'] as Record<string, unknown>[];
     expect(screened).toHaveLength(1);
-    expect(screened[0]?.['company_number']).toBe('00000006');
-    expect(screened[0]?.['input']).toBe('Example Fixture Trading Limited');
+    expect(screened[0]?.['company_number']).toBe('14240638');
+    expect(screened[0]?.['input']).toBe('Royal Mail Limited');
   });
 
   it('never guesses which company an ambiguous name meant', async () => {
@@ -250,15 +271,15 @@ describe('screen_companies', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'screen_companies',
-        arguments: { companies: ['Example Fixture'] }
+        arguments: { companies: ['Royal Mail'] }
       })
     );
 
     expect(result['screened']).toEqual([]);
     const unresolved = result['unresolved'] as Record<string, unknown>[];
-    expect(unresolved[0]?.['input']).toBe('Example Fixture');
+    expect(unresolved[0]?.['input']).toBe('Royal Mail');
     expect(unresolved[0]?.['reason']).toContain('none matches it exactly');
-    expect(unresolved[0]?.['candidates']).toHaveLength(3);
+    expect(unresolved[0]?.['candidates']).toHaveLength(5);
   });
 
   it('says so when a name matches nothing', async () => {
@@ -281,7 +302,7 @@ describe('screen_companies', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'screen_companies',
-        arguments: { companies: ['00000006', '00000006', ' 00000006 '] }
+        arguments: { companies: ['04138203', '04138203', ' 04138203 '] }
       })
     );
 
@@ -298,7 +319,7 @@ describe('screen_companies', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'screen_companies',
-        arguments: { companies: ['SC123456'] }
+        arguments: { companies: ['04138203'] }
       })
     );
 
@@ -314,7 +335,7 @@ describe('screen_companies', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'screen_companies',
-        arguments: { companies: ['00000006'] }
+        arguments: { companies: ['04138203'] }
       })
     );
 
@@ -327,7 +348,7 @@ describe('screen_companies', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'screen_companies',
-        arguments: { companies: ['00000006'], include_officers: true }
+        arguments: { companies: ['04138203'], include_officers: true }
       })
     );
 
@@ -342,7 +363,7 @@ describe('screen_companies', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'screen_companies',
-        arguments: { companies: ['00000006', '07654321', 'SC123456'] }
+        arguments: { companies: ['04138203', '00000006', '03782379'] }
       })
     );
 
@@ -357,7 +378,7 @@ describe('screen_companies', () => {
 
   it('keeps going when one company in the list fails', async () => {
     harness = await harnessRoutes([
-      [/\/company\/SC123456/, { status: 500 }],
+      [/\/company\/00000006/, { status: 500 }],
       [/\/charges/, { body: CHARGES }],
       [/\/insolvency/, { body: INSOLVENCY }],
       [/\/company\//, { body: PROFILE }]
@@ -365,7 +386,7 @@ describe('screen_companies', () => {
     const result = structured(
       await harness.client.callTool({
         name: 'screen_companies',
-        arguments: { companies: ['00000006', 'SC123456'] }
+        arguments: { companies: ['04138203', '00000006'] }
       })
     );
 

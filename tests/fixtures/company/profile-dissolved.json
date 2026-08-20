@@ -1,37 +1,43 @@
 {
-  "company_name": "EXAMPLE FIXTURE DORMANT LIMITED",
-  "company_number": "SC123456",
-  "company_status": "dissolved",
-  "type": "ltd",
-  "jurisdiction": "scotland",
-  "date_of_creation": "2011-06-02",
-  "date_of_cessation": "2024-01-16",
-  "has_been_liquidated": true,
-  "has_charges": false,
-  "has_insolvency_history": true,
-  "can_file": false,
-  "sic_codes": ["70229"],
-  "registered_office_address": {
-    "address_line_1": "44 Placeholder Road",
-    "locality": "Glasgow",
-    "postal_code": "G1 1AA",
-    "country": "Scotland"
-  },
   "accounts": {
-    "accounting_reference_date": { "day": "30", "month": "06" },
-    "next_due": "2023-03-31",
-    "next_made_up_to": "2022-06-30",
-    "overdue": true
+    "accounting_reference_date": {
+      "day": "31",
+      "month": "12"
+    },
+    "last_accounts": {
+      "made_up_to": "2014-12-31",
+      "period_end_on": "2014-12-31",
+      "type": "full"
+    }
   },
-  "confirmation_statement": {
-    "next_due": "2023-06-15",
-    "next_made_up_to": "2022-06-01",
-    "overdue": true
-  },
+  "can_file": false,
+  "company_name": "MARINE AND GENERAL MUTUAL LIFE ASSURANCE SOCIETY",
+  "company_number": "00000006",
+  "company_status": "dissolved",
+  "date_of_cessation": "2018-07-10",
+  "date_of_creation": "1862-10-25",
+  "etag": "0f74ad6c3c366269ac39899e0939851b2ebd15e3",
+  "has_charges": true,
+  "has_insolvency_history": false,
+  "jurisdiction": "england-wales",
+  "last_full_members_list_date": "1986-07-02",
   "links": {
-    "self": "/company/SC123456",
-    "filing_history": "/company/SC123456/filing-history",
-    "officers": "/company/SC123456/officers"
+    "self": "/company/00000006",
+    "charges": "/company/00000006/charges",
+    "filing_history": "/company/00000006/filing-history",
+    "officers": "/company/00000006/officers"
   },
-  "etag": "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432"
+  "registered_office_address": {
+    "address_line_1": "Cms Cameron Mckenna Llp Cannon Place",
+    "address_line_2": "78 Cannon Street",
+    "country": "England",
+    "locality": "London",
+    "postal_code": "EC4N 6AF"
+  },
+  "registered_office_is_in_dispute": false,
+  "sic_codes": [
+    "65110"
+  ],
+  "type": "private-unlimited-nsc",
+  "undeliverable_registered_office_address": false
 }
