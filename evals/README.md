@@ -14,20 +14,21 @@ servers and nothing else here would catch it.
 
 ## Running it
 
-Put `ANTHROPIC_API_KEY` in a `.env` at the repository root (see
-`.env.example`) or export it in your shell, then:
+Works through **OpenRouter** or the **Anthropic API**. Put one key in a `.env`
+at the repository root (see `.env.example`) or export it, then:
 
 ```bash
 npm run eval
 ```
 
-Options:
+If both keys are set, OpenRouter is used unless `--provider` says otherwise.
 
 ```bash
-npm run eval -- --repeat 3                  # each case three times, to surface flakiness
-npm run eval -- --case name-only-profile    # one case
-npm run eval -- --model claude-sonnet-5     # a different model
-npm run eval -- --out results/baseline.json
+npm run eval -- --repeat 3                          # surface flakiness
+npm run eval -- --model moonshotai/kimi-k3          # a different model
+npm run eval -- --provider anthropic                # force the other route
+npm run eval -- --case name-only-profile            # one case
+npm run eval -- --out results/baseline.json         # keep a baseline
 ```
 
 **No Companies House key is needed.** Nothing is executed — the server is
@@ -35,8 +36,37 @@ started only so the eval can read the real tool definitions and the real
 instructions, and the model is asked one question with those tools offered.
 What it reaches for on that first turn is the whole measurement.
 
-The Anthropic key comes from [console.anthropic.com](https://console.anthropic.com).
-A full run is fourteen short requests; at `--repeat 3` it is forty-two.
+### What a run costs
+
+A full pass is fourteen questions at roughly four thousand input tokens each —
+about 56k tokens, because eleven tool schemas and the server instructions go in
+every time. Output is negligible.
+
+| Model | Per M in / out | A full run |
+|---|---|---|
+| `z-ai/glm-5.2` *(default on OpenRouter)* | $0.97 / $3.04 | ~4p |
+| `z-ai/glm-5.2:free` | free | free, but see below |
+| `z-ai/glm-4.7` | $0.40 / $1.75 | ~2p |
+| `deepseek/deepseek-v4-flash` | $0.08 / $0.16 | under 1p |
+| `deepseek/deepseek-v4-pro` | $1.60 / $3.20 | ~7p |
+| `moonshotai/kimi-k3` | $3.00 / $15.00 | ~13p |
+| `anthropic/claude-opus-5` | $5.00 / $25.00 | ~22p |
+
+Prices move; `curl https://openrouter.ai/api/v1/models` is the current answer.
+
+**On the free tier.** `z-ai/glm-5.2:free` works and is not the default on
+purpose. Free tiers queue and throttle, and this eval reports an inconsistent
+result as a *finding* about overlapping tool descriptions. Throttling would
+show up as flakiness with nothing to do with the descriptions — the one kind of
+noise this suite must not manufacture. Use it for a quick look, not for a
+number you intend to trust.
+
+**Running it across several models is the better use.** A tool description that
+only a frontier model reads correctly is a tool description with a problem. The
+cheaper model failing a case is a finding about the description, not about the
+model — and at these prices you can afford to find out. Every result file
+records the provider and model, because a pass rate without a model beside it
+means nothing.
 
 ## What is scored
 

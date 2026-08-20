@@ -51,10 +51,27 @@ network and no cost, and it is covered harder than most of the server —
 including the invented-number detector, which is fed grounded numbers, short
 numbers, numbers buried in punctuation, and names in a screening list.
 
+**Two providers, and a cheap default.** The eval works through OpenRouter or
+the Anthropic API. OpenRouter defaults to GLM 5.2 rather than to a frontier
+model: a full pass is about 56k input tokens, four pence rather than thirty,
+and an eval nobody runs because of the bill is not doing anything.
+
+That is not only a cost argument. Running the same questions across several
+models is the more useful thing to do, because a tool description only a
+frontier model reads correctly is a tool description with a problem — the
+cheaper model failing a case is a finding about the *description*. Every result
+file records the provider and model, because a pass rate with no model beside
+it means nothing.
+
+The free tier is deliberately not the default. Free tiers queue and throttle,
+and this eval reports inconsistency as a finding about overlapping
+descriptions; throttling would manufacture exactly the noise the suite must
+not manufacture.
+
 ## Consequences
 
-Running it costs money and needs an Anthropic key, so it is not in CI by
-default. That is a real gap: tool descriptions can regress between runs. The
+Running it costs money and needs a key from one of two providers, so it is not
+in CI by default. That is a real gap: tool descriptions can regress between runs. The
 mitigation is that it is one command and the failure output names the case,
 the check and the reason the case exists.
 

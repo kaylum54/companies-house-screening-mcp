@@ -137,7 +137,7 @@ takes `verbose` to return the untouched payload alongside the shaped one.
 | `CompaniesHouseError` | Every failure carries a stable code, a plain sentence and a next step. |
 | Projections | Upstream read defensively field by field; output validated strictly against the published schema. |
 
-259 tests, no network, no API key required to run them.
+284 tests, no network, no API key required to run them.
 
 ## Configuration
 
@@ -206,6 +206,11 @@ is the most common real defect in published MCP servers.
 ```bash
 npm run eval -- --repeat 3
 ```
+
+Runs through **OpenRouter** or the **Anthropic API** — set `OPENROUTER_API_KEY`
+or `ANTHROPIC_API_KEY`. It defaults to `z-ai/glm-5.2` on OpenRouter, about 4p
+for a full pass, because an eval nobody runs because of the bill is not doing
+anything. Point `--model` at anything with tool support to compare.
 
 Fourteen questions phrased the way a person would phrase them, scored on which
 tool was called first, whether a forbidden tool was touched, whether the

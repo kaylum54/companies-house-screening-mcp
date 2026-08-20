@@ -3,10 +3,13 @@
  *
  *   npm run eval
  *   npm run eval -- --repeat 3
- *   npm run eval -- --case name-only-profile --model claude-sonnet-5
+ *   npm run eval -- --provider openrouter --model anthropic/claude-sonnet-5
+ *   npm run eval -- --case name-only-profile
  *
- * ANTHROPIC_API_KEY comes from the environment or from a .env at the
- * repository root. No Companies House key is needed — no tool is executed. The server is
+ * Works through either OpenRouter or the Anthropic API. Set OPENROUTER_API_KEY
+ * or ANTHROPIC_API_KEY, in the environment or in a .env at the repository
+ * root; if both are present OpenRouter is used unless --provider says
+ * otherwise. No Companies House key is needed — no tool is executed. The server is
  * started only to read its real tool definitions and instructions, so what the
  * model sees here is exactly what a host would send it.
  */
@@ -18,8 +21,8 @@ import { loadEnvFile } from '../src/env-file.js';
 import { harnessRoutes } from '../tests/helpers/harness.js';
 import type { EvalCase } from './cases.js';
 import { CASES } from './cases.js';
-import type { Selector, ToolDefinition } from './model.js';
-import { anthropicSelector } from './model.js';
+import type { ProviderName, Selector, ToolDefinition } from './model.js';
+import { createSelector, resolveProvider } from './model.js';
 import type { CaseResult } from './score.js';
 import { scoreCase, summarise } from './score.js';
 
@@ -27,6 +30,7 @@ const RESULTS_DIR = join(import.meta.dirname, 'results');
 
 interface Options {
   repeat: number;
+  provider: ProviderName | undefined;
   model: string | undefined;
   only: string | undefined;
   out: string;
@@ -38,8 +42,13 @@ function parseArgs(argv: string[]): Options {
     return index === -1 ? undefined : argv[index + 1];
   };
   const repeat = Number.parseInt(read('--repeat') ?? '1', 10);
+  const provider = read('--provider');
+  if (provider !== undefined && provider !== 'anthropic' && provider !== 'openrouter') {
+    throw new Error(`Unknown --provider "${provider}". Use anthropic or openrouter.`);
+  }
   return {
     repeat: Number.isFinite(repeat) && repeat > 0 ? repeat : 1,
+    provider: provider as ProviderName | undefined,
     model: read('--model'),
     only: read('--case'),
     out: read('--out') ?? join(RESULTS_DIR, 'latest.json')
@@ -128,12 +137,23 @@ async function main(): Promise<void> {
   loadEnvFile(join(import.meta.dirname, '..', '.env'));
   const options = parseArgs(process.argv.slice(2));
 
-  if (process.env['ANTHROPIC_API_KEY'] === undefined) {
+  const resolution = resolveProvider({ provider: options.provider });
+  if (resolution.provider === undefined) {
     process.stderr.write(
-      'ANTHROPIC_API_KEY is not set.\n\n' +
-        'This eval asks a real model which tool it would reach for, so it needs a key\n' +
-        'from console.anthropic.com. No Companies House key is required — no tool is\n' +
-        'executed, and no request reaches Companies House.\n'
+      [
+        resolution.problem ?? 'No provider available.',
+        '',
+        'This eval asks a real model which tool it would reach for, so it needs one of:',
+        '  OPENROUTER_API_KEY   from openrouter.ai/keys',
+        '  ANTHROPIC_API_KEY    from console.anthropic.com',
+        '',
+        'Put either in your shell or in a .env at the repository root. If both are',
+        'set, OpenRouter is used unless --provider says otherwise.',
+        '',
+        'No Companies House key is required — no tool is executed here, and no',
+        'request reaches Companies House.',
+        ''
+      ].join('\n')
     );
     process.exitCode = 1;
     return;
@@ -146,7 +166,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const selector = anthropicSelector(options.model === undefined ? {} : { model: options.model });
+  const selector = createSelector(resolution.provider, options.model);
   process.stdout.write(`Running ${cases.length} case(s) × ${options.repeat} against ${selector.label}…\n`);
 
   const results = await runEval(selector, cases, options.repeat);
@@ -158,6 +178,7 @@ async function main(): Promise<void> {
     options.out,
     `${JSON.stringify(
       {
+        provider: resolution.provider,
         model: selector.label,
         repeat: options.repeat,
         summary,

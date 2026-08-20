@@ -6,6 +6,22 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added — the eval runs through OpenRouter as well as Anthropic
+
+- `--provider openrouter|anthropic`, auto-detected from whichever key is set.
+  If both are present OpenRouter wins unless `--provider` says otherwise, and
+  an explicit provider whose key is missing fails rather than silently using
+  the other one.
+- OpenRouter defaults to `z-ai/glm-5.2` — about 4p for a full pass against
+  ~22p on a frontier model. Running the same questions across several models
+  is the better use of the eval anyway: a description only a frontier model
+  reads correctly is a description with a problem.
+- Result files record the provider and model. A pass rate without a model
+  beside it means nothing.
+- Fixed while testing it: a null entry in a provider's `tool_calls` array
+  crashed the parser. Optional chaining guards the property, not the object
+  holding it.
+
 ### Added — phase 6, the release pipeline
 
 - Tag-driven release workflow. Publishing to npm with `--provenance`, and a
