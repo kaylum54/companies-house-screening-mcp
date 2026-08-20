@@ -1,0 +1,49 @@
+{
+  "kind": "search#companies",
+  "total_results": 3,
+  "items_per_page": 20,
+  "start_index": 0,
+  "page_number": 1,
+  "items": [
+    {
+      "kind": "searchresults#company",
+      "title": "EXAMPLE FIXTURE TRADING LIMITED",
+      "company_number": "00000006",
+      "company_status": "active",
+      "company_type": "ltd",
+      "date_of_creation": "1998-03-17",
+      "address_snippet": "1 Fixture Street, Testfield, Manchester, M1 1AA",
+      "address": {
+        "address_line_1": "1 Fixture Street",
+        "locality": "Manchester",
+        "postal_code": "M1 1AA",
+        "country": "England"
+      },
+      "description": "00000006 - Incorporated on 17 March 1998",
+      "links": { "self": "/company/00000006" }
+    },
+    {
+      "kind": "searchresults#company",
+      "title": "EXAMPLE FIXTURE HOLDINGS LIMITED",
+      "company_number": "07654321",
+      "company_status": "active",
+      "company_type": "ltd",
+      "date_of_creation": "2011-05-09",
+      "address_snippet": "1 Fixture Street, Manchester, M1 1AA",
+      "description": "07654321 - Incorporated on 9 May 2011",
+      "links": { "self": "/company/07654321" }
+    },
+    {
+      "kind": "searchresults#company",
+      "title": "EXAMPLE FIXTURE DORMANT LIMITED",
+      "company_number": "SC123456",
+      "company_status": "dissolved",
+      "company_type": "ltd",
+      "date_of_creation": "2011-06-02",
+      "date_of_cessation": "2024-01-16",
+      "address_snippet": "44 Placeholder Road, Glasgow, G1 1AA",
+      "description": "SC123456 - Dissolved on 16 January 2024",
+      "links": { "self": "/company/SC123456" }
+    }
+  ]
+}

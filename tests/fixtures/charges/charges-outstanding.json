@@ -1,0 +1,47 @@
+{
+  "etag": "abcdef1234567890abcdef1234567890abcdef12",
+  "total_count": 2,
+  "unfiltered_count": 2,
+  "satisfied_count": 1,
+  "part_satisfied_count": 0,
+  "items": [
+    {
+      "charge_code": "000000060001",
+      "charge_number": 1,
+      "status": "outstanding",
+      "created_on": "2021-04-14",
+      "delivered_on": "2021-04-20",
+      "classification": {
+        "type": "charge-description",
+        "description": "A registered charge"
+      },
+      "particulars": {
+        "type": "brief-description",
+        "description": "The freehold property known as 1 Fixture Street, Manchester.",
+        "contains_floating_charge": true,
+        "floating_charge_covers_all": true
+      },
+      "persons_entitled": [{ "name": "EXAMPLE FIXTURE BANK PLC" }],
+      "links": { "self": "/company/00000006/charges/aAbBcCdDeEfF" }
+    },
+    {
+      "charge_code": "000000060002",
+      "charge_number": 2,
+      "status": "fully-satisfied",
+      "created_on": "2016-08-02",
+      "delivered_on": "2016-08-09",
+      "satisfied_on": "2020-01-31",
+      "classification": {
+        "type": "charge-description",
+        "description": "A registered charge"
+      },
+      "particulars": {
+        "type": "brief-description",
+        "description": "Plant and machinery.",
+        "contains_floating_charge": false
+      },
+      "persons_entitled": [{ "name": "EXAMPLE FIXTURE ASSET FINANCE LIMITED" }],
+      "links": { "self": "/company/00000006/charges/gGhHiIjJkKlL" }
+    }
+  ]
+}

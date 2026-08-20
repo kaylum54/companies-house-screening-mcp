@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # 06:15 UTC daily. The live smoke job runs on this trigger only.
+    - cron: '15 6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the floor declared in package.json engines; 24 is current.
+        # Testing only one of them makes the floor a claim rather than a fact.
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test:coverage
+
+      - name: Build
+        run: npm run build
+
+  live-smoke:
+    # Fixtures make the suite fast and offline. This is the price of that: it
+    # runs against the real API on a schedule so that a change to the API
+    # surfaces here rather than in somebody's terminal.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Live API smoke test
+        env:
+          COMPANIES_HOUSE_API_KEY: ${{ secrets.COMPANIES_HOUSE_API_KEY }}
+          CH_LIVE_SMOKE: '1'
+          CH_CACHE_ENABLED: 'false'
+        run: |
+          if [ -z "$COMPANIES_HOUSE_API_KEY" ]; then
+            echo "::warning::COMPANIES_HOUSE_API_KEY is not set; skipping the live smoke test."
+            exit 0
+          fi
+          npm run test:live

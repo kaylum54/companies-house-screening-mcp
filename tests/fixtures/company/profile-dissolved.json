@@ -1,0 +1,37 @@
+{
+  "company_name": "EXAMPLE FIXTURE DORMANT LIMITED",
+  "company_number": "SC123456",
+  "company_status": "dissolved",
+  "type": "ltd",
+  "jurisdiction": "scotland",
+  "date_of_creation": "2011-06-02",
+  "date_of_cessation": "2024-01-16",
+  "has_been_liquidated": true,
+  "has_charges": false,
+  "has_insolvency_history": true,
+  "can_file": false,
+  "sic_codes": ["70229"],
+  "registered_office_address": {
+    "address_line_1": "44 Placeholder Road",
+    "locality": "Glasgow",
+    "postal_code": "G1 1AA",
+    "country": "Scotland"
+  },
+  "accounts": {
+    "accounting_reference_date": { "day": "30", "month": "06" },
+    "next_due": "2023-03-31",
+    "next_made_up_to": "2022-06-30",
+    "overdue": true
+  },
+  "confirmation_statement": {
+    "next_due": "2023-06-15",
+    "next_made_up_to": "2022-06-01",
+    "overdue": true
+  },
+  "links": {
+    "self": "/company/SC123456",
+    "filing_history": "/company/SC123456/filing-history",
+    "officers": "/company/SC123456/officers"
+  },
+  "etag": "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432"
+}

@@ -1,0 +1,58 @@
+{
+  "kind": "officer-list",
+  "active_count": 2,
+  "resigned_count": 1,
+  "inactive_count": 0,
+  "total_results": 3,
+  "items_per_page": 35,
+  "start_index": 0,
+  "etag": "1122334455667788990011223344556677889900",
+  "links": { "self": "/company/00000006/officers" },
+  "items": [
+    {
+      "name": "FIXTURE, Alice Jane",
+      "officer_role": "director",
+      "appointed_on": "2015-02-11",
+      "occupation": "Company Director",
+      "nationality": "British",
+      "country_of_residence": "England",
+      "date_of_birth": { "month": 7, "year": 1979 },
+      "address": {
+        "address_line_1": "1 Fixture Street",
+        "locality": "Manchester",
+        "postal_code": "M1 1AA",
+        "country": "England"
+      },
+      "links": { "officer": { "appointments": "/officers/aBcD1234EfGh5678IjKl/appointments" } }
+    },
+    {
+      "name": "PLACEHOLDER, Brian",
+      "officer_role": "secretary",
+      "appointed_on": "2018-09-03",
+      "address": {
+        "address_line_1": "1 Fixture Street",
+        "locality": "Manchester",
+        "postal_code": "M1 1AA",
+        "country": "England"
+      },
+      "links": { "officer": { "appointments": "/officers/mNoP9012QrSt3456UvWx/appointments" } }
+    },
+    {
+      "name": "SAMPLE, Carol",
+      "officer_role": "director",
+      "appointed_on": "2012-05-20",
+      "resigned_on": "2019-11-30",
+      "occupation": "Consultant",
+      "nationality": "British",
+      "country_of_residence": "Wales",
+      "date_of_birth": { "month": 1, "year": 1968 },
+      "address": {
+        "address_line_1": "12 Example Avenue",
+        "locality": "Cardiff",
+        "postal_code": "CF10 1AA",
+        "country": "Wales"
+      },
+      "links": { "officer": { "appointments": "/officers/yZaB7890CdEf1234GhIj/appointments" } }
+    }
+  ]
+}

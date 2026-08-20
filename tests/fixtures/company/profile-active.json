@@ -1,0 +1,49 @@
+{
+  "company_name": "EXAMPLE FIXTURE TRADING LIMITED",
+  "company_number": "00000006",
+  "company_status": "active",
+  "type": "ltd",
+  "jurisdiction": "england-wales",
+  "date_of_creation": "1998-03-17",
+  "has_been_liquidated": false,
+  "has_charges": true,
+  "has_insolvency_history": false,
+  "can_file": true,
+  "registered_office_is_in_dispute": false,
+  "undeliverable_registered_office_address": false,
+  "sic_codes": ["62012", "62020"],
+  "registered_office_address": {
+    "address_line_1": "1 Fixture Street",
+    "address_line_2": "Testfield",
+    "locality": "Manchester",
+    "region": "Greater Manchester",
+    "postal_code": "M1 1AA",
+    "country": "England"
+  },
+  "accounts": {
+    "accounting_reference_date": { "day": "31", "month": "03" },
+    "next_due": "2026-12-31",
+    "next_made_up_to": "2026-03-31",
+    "overdue": false,
+    "last_accounts": {
+      "made_up_to": "2025-03-31",
+      "type": "small",
+      "period_start_on": "2024-04-01",
+      "period_end_on": "2025-03-31"
+    }
+  },
+  "confirmation_statement": {
+    "next_due": "2026-09-14",
+    "next_made_up_to": "2026-08-31",
+    "overdue": false,
+    "last_made_up_to": "2025-08-31"
+  },
+  "links": {
+    "self": "/company/00000006",
+    "filing_history": "/company/00000006/filing-history",
+    "officers": "/company/00000006/officers",
+    "charges": "/company/00000006/charges",
+    "persons_with_significant_control": "/company/00000006/persons-with-significant-control"
+  },
+  "etag": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+}

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // Narrowing `include` to src drops the ambient Node types that the wider
+    // project config picks up, so they are requested explicitly here.
+    "types": ["node"],
+    // A build that emitted despite type errors is how a broken package gets
+    // published. `prepublishOnly` runs this.
+    "noEmitOnError": true
+  },
+  "include": ["src/**/*.ts"]
+}
