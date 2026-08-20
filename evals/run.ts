@@ -3,15 +3,16 @@
  *
  *   npm run eval
  *   npm run eval -- --repeat 3
- *   npm run eval -- --provider openrouter --model anthropic/claude-sonnet-5
- *   npm run eval -- --case name-only-profile
+ *   npm run eval -- --provider openrouter --model moonshotai/kimi-k3
+ *   npm run eval -- --case number-trap        # a whole category
+ *   npm run eval -- --case trap-order-number  # or one case
  *
  * Works through either OpenRouter or the Anthropic API. Set OPENROUTER_API_KEY
  * or ANTHROPIC_API_KEY, in the environment or in a .env at the repository
  * root; if both are present OpenRouter is used unless --provider says
- * otherwise. No Companies House key is needed — no tool is executed. The server is
- * started only to read its real tool definitions and instructions, so what the
- * model sees here is exactly what a host would send it.
+ * otherwise. No Companies House key is needed — no tool is executed. The
+ * server is started only to read its real tool definitions and instructions,
+ * so what the model sees here is exactly what a host would send it.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -27,6 +28,7 @@ import type { CaseResult } from './score.js';
 import { scoreCase, summarise } from './score.js';
 
 const RESULTS_DIR = join(import.meta.dirname, 'results');
+const NL = '\n';
 
 interface Options {
   repeat: number;
@@ -81,16 +83,21 @@ export async function loadServerSurface(): Promise<{ tools: ToolDefinition[]; in
 export async function runEval(
   selector: Selector,
   cases: EvalCase[],
-  repeat: number
+  repeat: number,
+  onProgress?: (done: number, total: number) => void
 ): Promise<Map<string, CaseResult[]>> {
   const { tools, instructions } = await loadServerSurface();
   const results = new Map<string, CaseResult[]>();
+  const total = cases.length * repeat;
+  let done = 0;
 
   for (const testCase of cases) {
     const attempts: CaseResult[] = [];
     for (let index = 0; index < repeat; index += 1) {
       const calls = await selector.select(testCase.question, instructions, tools);
       attempts.push(scoreCase(testCase, calls));
+      done += 1;
+      onProgress?.(done, total);
     }
     results.set(testCase.id, attempts);
   }
@@ -98,38 +105,77 @@ export async function runEval(
   return results;
 }
 
+const write = (line: string): void => {
+  process.stdout.write(line + NL);
+};
+
 function report(cases: EvalCase[], results: Map<string, CaseResult[]>, repeat: number): void {
   const byId = new Map(cases.map((testCase) => [testCase.id, testCase]));
-  const width = Math.max(...cases.map((testCase) => testCase.id.length));
+  const summary = summarise(results);
 
-  process.stdout.write('\nTool selection\n\n');
+  // Failures first, then the category breakdown. "Which group is weak" is the
+  // question a run exists to answer; a single overall percentage says almost
+  // nothing about what to go and fix.
+  const failing = [...results].filter(([, attempts]) => !attempts.every((attempt) => attempt.passed));
 
-  for (const [id, attempts] of results) {
-    const passes = attempts.filter((attempt) => attempt.passed).length;
-    const mark = passes === attempts.length ? 'pass' : passes === 0 ? 'FAIL' : 'FLAKY';
-    const tally = repeat > 1 ? ` ${passes}/${repeat}` : '';
-    process.stdout.write(`  ${mark.padEnd(5)} ${id.padEnd(width)}${tally}\n`);
+  if (failing.length === 0) {
+    write('');
+    write('  No failures.');
+  } else {
+    write('');
+    write(`  ${failing.length} case(s) to look at`);
+    write('');
+    for (const [id, attempts] of failing) {
+      const passes = attempts.filter((attempt) => attempt.passed).length;
+      const mark = passes === 0 ? 'FAIL ' : 'FLAKY';
+      const tally = repeat > 1 ? ` ${passes}/${repeat}` : '';
+      const testCase = byId.get(id);
 
-    if (passes === attempts.length) continue;
+      write(`  ${mark} ${id}${tally}  [${testCase?.category ?? ''}]`);
+      write(`        asked: ${testCase?.question ?? ''}`);
 
-    const failing = attempts.find((attempt) => !attempt.passed);
-    for (const check of failing?.checks ?? []) {
-      if (check.passed) continue;
-      process.stdout.write(`        ${check.name}: ${check.detail}\n`);
+      const failed = attempts.find((attempt) => !attempt.passed);
+      for (const check of failed?.checks ?? []) {
+        if (check.passed) continue;
+        write(`        ${check.name}: ${check.detail}`);
+      }
+      const chosen = failed?.calls.map((call) => call.name).join(', ');
+      write(`        called: ${chosen === undefined || chosen === '' ? '(nothing)' : chosen}`);
+      write(`        why the case exists: ${testCase?.why ?? ''}`);
+      write('');
     }
-    process.stdout.write(`        why this case exists: ${byId.get(id)?.why ?? ''}\n`);
   }
 
-  const summary = summarise(results);
-  process.stdout.write(
-    `\n  ${summary.passed}/${summary.total} cases passed (${Math.round(summary.passRate * 100)}%)\n`
-  );
+  write('');
+  write('  By category');
+  write('');
+  const width = Math.max(...summary.byCategory.map((entry) => entry.category.length));
+  for (const entry of summary.byCategory) {
+    const flag = entry.passed === entry.total ? '' : '   <--';
+    write(`    ${entry.category.padEnd(width)}  ${entry.passed}/${entry.total}${flag}`);
+  }
+
+  if (summary.intents.length > 0) {
+    write('');
+    write('  Paraphrase agreement');
+    write('');
+    for (const intent of summary.intents) {
+      const mark = intent.agreed ? '  ok      ' : '  DIFFERS ';
+      write(`  ${mark} ${intent.intent}: ${intent.tools.join(', ')}`);
+    }
+    if (summary.intents.some((intent) => !intent.agreed)) {
+      write('');
+      write('    Phrasings of one intent choosing different tools is a finding about the');
+      write('    descriptions, not about the model — even where each choice is defensible.');
+    }
+  }
+
+  write('');
+  write(`  ${summary.passed}/${summary.total} cases passed (${Math.round(summary.passRate * 100)}%)`);
+
   if (summary.flaky.length > 0) {
-    // Intermittent selection means two descriptions overlap. Reporting it as a
-    // pass would hide the ambiguity that caused it.
-    process.stdout.write(
-      `  ${summary.flaky.length} flaky: ${summary.flaky.join(', ')}\n  Flaky cases mean two tool descriptions overlap. Fix the descriptions, not the case.\n`
-    );
+    write(`  ${summary.flaky.length} flaky: ${summary.flaky.join(', ')}`);
+    write('  Flaky means two tool descriptions overlap. Fix the descriptions, not the case.');
   }
 }
 
@@ -153,43 +199,60 @@ async function main(): Promise<void> {
         'No Companies House key is required — no tool is executed here, and no',
         'request reaches Companies House.',
         ''
-      ].join('\n')
+      ].join(NL)
     );
     process.exitCode = 1;
     return;
   }
 
-  const cases = options.only === undefined ? CASES : CASES.filter((entry) => entry.id === options.only);
+  // --case matches an id or a whole category, so `--case number-trap` runs the
+  // group rather than needing six invocations.
+  const cases =
+    options.only === undefined
+      ? CASES
+      : CASES.filter((entry) => entry.id === options.only || entry.category === options.only);
+
   if (cases.length === 0) {
-    process.stderr.write(`No case matches "${options.only ?? ''}".\n`);
+    process.stderr.write(`No case or category matches "${options.only ?? ''}".${NL}`);
     process.exitCode = 1;
     return;
   }
 
   const selector = createSelector(resolution.provider, options.model);
-  process.stdout.write(`Running ${cases.length} case(s) × ${options.repeat} against ${selector.label}…\n`);
+  write(`Running ${cases.length} case(s) × ${options.repeat} against ${selector.label}…`);
 
-  const results = await runEval(selector, cases, options.repeat);
+  const results = await runEval(selector, cases, options.repeat, (done, total) => {
+    // A sixty-case run at three repeats is a hundred and eighty requests and
+    // several minutes. Silence for that long reads as a hang.
+    if (done % 20 === 0 && done !== total) write(`  … ${done}/${total}`);
+  });
+
   report(cases, results, options.repeat);
 
   const summary = summarise(results);
   await mkdir(RESULTS_DIR, { recursive: true });
   await writeFile(
     options.out,
-    `${JSON.stringify(
+    JSON.stringify(
       {
         provider: resolution.provider,
         model: selector.label,
         repeat: options.repeat,
         summary,
-        cases: [...results].map(([id, attempts]) => ({ id, attempts }))
+        cases: [...results].map(([id, attempts]) => ({
+          id,
+          category: attempts[0]?.category,
+          intent: attempts[0]?.intent,
+          question: cases.find((entry) => entry.id === id)?.question,
+          attempts
+        }))
       },
       null,
       2
-    )}\n`,
+    ) + NL,
     'utf8'
   );
-  process.stdout.write(`  Written to ${options.out}\n`);
+  write(`  Written to ${options.out}`);
 
   // A regression in tool selection should fail a pipeline the same way a
   // failing unit test does.

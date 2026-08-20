@@ -89,6 +89,24 @@ The comparison is deliberately generous: a number counts as grounded if it
 appears in the question in any form, including without its leading zeros or
 buried in punctuation. Anything that survives that is genuinely invented.
 
+## What it found, and what changed because of it
+
+The first version had 15 cases and scored 100%, which is a smoke test rather
+than a measurement — an eval nothing fails cannot tell you which descriptions
+are weak. Rebuilt to 58 cases weighted towards the hard ones, it scored **93%**
+and produced four findings. Three were acted on; the fourth is left open on
+purpose.
+
+| Finding | What it was | What changed |
+|---|---|---|
+| A VAT number became a company number | Asked to check a supplier by VAT number, the model turned `745938421` into `07459384` and called `get_company` with it. Exactly the failure this server exists to prevent, arriving by a route the grounding check could not see — the digits *were* in the question. | The trap cases now forbid **any** company number, because these questions contain none. Enumerating a decoy's derivations is a losing game. |
+| `screen_companies` was described by an example | Its description led with "the list-of-suppliers question — paste from a spreadsheet". Two of four phrasings of the same intent missed it entirely and looped `company_snapshot` three times instead, at four times the request cost. | Rewritten to lead with the trigger condition — *more than one company* — rather than one example use case. |
+| "Read only" read as background | Asked to file a confirmation statement, the model called `get_company` on two runs in three, presenting a read as progress. The instruction saying the server cannot write sat near the bottom and was being read as context. | Moved to the first line of the server instructions and made directive: say it is not possible, do not call a read tool instead. |
+| Charges asked without the word "charges" | "Has 04138203 borrowed against its assets?" goes to `get_company` first on one run in three, before correcting to `get_charges`. | **Left open.** It could be made to pass by adding `get_company` to the accepted tools, but the profile's `has_charges` flag is [demonstrably unreliable](../tests/fixtures/README.md), so reaching for the profile on a charges question is a mild error. Widening the expectation to reach 100% would be tuning the test to the result. |
+
+After the three fixes, the same 58 cases × 3 repeats scored **57/58 (98%)** on
+GLM 5.2. The one remaining failure is the one above.
+
 ## Flakiness is a finding, not noise
 
 A case that passes twice and fails once is reported as `FLAKY`, not as a pass.

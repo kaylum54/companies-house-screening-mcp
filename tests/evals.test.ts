@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { CASES } from '../evals/cases.js';
 import { scriptedSelector } from '../evals/model.js';
 import { runEval } from '../evals/run.js';
-import { findInventedCompanyNumbers, scoreCase, summarise } from '../evals/score.js';
+import type { CaseResult } from '../evals/score.js';
+import {
+  findForbiddenCompanyNumbers,
+  findInventedCompanyNumbers,
+  scoreCase,
+  summarise
+} from '../evals/score.js';
 import { COMPOSITE_TOOL_NAMES } from '../src/tools/composite.js';
 import { TOOL_NAMES } from '../src/tools/definitions.js';
 
@@ -102,12 +108,104 @@ describe('findInventedCompanyNumbers', () => {
   });
 });
 
+describe('findForbiddenCompanyNumbers', () => {
+  it('catches a decoy that the grounding check would wave through', () => {
+    // The whole reason this check exists. The order number IS in the question,
+    // so findInventedCompanyNumbers considers it grounded and says nothing.
+    const question = 'We have order 12345678 outstanding with a supplier.';
+    const calls = [{ name: 'get_company', input: { company_number: '12345678' } }];
+
+    expect(findInventedCompanyNumbers(question, calls)).toEqual([]);
+    expect(findForbiddenCompanyNumbers(['12345678'], calls)).toEqual(['12345678']);
+  });
+
+  it('matches regardless of punctuation and case', () => {
+    expect(
+      findForbiddenCompanyNumbers(['GB745938421'], [
+        { name: 'get_company', input: { company_number: 'gb 745 938 421' } }
+      ])
+    ).toEqual(['gb 745 938 421']);
+  });
+
+  it('says nothing when the decoy was not used', () => {
+    expect(
+      findForbiddenCompanyNumbers(['12345678'], [
+        { name: 'find_company', input: { query: 'order 12345678 supplier' } }
+      ])
+    ).toEqual([]);
+  });
+
+  it('checks values inside a screening list too', () => {
+    expect(
+      findForbiddenCompanyNumbers(['12345678'], [
+        { name: 'screen_companies', input: { companies: ['Real Co', '12345678'] } }
+      ])
+    ).toEqual(['12345678']);
+  });
+
+  it('reports each offending value once', () => {
+    expect(
+      findForbiddenCompanyNumbers(['12345678', '12345678'], [
+        { name: 'get_company', input: { company_number: '12345678' } }
+      ])
+    ).toEqual(['12345678']);
+  });
+});
+
+describe('allowNoTool', () => {
+  const trap = CASES.find((entry) => entry.id === 'trap-vat-number')!;
+
+  it('lets a case pass when declining is a reasonable answer', () => {
+    // Companies House cannot be searched by VAT number. Saying so is a better
+    // answer than any tool call, so calling nothing has to be allowed.
+    expect(scoreCase(trap, []).passed).toBe(true);
+  });
+
+  it('still fails the same case when the decoy is passed through', () => {
+    const result = scoreCase(trap, [
+      { name: 'get_company', input: { company_number: '745938421' } }
+    ]);
+
+    expect(result.passed).toBe(false);
+    expect(result.checks.filter((check) => !check.passed).map((check) => check.name)).toContain(
+      'no_forbidden_company_number'
+    );
+  });
+});
+
+describe('the case set is weighted for diagnosis', () => {
+  it('has enough paraphrase sets to detect a vocabulary-keyed description', () => {
+    const intents = new Set(
+      CASES.filter((entry) => entry.category === 'paraphrase').map((entry) => entry.intent)
+    );
+    expect(intents.size).toBeGreaterThanOrEqual(4);
+
+    // An intent asked only twice is a weak test of paraphrase robustness.
+    for (const intent of intents) {
+      const phrasings = CASES.filter((entry) => entry.intent === intent);
+      expect(phrasings.length, `intent ${String(intent)} has too few phrasings`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('covers every category it declares', () => {
+    const used = new Set(CASES.map((entry) => entry.category));
+    for (const category of ['grounding', 'paraphrase', 'number-trap', 'near-miss', 'out-of-scope', 'not-uk', 'noise']) {
+      expect([...used], `no case in category ${category}`).toContain(category);
+    }
+  });
+
+  it('is big enough to be diagnostic without becoming filler', () => {
+    expect(CASES.length).toBeGreaterThanOrEqual(45);
+    expect(CASES.length).toBeLessThanOrEqual(80);
+  });
+});
+
 describe('scoreCase', () => {
-  const nameCase = CASES.find((entry) => entry.id === 'name-only-profile')!;
+  const nameCase = CASES.find((entry) => entry.id === 'grounding-profile')!;
 
   it('passes when the model searches first', () => {
     const result = scoreCase(nameCase, [
-      { name: 'find_company', input: { query: 'Example Fixture Trading Limited' } }
+      { name: 'find_company', input: { query: 'Royal Mail Group Limited' } }
     ]);
     expect(result.passed).toBe(true);
   });
@@ -129,7 +227,7 @@ describe('scoreCase', () => {
   });
 
   it('passes an out-of-scope case only when nothing is called', () => {
-    const filing = CASES.find((entry) => entry.id === 'out-of-scope-filing')!;
+    const filing = CASES.find((entry) => entry.id === 'scope-file-statement')!;
 
     expect(scoreCase(filing, []).passed).toBe(true);
     expect(scoreCase(filing, [{ name: 'get_company', input: { company_number: '00000006' } }]).passed).toBe(
@@ -139,14 +237,14 @@ describe('scoreCase', () => {
 
   it('checks arguments only when the right tool was chosen', () => {
     // Otherwise a wrong-tool failure reports twice and the report gets noisy.
-    const snapshot = CASES.find((entry) => entry.id === 'snapshot-over-primitives')!;
+    const snapshot = CASES.find((entry) => entry.id === 'near-everything-one-company')!;
     const wrongTool = scoreCase(snapshot, [{ name: 'find_company', input: { query: 'x' } }]);
 
     expect(wrongTool.checks.filter((check) => check.name === 'arguments')).toHaveLength(0);
   });
 
   it('fails on a wrong argument even when the tool was right', () => {
-    const snapshot = CASES.find((entry) => entry.id === 'snapshot-over-primitives')!;
+    const snapshot = CASES.find((entry) => entry.id === 'near-everything-one-company')!;
     const result = scoreCase(snapshot, [
       { name: 'company_snapshot', input: { company_number: '99999999' } }
     ]);
@@ -157,13 +255,19 @@ describe('scoreCase', () => {
 });
 
 describe('summarise', () => {
-  const pass = { id: 'a', passed: true, checks: [], calls: [] };
-  const fail = { id: 'a', passed: false, checks: [], calls: [] };
+  const result = (over: Partial<CaseResult> = {}): CaseResult => ({
+    id: 'a',
+    category: 'grounding',
+    passed: true,
+    checks: [],
+    calls: [],
+    ...over
+  });
 
   it('counts a case as passed only when every repeat passed', () => {
     const results = new Map([
-      ['a', [pass, pass]],
-      ['b', [{ ...pass, id: 'b' }, { ...fail, id: 'b' }]]
+      ['a', [result(), result()]],
+      ['b', [result({ id: 'b' }), result({ id: 'b', passed: false })]]
     ]);
     const summary = summarise(results);
 
@@ -173,7 +277,61 @@ describe('summarise', () => {
   });
 
   it('does not call a consistently failing case flaky', () => {
-    expect(summarise(new Map([['a', [fail, fail]]])).flaky).toEqual([]);
+    expect(summarise(new Map([['a', [result({ passed: false }), result({ passed: false })]]])).flaky).toEqual(
+      []
+    );
+  });
+
+  it('breaks the pass rate down by category', () => {
+    // A single overall percentage says almost nothing about what to fix.
+    const results = new Map([
+      ['a', [result({ category: 'grounding' })]],
+      ['b', [result({ id: 'b', category: 'number-trap', passed: false })]],
+      ['c', [result({ id: 'c', category: 'number-trap' })]]
+    ]);
+    const summary = summarise(results);
+
+    expect(summary.byCategory).toEqual([
+      { category: 'grounding', passed: 1, total: 1 },
+      { category: 'number-trap', passed: 1, total: 2 }
+    ]);
+  });
+
+  it('reports agreement across the phrasings of one intent', () => {
+    const results = new Map([
+      ['a', [result({ intent: 'who-controls', chosenTool: 'get_psc' })]],
+      ['b', [result({ id: 'b', intent: 'who-controls', chosenTool: 'get_psc' })]]
+    ]);
+
+    expect(summarise(results).intents).toEqual([
+      { intent: 'who-controls', tools: ['get_psc'], agreed: true }
+    ]);
+  });
+
+  it('flags an intent whose phrasings chose different tools', () => {
+    // Four phrasings producing three tools is a finding about the
+    // descriptions even when each individual choice is defensible.
+    const results = new Map([
+      ['a', [result({ intent: 'who-controls', chosenTool: 'get_psc' })]],
+      ['b', [result({ id: 'b', intent: 'who-controls', chosenTool: 'get_officers' })]]
+    ]);
+    const [intent] = summarise(results).intents;
+
+    expect(intent?.agreed).toBe(false);
+    expect(intent?.tools).toEqual(['get_officers', 'get_psc']);
+  });
+
+  it('counts a tool disagreement across repeats of one phrasing too', () => {
+    const results = new Map([
+      [
+        'a',
+        [
+          result({ intent: 'i', chosenTool: 'get_psc' }),
+          result({ intent: 'i', chosenTool: 'company_snapshot' })
+        ]
+      ]
+    ]);
+    expect(summarise(results).intents[0]?.agreed).toBe(false);
   });
 });
 
@@ -181,13 +339,13 @@ describe('runEval', () => {
   it('drives the real server surface with a scripted model', async () => {
     // Proves the wiring end to end without a key: real tool definitions and
     // real instructions from the server, scripted selections, real scoring.
-    const cases = CASES.filter((entry) => entry.id === 'name-only-profile');
+    const cases = CASES.filter((entry) => entry.id === 'grounding-profile');
     const selector = scriptedSelector({
-      [cases[0]!.question]: [{ name: 'find_company', input: { query: 'Example Fixture Trading Limited' } }]
+      [cases[0]!.question]: [{ name: 'find_company', input: { query: 'Royal Mail Group Limited' } }]
     });
 
     const results = await runEval(selector, cases, 2);
-    expect(results.get('name-only-profile')?.every((attempt) => attempt.passed)).toBe(true);
+    expect(results.get('grounding-profile')?.every((attempt) => attempt.passed)).toBe(true);
   });
 
   it('sends the server instructions to the model', async () => {

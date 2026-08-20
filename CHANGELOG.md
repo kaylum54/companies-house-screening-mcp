@@ -6,6 +6,32 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed — tool descriptions, driven by the expanded eval
+
+- `screen_companies` now leads with its trigger condition — *more than one
+  company* — instead of an example use case. Two of four phrasings of the same
+  intent had been missing it and looping `company_snapshot` at four times the
+  request cost.
+- The read-only rule moved to the first line of the server instructions and is
+  now directive. Asked to file a confirmation statement, the model had been
+  calling a read tool on two runs in three and presenting it as progress.
+
+### Changed — the eval is now diagnostic rather than a smoke test
+
+- 15 cases to 58, weighted towards ones designed to fail, in nine categories:
+  grounding, paraphrase, number-trap, near-miss, out-of-scope, not-uk, noise,
+  primitive and composite.
+- Paraphrase sets ask one intent four ways. Phrasings that choose different
+  tools are reported as a finding about the descriptions even when each
+  individual choice is defensible.
+- Per-category reporting. A single overall percentage says nothing about what
+  to fix.
+- Number-trap cases forbid *any* company number, because those questions
+  contain none. A model defeated the earlier decoy list by deriving a new
+  value — it turned the VAT number 745938421 into 07459384 and looked it up.
+- `--case` accepts a category as well as an id.
+- Result: 93% before the description fixes, 98% after, on GLM 5.2.
+
 ### Added — the eval runs through OpenRouter as well as Anthropic
 
 - `--provider openrouter|anthropic`, auto-detected from whichever key is set.

@@ -18,7 +18,8 @@ export type CheckName =
   | 'tool_choice'
   | 'no_forbidden_tools'
   | 'arguments'
-  | 'no_invented_company_number';
+  | 'no_invented_company_number'
+  | 'no_forbidden_company_number';
 
 export interface Check {
   name: CheckName;
@@ -28,9 +29,13 @@ export interface Check {
 
 export interface CaseResult {
   id: string;
+  category: string;
+  intent?: string | undefined;
   passed: boolean;
   checks: Check[];
   calls: ToolCall[];
+  /** The tool chosen first. Used for intent-agreement reporting. */
+  chosenTool?: string | undefined;
 }
 
 /** Reads a dotted path out of a tool call's arguments. */
@@ -69,6 +74,44 @@ function checkArgument(call: ToolCall, assertion: ArgAssertion): Check {
 /** Digits and letters only, so "00000006" matches "no. 00000006". */
 const squash = (value: string): string => value.replace(/[^a-z0-9]/gi, '').toLowerCase();
 
+/** Every value a call passed as a company identifier. */
+export function companyNumberArguments(calls: ToolCall[]): string[] {
+  const values: string[] = [];
+  for (const call of calls) {
+    const direct = call.input['company_number'];
+    if (typeof direct === 'string') values.push(direct);
+
+    const list = call.input['companies'];
+    if (Array.isArray(list)) {
+      for (const entry of list) if (typeof entry === 'string') values.push(entry);
+    }
+  }
+  return values;
+}
+
+/**
+ * Catches a value the case warned against being used as a company number.
+ *
+ * Distinct from the invented-number check below, which grounds on "did it
+ * appear in the question". In a number-trap case the wrong number *is* in the
+ * question — it is a VAT number, an order reference, a postcode — so grounding
+ * alone would wave it straight through. This is the check with teeth for those.
+ */
+export function findForbiddenCompanyNumbers(forbidden: string[], calls: ToolCall[]): string[] {
+  const used = companyNumberArguments(calls).map((value) => ({ raw: value, key: squash(value) }));
+  const hits: string[] = [];
+
+  for (const entry of forbidden) {
+    const key = squash(entry);
+    if (key === '') continue;
+    for (const value of used) {
+      if (value.key === key && !hits.includes(value.raw)) hits.push(value.raw);
+    }
+  }
+
+  return hits;
+}
+
 /**
  * Catches a company number the model produced from nowhere.
  *
@@ -82,25 +125,14 @@ export function findInventedCompanyNumbers(question: string, calls: ToolCall[]):
   const haystack = squash(question);
   const invented: string[] = [];
 
-  for (const call of calls) {
-    const candidates: string[] = [];
-    const direct = call.input['company_number'];
-    if (typeof direct === 'string') candidates.push(direct);
-
-    const list = call.input['companies'];
-    if (Array.isArray(list)) {
-      for (const entry of list) if (typeof entry === 'string') candidates.push(entry);
-    }
-
-    for (const candidate of candidates) {
-      const squashed = squash(candidate);
-      if (squashed === '') continue;
-      // Not a number at all — a name passed to screen_companies is fine.
-      if (!/\d/.test(squashed)) continue;
-      const withoutLeadingZeros = squashed.replace(/^0+/, '');
-      if (haystack.includes(squashed) || haystack.includes(withoutLeadingZeros)) continue;
-      invented.push(candidate);
-    }
+  for (const candidate of companyNumberArguments(calls)) {
+    const squashed = squash(candidate);
+    if (squashed === '') continue;
+    // Not a number at all — a name passed to screen_companies is fine.
+    if (!/\d/.test(squashed)) continue;
+    const withoutLeadingZeros = squashed.replace(/^0+/, '');
+    if (haystack.includes(squashed) || haystack.includes(withoutLeadingZeros)) continue;
+    if (!invented.includes(candidate)) invented.push(candidate);
   }
 
   return invented;
@@ -109,6 +141,7 @@ export function findInventedCompanyNumbers(question: string, calls: ToolCall[]):
 export function scoreCase(testCase: EvalCase, calls: ToolCall[]): CaseResult {
   const checks: Check[] = [];
   const first = calls[0];
+  const allowNoTool = testCase.allowNoTool === true;
 
   if (testCase.expectTool.length === 0) {
     checks.push({
@@ -119,14 +152,21 @@ export function scoreCase(testCase: EvalCase, calls: ToolCall[]): CaseResult {
           ? 'called no tool, as expected'
           : `expected no tool call, got ${calls.map((call) => call.name).join(', ')}`
     });
+  } else if (first === undefined) {
+    // Declining is a legitimate answer for a question the server cannot
+    // usefully serve, so some cases accept it.
+    checks.push({
+      name: 'tool_choice',
+      passed: allowNoTool,
+      detail: allowNoTool
+        ? 'called no tool, which is acceptable here'
+        : `expected one of [${testCase.expectTool.join(', ')}], no tool was called`
+    });
   } else {
     checks.push({
       name: 'tool_choice',
-      passed: first !== undefined && testCase.expectTool.includes(first.name),
-      detail:
-        first === undefined
-          ? `expected one of [${testCase.expectTool.join(', ')}], no tool was called`
-          : `expected one of [${testCase.expectTool.join(', ')}], got ${first.name}`
+      passed: testCase.expectTool.includes(first.name),
+      detail: `expected one of [${testCase.expectTool.join(', ')}], got ${first.name}`
     });
   }
 
@@ -148,6 +188,30 @@ export function scoreCase(testCase: EvalCase, calls: ToolCall[]): CaseResult {
     for (const assertion of testCase.expectArgs) checks.push(checkArgument(first, assertion));
   }
 
+  if (testCase.forbidAsCompanyNumber !== undefined) {
+    const used = findForbiddenCompanyNumbers(testCase.forbidAsCompanyNumber, calls);
+    checks.push({
+      name: 'no_forbidden_company_number',
+      passed: used.length === 0,
+      detail:
+        used.length === 0
+          ? 'did not pass the decoy as a company number'
+          : `passed a value that is not a company number: ${used.join(', ')}`
+    });
+  }
+
+  if (testCase.forbidAnyCompanyNumber === true) {
+    const used = companyNumberArguments(calls).filter((value) => /\d/.test(value));
+    checks.push({
+      name: 'no_forbidden_company_number',
+      passed: used.length === 0,
+      detail:
+        used.length === 0
+          ? 'passed no company number, correctly — the question contains none'
+          : `passed a company number the question does not contain: ${used.join(', ')}`
+    });
+  }
+
   if (testCase.forbidInventedCompanyNumber === true) {
     const invented = findInventedCompanyNumbers(testCase.question, calls);
     checks.push({
@@ -160,7 +224,28 @@ export function scoreCase(testCase: EvalCase, calls: ToolCall[]): CaseResult {
     });
   }
 
-  return { id: testCase.id, passed: checks.every((check) => check.passed), checks, calls };
+  return {
+    id: testCase.id,
+    category: testCase.category,
+    intent: testCase.intent,
+    passed: checks.every((check) => check.passed),
+    checks,
+    calls,
+    chosenTool: first?.name
+  };
+}
+
+export interface CategorySummary {
+  category: string;
+  passed: number;
+  total: number;
+}
+
+export interface IntentAgreement {
+  intent: string;
+  /** Distinct first-choice tools across every phrasing and repeat. */
+  tools: string[];
+  agreed: boolean;
 }
 
 export interface RunSummary {
@@ -170,18 +255,38 @@ export interface RunSummary {
   passRate: number;
   /** Cases that passed on some repeats and failed on others. */
   flaky: string[];
+  byCategory: CategorySummary[];
+  intents: IntentAgreement[];
 }
 
 export function summarise(resultsByCase: Map<string, CaseResult[]>): RunSummary {
   let passed = 0;
   const flaky: string[] = [];
+  const categories = new Map<string, { passed: number; total: number }>();
+  const intents = new Map<string, Set<string>>();
 
   for (const [id, results] of resultsByCase) {
+    const first = results[0];
+    if (first === undefined) continue;
+
     const passes = results.filter((result) => result.passed).length;
     // A case that passes sometimes is a case whose tool descriptions are
     // ambiguous. Reporting it as a plain pass would hide the ambiguity.
     if (passes > 0 && passes < results.length) flaky.push(id);
-    if (passes === results.length) passed += 1;
+
+    const clean = passes === results.length;
+    if (clean) passed += 1;
+
+    const category = categories.get(first.category) ?? { passed: 0, total: 0 };
+    category.total += 1;
+    if (clean) category.passed += 1;
+    categories.set(first.category, category);
+
+    if (first.intent !== undefined) {
+      const seen = intents.get(first.intent) ?? new Set<string>();
+      for (const result of results) seen.add(result.chosenTool ?? '(none)');
+      intents.set(first.intent, seen);
+    }
   }
 
   const total = resultsByCase.size;
@@ -190,6 +295,18 @@ export function summarise(resultsByCase: Map<string, CaseResult[]>): RunSummary 
     passed,
     failed: total - passed,
     passRate: total === 0 ? 0 : passed / total,
-    flaky
+    flaky,
+    byCategory: [...categories]
+      .map(([category, counts]) => ({ category, ...counts }))
+      .sort((a, b) => a.category.localeCompare(b.category)),
+    // Four phrasings of one intent producing three different tools is a
+    // finding even when each individual choice is defensible on its own.
+    intents: [...intents]
+      .map(([intent, tools]) => ({
+        intent,
+        tools: [...tools].sort(),
+        agreed: tools.size === 1
+      }))
+      .sort((a, b) => a.intent.localeCompare(b.intent))
   };
 }
