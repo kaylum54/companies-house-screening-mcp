@@ -6,6 +6,30 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added — phase 6, the release pipeline
+
+- Tag-driven release workflow. Publishing to npm with `--provenance`, and a
+  container image to GHCR with build attestation, both from a `v*` tag. The
+  workflow refuses to publish when the tag and `package.json` version disagree.
+- `Dockerfile`: multi-stage, non-root, production dependencies only, installed
+  with `--ignore-scripts`. Stdio server — run it with `-i` and without `-t`.
+- `scripts/release-check.ts` asserts what no unit test can: a shebang on the
+  entry point, the `repository` field provenance requires, and that no `.env`,
+  `.npmrc`, test, fixture or doc ends up in the tarball. Wired into
+  `prepublishOnly` so a publish cannot skip it.
+- Verified by installing the packed tarball into a clean directory and
+  completing a real MCP handshake from it.
+
+### Changed — renamed
+
+- The package is `companies-house-screening-mcp`. `companies-house-mcp` was
+  already taken by an actively maintained v4.0.0 covering the same API, which
+  the README now names and compares against on the first screen. The new name
+  says what distinguishes this one.
+- Source maps and declaration maps are no longer published — they pointed at
+  `src/`, which is not in the tarball. 96 files and 336 KB down to 50 and
+  214 KB.
+
 ### Changed — fixtures are now recorded from the live API
 
 - Fixtures come from real Companies House responses: Royal Mail Group Limited

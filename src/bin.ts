@@ -66,10 +66,10 @@ async function main(): Promise<void> {
   await server.connect(new StdioServerTransport());
 
   // Logged after connecting so that the line means "ready", not "starting".
-  logger.info('companies-house-mcp ready', { version, ...redactConfig(config) });
+  logger.info('companies-house-screening-mcp ready', { version, ...redactConfig(config) });
 }
 
 await main().catch((error: unknown) => {
-  process.stderr.write(`companies-house-mcp failed to start: ${String(error)}\n`);
+  process.stderr.write(`companies-house-screening-mcp failed to start: ${String(error)}\n`);
   process.exit(1);
 });

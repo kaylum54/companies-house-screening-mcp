@@ -23,11 +23,11 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     rateWindowMs: 300_000,
     rateSafetyMargin: 0.95,
     cacheEnabled: false,
-    cacheDir: join(tmpdir(), 'companies-house-mcp-tests-unused'),
+    cacheDir: join(tmpdir(), 'companies-house-screening-mcp-tests-unused'),
     timeoutMs: 5_000,
     maxRetries: 3,
     retryBaseMs: 100,
-    userAgent: 'companies-house-mcp-tests',
+    userAgent: 'companies-house-screening-mcp-tests',
     logLevel: 'error',
     ...overrides
   };

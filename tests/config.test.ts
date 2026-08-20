@@ -78,7 +78,7 @@ describe('defaultCacheDir', () => {
   });
 
   it('honours XDG_CACHE_HOME', () => {
-    expect(defaultCacheDir({ XDG_CACHE_HOME: '/xdg' })).toContain('companies-house-mcp');
+    expect(defaultCacheDir({ XDG_CACHE_HOME: '/xdg' })).toContain('companies-house-screening-mcp');
   });
 
   it('ignores an empty setting rather than using an empty path', () => {

@@ -166,7 +166,7 @@ export function fail(error: unknown, logger: Logger): ToolResult {
         text: JSON.stringify({
           error: {
             code: 'INTERNAL_ERROR',
-            message: 'companies-house-mcp hit an unexpected internal error.',
+            message: 'companies-house-screening-mcp hit an unexpected internal error.',
             next_step:
               'This is a bug in the server rather than a problem with the request. Retrying the same call is unlikely to help; please report it with the tool name and arguments.',
             retryable: false

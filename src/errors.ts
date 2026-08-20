@@ -180,7 +180,7 @@ export function fromHttpStatus(input: {
       return new CompaniesHouseError({
         code: 'UPSTREAM_BAD_REQUEST',
         message: `Companies House returned an unexpected status ${status} while fetching ${subject}.`,
-        nextStep: 'Report this as a bug against companies-house-mcp with the status code.',
+        nextStep: 'Report this as a bug against companies-house-screening-mcp with the status code.',
         status,
         details: { body: input.body }
       });

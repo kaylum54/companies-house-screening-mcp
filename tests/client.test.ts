@@ -78,7 +78,7 @@ describe('CompaniesHouseClient — request shape', () => {
 
     await client.get({ path: '/company/00000006' });
     expect(fake.calls[0]?.headers['accept']).toBe('application/json');
-    expect(fake.calls[0]?.headers['user-agent']).toBe('companies-house-mcp-tests');
+    expect(fake.calls[0]?.headers['user-agent']).toBe('companies-house-screening-mcp-tests');
   });
 
   it('builds URLs against the configured base', async () => {

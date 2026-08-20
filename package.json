@@ -1,7 +1,7 @@
 {
-  "name": "companies-house-mcp",
+  "name": "companies-house-screening-mcp",
   "version": "0.1.0",
-  "description": "MCP server for the UK Companies House public data API. Read-only, rate-limit aware, with question-shaped tools rather than endpoint wrappers.",
+  "description": "MCP server for screening UK companies against the Companies House register: batch supplier screening, one-call company snapshots, and factual signals rather than a risk score.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -9,6 +9,8 @@
     "uk",
     "due-diligence",
     "kyb",
+    "supplier-screening",
+    "counterparty-risk",
     "claude"
   ],
   "license": "MIT",
@@ -17,7 +19,7 @@
     "node": ">=22"
   },
   "bin": {
-    "companies-house-mcp": "./dist/bin.js"
+    "companies-house-screening-mcp": "./dist/bin.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -41,11 +43,13 @@
     "test:coverage": "vitest run --coverage",
     "test:live": "vitest run --config vitest.live.config.ts",
     "record-fixtures": "tsx scripts/record-fixtures.ts",
-    "prepublishOnly": "npm run typecheck && npm run docs:check && npm run test && npm run build",
+    "prepublishOnly": "npm run release:check",
     "docs:generate": "tsx scripts/generate-tool-docs.ts && tsx scripts/generate-recipes.ts",
     "docs:check": "tsx scripts/generate-tool-docs.ts --check && tsx scripts/generate-recipes.ts --check",
     "measure": "tsx scripts/measure-projections.ts",
-    "eval": "tsx evals/run.ts"
+    "eval": "tsx evals/run.ts",
+    "prepack": "npm run build",
+    "release:check": "tsx scripts/release-check.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -58,5 +62,10 @@
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
+  },
+  "author": "Kaylum Jarvis",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

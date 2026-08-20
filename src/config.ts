@@ -43,7 +43,7 @@ export const configSchema = z.object({
   maxRetries: z.coerce.number().int().min(0).max(10).default(3),
   retryBaseMs: positiveInt('CH_RETRY_BASE_MS').default(500),
 
-  userAgent: z.string().min(1).default('companies-house-mcp'),
+  userAgent: z.string().min(1).default('companies-house-screening-mcp'),
   logLevel: z.enum(LOG_LEVELS).default('info')
 });
 
@@ -59,16 +59,16 @@ export function defaultCacheDir(env: NodeJS.ProcessEnv = process.env): string {
   if (explicit !== undefined && explicit.trim() !== '') return explicit;
 
   const xdg = env['XDG_CACHE_HOME'];
-  if (xdg !== undefined && xdg.trim() !== '') return join(xdg, 'companies-house-mcp');
+  if (xdg !== undefined && xdg.trim() !== '') return join(xdg, 'companies-house-screening-mcp');
 
   if (process.platform === 'win32') {
     const localAppData = env['LOCALAPPDATA'];
     if (localAppData !== undefined && localAppData.trim() !== '') {
-      return join(localAppData, 'companies-house-mcp', 'cache');
+      return join(localAppData, 'companies-house-screening-mcp', 'cache');
     }
   }
 
-  return join(homedir(), '.cache', 'companies-house-mcp');
+  return join(homedir(), '.cache', 'companies-house-screening-mcp');
 }
 
 /**

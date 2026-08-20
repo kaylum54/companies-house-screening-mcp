@@ -1,13 +1,76 @@
-# companies-house-mcp
+# companies-house-screening-mcp
 
-An MCP server for the UK [Companies House public data API](https://developer.company-information.service.gov.uk/).
-Read-only, rate-limit aware, and designed around the questions people ask
-rather than the endpoints the API happens to expose.
+Screen UK companies against the [Companies House public
+register](https://developer.company-information.service.gov.uk/) from an MCP
+host. Batch screening of a supplier list, one-call company snapshots, and
+factual signals rather than a risk score.
 
-> **Status: phase 5 of 6.** All eleven tools work, the documentation is
-> generated and gated, and there is a tool-selection eval that asks a real
-> model which tool it would reach for. Usable from a host today with an API
-> key. Publishing to npm is phase 6.
+> **Status: phase 6 of 6.** Eleven tools, documentation generated from the
+> running server and gated in CI, a tool-selection eval, and fixtures recorded
+> from the live API. Release pipeline built; not yet published.
+
+## There is another one, and you should know about it
+
+[`companies-house-mcp`](https://www.npmjs.com/package/companies-house-mcp) by
+[@aicayzer](https://github.com/aicayzer/companies-house-mcp) has existed since
+July 2025, is at v4.0.0, and is actively maintained. It covers the same API.
+This project is not first and does not claim to be.
+
+The two are shaped differently, so which one fits depends on what you are
+doing.
+
+**Use theirs if you want breadth.** It exposes more of the API — registers,
+exemptions, UK establishments, officer disqualifications — and, importantly,
+it can **download the filed documents themselves**. This one deliberately
+does not: the Companies House document API is out of scope here.
+
+**Use this one if you are screening rather than browsing.** The differences
+that matter:
+
+| | |
+|---|---|
+| **Batch screening** | `screen_companies` takes up to 50 names or numbers and returns one row each. Nothing else here does this. |
+| **Never guesses a company number** | Retrieval tools refuse a company name outright, before any request. Given a name, a model produces a number that looks right, and a plausible wrong number returns *a different real company* that nothing downstream flags. [ADR 5](docs/adr/0005-question-shaped-tool-surface.md). |
+| **Signals, not scores** | Facts read off the register with the date or name behind each, and deliberately no rating. [ADR 7](docs/adr/0007-signals-not-scores.md) has the argument. |
+| **Nothing dropped quietly** | Partial results are labelled; a screening table that comes back short always says why. [ADR 8](docs/adr/0008-partial-results-and-budget-honesty.md). |
+| **Documentation that cannot go stale** | The tool reference is generated from the running server and every example executes; CI fails if either drifts. [ADR 9](docs/adr/0009-documentation-is-generated-and-gated.md). |
+| **A tool-selection eval** | Asks a real model which tool it reaches for, and fails on flakiness. [ADR 10](docs/adr/0010-tool-selection-eval.md). |
+
+Eleven decisions are written up in [docs/adr](docs/adr), including the ones
+that did not go the obvious way.
+
+## Install
+
+```bash
+npx -y companies-house-screening-mcp
+```
+
+Host configuration:
+
+```json
+{
+  "mcpServers": {
+    "companies-house": {
+      "command": "npx",
+      "args": ["-y", "companies-house-screening-mcp"],
+      "env": { "COMPANIES_HOUSE_API_KEY": "your_key" }
+    }
+  }
+}
+```
+
+Or with Docker — note `-i` and no `-t`, because a TTY corrupts the JSON-RPC
+framing:
+
+```bash
+docker run --rm -i -e COMPANIES_HOUSE_API_KEY=your_key ghcr.io/OWNER/companies-house-screening-mcp
+```
+
+Get a free API key at
+[developer.company-information.service.gov.uk](https://developer.company-information.service.gov.uk/):
+register, create an application against the **Live** environment, and create a
+key of type **REST** (a stream key authenticates the same way but is for a
+different service).
 
 ## Why another API wrapper
 
@@ -75,22 +138,6 @@ takes `verbose` to return the untouched payload alongside the shaped one.
 | Projections | Upstream read defensively field by field; output validated strictly against the published schema. |
 
 259 tests, no network, no API key required to run them.
-
-## Running it from a host
-
-```json
-{
-  "mcpServers": {
-    "companies-house": {
-      "command": "node",
-      "args": ["/absolute/path/to/companies-house-mcp/dist/bin.js"],
-      "env": { "COMPANIES_HOUSE_API_KEY": "your_key" }
-    }
-  }
-}
-```
-
-Once it is published to npm this becomes `npx -y companies-house-mcp`.
 
 ## Configuration
 
@@ -173,7 +220,7 @@ No Companies House key is needed; nothing is executed. Details in
 
 ## Design notes
 
-Ten decisions are written up in [docs/adr](docs/adr):
+Eleven decisions are written up in [docs/adr](docs/adr):
 
 1. [Recording architecture decisions](docs/adr/0001-record-architecture-decisions.md)
 2. [The sliding-window rate limiter and its safety margin](docs/adr/0002-sliding-window-rate-limiter.md)
@@ -185,6 +232,7 @@ Ten decisions are written up in [docs/adr](docs/adr):
 8. [Partial results, and never dropping anything quietly](docs/adr/0008-partial-results-and-budget-honesty.md)
 9. [Generated documentation, gated in CI](docs/adr/0009-documentation-is-generated-and-gated.md)
 10. [The tool-selection eval](docs/adr/0010-tool-selection-eval.md)
+11. [Tag-driven releases, signed with provenance](docs/adr/0011-release-and-provenance.md)
 
 ## Scope
 
@@ -204,7 +252,7 @@ read-only.
 | 3 | `company_snapshot` and `screen_companies` | done |
 | 4 | Generated tool docs with a CI drift check, five worked recipes | done |
 | 5 | Tool-selection eval suite, live smoke test in CI, remaining ADRs | done |
-| 6 | npm and Docker release with provenance | next |
+| 6 | npm and Docker release with provenance | pipeline built, not yet published |
 
 ## Licence
 

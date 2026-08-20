@@ -72,7 +72,7 @@ async function build(
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
 
-  const client = new Client({ name: 'companies-house-mcp-tests', version: '0.0.0-test' });
+  const client = new Client({ name: 'companies-house-screening-mcp-tests', version: '0.0.0-test' });
   await client.connect(clientTransport);
 
   return {
