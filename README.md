@@ -4,10 +4,10 @@ An MCP server for the UK [Companies House public data API](https://developer.com
 Read-only, rate-limit aware, and designed around the questions people ask
 rather than the endpoints the API happens to expose.
 
-> **Status: phase 4 of 6.** All eleven tools work, the reference is generated
-> from the running server, and the five worked examples execute on every build.
-> Usable from a host today with an API key. Not yet published to npm — the
-> tool-selection eval suite and the release pipeline are phases 5 and 6.
+> **Status: phase 5 of 6.** All eleven tools work, the documentation is
+> generated and gated, and there is a tool-selection eval that asks a real
+> model which tool it would reach for. Usable from a host today with an API
+> key. Publishing to npm is phase 6.
 
 ## Why another API wrapper
 
@@ -73,7 +73,7 @@ takes `verbose` to return the untouched payload alongside the shaped one.
 | `CompaniesHouseError` | Every failure carries a stable code, a plain sentence and a next step. |
 | Projections | Upstream read defensively field by field; output validated strictly against the published schema. |
 
-223 tests, no network, no API key required to run them.
+245 tests, no network, no API key required to run them.
 
 ## Running it from a host
 
@@ -140,9 +140,32 @@ That test runs nightly in CI. Its job is not to pass — it is to fail loudly th
 week Companies House changes a field, so the fixtures get refreshed before a
 user finds the drift instead.
 
+## The tool-selection eval
+
+Every test in this repository asks *does the tool work*. One thing none of
+them can ask is whether a model **reaches for the right tool** when a person
+asks a real question — a tool can be correct, fast and fully covered and still
+never get chosen, because its description is vague or overlaps another. That
+is the most common real defect in published MCP servers.
+
+```bash
+ANTHROPIC_API_KEY=your_key npm run eval -- --repeat 3
+```
+
+Fourteen questions phrased the way a person would phrase them, scored on which
+tool was called first, whether a forbidden tool was touched, whether the
+arguments were right, and — the one that matters — whether the model invented
+a company number that was not in the question. A case that passes two runs in
+three is reported as flaky and fails, because intermittent selection means two
+descriptions overlap.
+
+No Companies House key is needed; nothing is executed. Details in
+[evals/README.md](evals/README.md), reasoning in
+[ADR 10](docs/adr/0010-tool-selection-eval.md).
+
 ## Design notes
 
-Nine decisions are written up in [docs/adr](docs/adr):
+Ten decisions are written up in [docs/adr](docs/adr):
 
 1. [Recording architecture decisions](docs/adr/0001-record-architecture-decisions.md)
 2. [The sliding-window rate limiter and its safety margin](docs/adr/0002-sliding-window-rate-limiter.md)
@@ -153,6 +176,7 @@ Nine decisions are written up in [docs/adr](docs/adr):
 7. [Signals, not scores](docs/adr/0007-signals-not-scores.md)
 8. [Partial results, and never dropping anything quietly](docs/adr/0008-partial-results-and-budget-honesty.md)
 9. [Generated documentation, gated in CI](docs/adr/0009-documentation-is-generated-and-gated.md)
+10. [The tool-selection eval](docs/adr/0010-tool-selection-eval.md)
 
 ## Scope
 
@@ -171,8 +195,8 @@ read-only.
 | 2 | Nine primitive tools with Zod schemas and shaped projections | done |
 | 3 | `company_snapshot` and `screen_companies` | done |
 | 4 | Generated tool docs with a CI drift check, five worked recipes | done |
-| 5 | Tool-selection eval suite, live smoke test in CI, remaining ADRs | next |
-| 6 | npm and Docker release with provenance | |
+| 5 | Tool-selection eval suite, live smoke test in CI, remaining ADRs | done |
+| 6 | npm and Docker release with provenance | next |
 
 ## Licence
 

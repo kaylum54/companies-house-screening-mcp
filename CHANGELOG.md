@@ -6,6 +6,19 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added — phase 5, the tool-selection eval
+
+- `npm run eval` asks a real model which tool it would reach for, given the
+  server's real tool definitions and real instructions. Fourteen questions
+  phrased the way a person would phrase them.
+- Scored on tool choice, forbidden tools, arguments, and whether a company
+  number was invented — the last being the eval for the design decision the
+  server is built around.
+- Flaky counts as failed. A case passing two runs in three means two
+  descriptions overlap; the runner exits non-zero on failures *and* flakes.
+- The scoring is pure and covered exhaustively without a key, because an eval
+  whose scoring is wrong is worse than none.
+
 ### Added — phase 4, generated documentation
 
 - `docs/tools`: a reference page per tool, generated from the running server
