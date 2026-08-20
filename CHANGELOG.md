@@ -6,6 +6,24 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added — phase 3, the composite tools
+
+- `company_snapshot`. Profile, serving officers, charges and insolvency in one
+  call, with signals derived across all of them.
+- `screen_companies`. Up to 50 names or numbers in, one row each out.
+- `signals`: facts read off the register as `{ code, detail }`. Deliberately
+  no score, grade or traffic light — see ADR 7.
+- Partial results. A snapshot survives one broken section and reports it under
+  `sections_unavailable`; `sections_included` tells a missing signal apart from
+  a section nobody read.
+- A 404 on charges or insolvency is treated as "none", which is what Companies
+  House means by it, rather than as an outage.
+- `screen_companies` never guesses an ambiguous name — those come back under
+  `unresolved` with candidates — and never truncates silently: anything skipped
+  for rate-limit budget comes back under `not_screened` with the reason and the
+  reset time.
+- Bounded-concurrency helper, four requests in flight.
+
 ### Added — phase 2, the tool surface
 
 - MCP server over stdio, with nine read-only tools: `find_company`,

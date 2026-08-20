@@ -100,3 +100,31 @@ export function timeoutError(): Error {
   error.name = 'TimeoutError';
   return error;
 }
+
+/**
+ * Routes by URL rather than by call order.
+ *
+ * The composite tools fetch several sections concurrently. Asserting on a
+ * fixed sequence there would be testing the scheduler rather than the tool,
+ * and it would break the first time the concurrency width changed. Routing on
+ * the path says what the test actually means.
+ *
+ * The first matching pattern wins. An unmatched URL throws, because in these
+ * tests an unexpected request is a defect rather than a scenario.
+ */
+export function fakeFetchRouter(routes: [RegExp, FakeResponseSpec][]): FakeFetch {
+  const calls: FakeCall[] = [];
+
+  const impl: typeof fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    calls.push({ url, method: init?.method ?? 'GET', headers: normaliseHeaders(init ?? undefined) });
+
+    const match = routes.find(([pattern]) => pattern.test(url));
+    if (match === undefined) throw new Error(`fakeFetchRouter has no route for ${url}`);
+    const [, spec] = match;
+    if (spec.throws !== undefined) throw spec.throws;
+    return toResponse(spec);
+  };
+
+  return { fetch: impl, calls };
+}

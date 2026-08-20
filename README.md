@@ -4,10 +4,10 @@ An MCP server for the UK [Companies House public data API](https://developer.com
 Read-only, rate-limit aware, and designed around the questions people ask
 rather than the endpoints the API happens to expose.
 
-> **Status: phase 2 of 6.** The server runs and all nine primitive tools work.
-> It is usable from a host today with an API key. Not yet published to npm —
-> the generated tool documentation, the composite tools and the release
-> pipeline are phases 3 to 6. The roadmap is at the bottom.
+> **Status: phase 3 of 6.** All eleven tools work, including the two that fan
+> out server-side. Usable from a host today with an API key. Not yet published
+> to npm — generated documentation, the worked recipes, the eval suite and the
+> release pipeline are phases 4 to 6. The roadmap is at the bottom.
 
 ## Why another API wrapper
 
@@ -45,9 +45,15 @@ flags as wrong.
 | `get_psc` | Who actually controls the company, and how that control is held. |
 | `get_insolvency` | Insolvency cases and the practitioners appointed. |
 | `get_officer_appointments` | Every company an officer sits on — the conflict-of-interest tool. |
+| `company_snapshot` | Profile, officers, charges and insolvency in one call, with signals. |
+| `screen_companies` | Up to 50 companies in, one row each out, nothing dropped quietly. |
 
-`company_snapshot` and `screen_companies`, which fan out server-side, arrive in
-phase 3.
+**The signals are facts, not a rating.** This server does not score companies
+and will not tell you whether one is safe to trade with — it reports what it
+found on the register, with the date or the name behind each observation, and
+leaves the judgement with the person who has the context. An empty signal list
+means nothing on the list was found, not that the company is sound.
+[ADR 7](docs/adr/0007-signals-not-scores.md) has the full reasoning.
 
 Every tool is annotated `readOnlyHint: true`, publishes an output schema, and
 takes `verbose` to return the untouched payload alongside the shaped one.
@@ -63,7 +69,7 @@ takes `verbose` to return the untouched payload alongside the shaped one.
 | `CompaniesHouseError` | Every failure carries a stable code, a plain sentence and a next step. |
 | Projections | Upstream read defensively field by field; output validated strictly against the published schema. |
 
-177 tests, no network, no API key required to run them.
+218 tests, no network, no API key required to run them.
 
 ## Running it from a host
 
@@ -124,7 +130,7 @@ user finds the drift instead.
 
 ## Design notes
 
-Six decisions are written up in [docs/adr](docs/adr):
+Eight decisions are written up in [docs/adr](docs/adr):
 
 1. [Recording architecture decisions](docs/adr/0001-record-architecture-decisions.md)
 2. [The sliding-window rate limiter and its safety margin](docs/adr/0002-sliding-window-rate-limiter.md)
@@ -132,6 +138,8 @@ Six decisions are written up in [docs/adr](docs/adr):
 4. [Caching, TTLs and the stale fallback](docs/adr/0004-caching-and-stale-fallback.md)
 5. [Question-shaped tools, and why a name is refused](docs/adr/0005-question-shaped-tool-surface.md)
 6. [Why the result payload is sent twice](docs/adr/0006-duplicated-result-payload.md)
+7. [Signals, not scores](docs/adr/0007-signals-not-scores.md)
+8. [Partial results, and never dropping anything quietly](docs/adr/0008-partial-results-and-budget-honesty.md)
 
 ## Scope
 
@@ -148,8 +156,8 @@ read-only.
 |---|---|---|
 | 1 | Client, auth, rate limiter, cache, error mapping, fixtures | done |
 | 2 | Nine primitive tools with Zod schemas and shaped projections | done |
-| 3 | `company_snapshot` and `screen_companies` | next |
-| 4 | Generated tool docs with a CI drift check, five worked recipes | |
+| 3 | `company_snapshot` and `screen_companies` | done |
+| 4 | Generated tool docs with a CI drift check, five worked recipes | next |
 | 5 | Tool-selection eval suite, live smoke test in CI, remaining ADRs | |
 | 6 | npm and Docker release with provenance | |
 

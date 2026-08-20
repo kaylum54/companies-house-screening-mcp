@@ -8,7 +8,7 @@ import { RateLimiter } from '../../src/http/rate-limiter.js';
 import { createServer } from '../../src/server.js';
 import { silentLogger } from '../../src/telemetry/logger.js';
 import type { FakeCall, FakeResponseSpec } from './fake-fetch.js';
-import { fakeFetchAlways, fakeFetchSequence } from './fake-fetch.js';
+import { fakeFetchAlways, fakeFetchRouter, fakeFetchSequence } from './fake-fetch.js';
 import { fixedRandom, testConfig } from './support.js';
 
 /**
@@ -32,9 +32,21 @@ export interface Harness {
   close: () => Promise<void>;
 }
 
-async function build(fetchImpl: typeof fetch, calls: FakeCall[]): Promise<Harness> {
+export interface HarnessOptions {
+  /** Lowered in tests that need the budget to run out. */
+  rateLimit?: number;
+}
+
+async function build(
+  fetchImpl: typeof fetch,
+  calls: FakeCall[],
+  options: HarnessOptions = {}
+): Promise<Harness> {
   const clock = new FakeClock(HARNESS_NOW);
-  const config = testConfig({ cacheEnabled: false });
+  const config = testConfig({
+    cacheEnabled: false,
+    ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit })
+  });
 
   const companiesHouse = new CompaniesHouseClient({
     config,
@@ -83,6 +95,15 @@ export async function harnessAlways(spec: FakeResponseSpec): Promise<Harness> {
 export async function harnessSequence(specs: FakeResponseSpec[]): Promise<Harness> {
   const fake = fakeFetchSequence(specs);
   return build(fake.fetch, fake.calls);
+}
+
+/** Upstream responses are chosen by matching the request URL. */
+export async function harnessRoutes(
+  routes: [RegExp, FakeResponseSpec][],
+  options: HarnessOptions = {}
+): Promise<Harness> {
+  const fake = fakeFetchRouter(routes);
+  return build(fake.fetch, fake.calls, options);
 }
 
 /** Reads the structured result of a tool call, asserting it was not an error. */

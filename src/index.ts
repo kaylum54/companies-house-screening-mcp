@@ -4,10 +4,20 @@
  * The executable is `bin.ts`, not this file — importing the library must never
  * start a server or read the environment as a side effect.
  *
- * Phases 1 and 2 are here: configuration, HTTP client, rate limiter, cache,
- * error model, projections, output schemas, the nine tools and the server
- * factory. The composite tools arrive in phase 3.
+ * Phases 1 to 3 are here: configuration, HTTP client, rate limiter, cache,
+ * error model, projections, output schemas, all eleven tools and the server
+ * factory.
  */
+
+export { attempt, type Attempt, DEFAULT_CONCURRENCY, mapWithConcurrency } from './concurrency.js';
+export {
+  buildSnapshot,
+  type SectionFailure,
+  type SnapshotInput,
+  type SnapshotSection
+} from './domain/snapshot.js';
+export { deriveSignals, type Signal, type SignalCode, SIGNAL_CODES } from './domain/signals.js';
+export { COMPOSITE_TOOL_NAMES, registerCompositeTools } from './tools/composite.js';
 
 export {
   projectCharges,

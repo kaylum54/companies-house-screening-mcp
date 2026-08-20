@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { SIGNAL_CODES } from './signals.js';
+
 /**
  * Output schemas.
  *
@@ -299,3 +301,110 @@ export type GetChargesResult = z.infer<typeof getChargesOutput>;
 export type GetPscResult = z.infer<typeof getPscOutput>;
 export type GetInsolvencyResult = z.infer<typeof getInsolvencyOutput>;
 export type GetOfficerAppointmentsResult = z.infer<typeof getOfficerAppointmentsOutput>;
+
+// --- composite tools (phase 3) -------------------------------------------
+
+export const signalSchema = z
+  .object({
+    code: z.enum(SIGNAL_CODES).describe('Stable identifier for the observation.'),
+    detail: z.string().describe('The observation in one sentence, with the dates or names behind it.')
+  })
+  .describe(
+    'A fact read off the register. Not a rating: nothing here weights or combines signals, and an empty list means nothing on the list was found, not that the company is sound.'
+  );
+
+export const sectionUnavailableSchema = z.object({
+  section: z.string().describe('Which part of the snapshot could not be read.'),
+  code: z.string().describe('The error code from the failed request.'),
+  message: z.string()
+});
+
+export const companySnapshotOutput = z.object({
+  company_number: z.string(),
+  name: z.string(),
+  status: z.string().optional(),
+  type_description: z.string().optional(),
+  incorporated_on: z.string().optional(),
+  dissolved_on: z.string().optional(),
+  age_years: z.number().optional(),
+  registered_office_address: z.string().optional(),
+  sic_codes: z.array(z.string()),
+  accounts: z.object({ next_due: z.string().optional(), overdue: z.boolean().optional() }),
+  confirmation_statement: z.object({
+    next_due: z.string().optional(),
+    overdue: z.boolean().optional()
+  }),
+  officers: z
+    .object({
+      active_count: z.number().optional(),
+      resigned_count: z.number().optional(),
+      active: z.array(
+        z.object({
+          name: z.string(),
+          role: z.string().optional(),
+          officer_id: z.string().optional(),
+          appointed_on: z.string().optional()
+        })
+      )
+    })
+    .optional(),
+  charges: z
+    .object({
+      total_count: z.number(),
+      outstanding_count: z.number(),
+      satisfied_count: z.number(),
+      holders: z.array(z.string()).describe('Who holds the outstanding charges.')
+    })
+    .optional(),
+  insolvency: z
+    .object({ case_count: z.number(), types: z.array(z.string()) })
+    .optional(),
+  signals: z.array(signalSchema),
+  sections_included: z
+    .array(z.string())
+    .describe('Which sections were fetched. Signals can only reflect the sections listed here.'),
+  sections_unavailable: z
+    .array(sectionUnavailableSchema)
+    .describe('Sections that failed. The snapshot is still returned; treat those signals as unknown.'),
+  meta: metaSchema,
+  raw: rawSchema
+});
+
+export const screenCompaniesOutput = z.object({
+  requested: z.number(),
+  sections_used: z
+    .array(z.string())
+    .describe('Signals in this table can only reflect these sections. Officers are off by default.'),
+  screened: z.array(
+    z.object({
+      input: z.string().describe('What was passed in, so rows can be matched back to the source list.'),
+      company_number: z.string(),
+      name: z.string(),
+      status: z.string().optional(),
+      incorporated_on: z.string().optional(),
+      age_years: z.number().optional(),
+      signal_codes: z.array(z.enum(SIGNAL_CODES)),
+      signal_count: z.number().describe('Call company_snapshot on the number for the detail behind these.')
+    })
+  ),
+  unresolved: z
+    .array(
+      z.object({
+        input: z.string(),
+        reason: z.string(),
+        candidates: z
+          .array(companySummarySchema.pick({ company_number: true, name: true, status: true }))
+          .optional()
+          .describe('Ask which was meant, then screen the chosen number directly.')
+      })
+    )
+    .describe('Inputs that could not be resolved to exactly one company. Never guessed at.'),
+  not_screened: z
+    .array(z.object({ input: z.string(), reason: z.string() }))
+    .describe('Inputs deliberately skipped, with the reason. Nothing is dropped silently.'),
+  meta: metaSchema
+});
+
+export type Signal = z.infer<typeof signalSchema>;
+export type CompanySnapshotResult = z.infer<typeof companySnapshotOutput>;
+export type ScreenCompaniesResult = z.infer<typeof screenCompaniesOutput>;

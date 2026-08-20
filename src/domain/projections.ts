@@ -41,7 +41,7 @@ import type {
  */
 
 /** Everything a tool returns except the `meta` and `raw` envelope. */
-type Body<T> = Omit<T, 'meta' | 'raw'>;
+export type Body<T> = Omit<T, 'meta' | 'raw'>;
 
 const isActive = (resignedOrCeased: string | undefined): boolean => resignedOrCeased === undefined;
 

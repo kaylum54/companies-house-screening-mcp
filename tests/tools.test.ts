@@ -23,11 +23,11 @@ const APPOINTMENTS = loadFixture('officers/appointments.json');
 const OFFICER_SEARCH = loadFixture('search/officers.json');
 
 describe('the tool surface', () => {
-  it('registers exactly the nine tools it says it does', async () => {
+  it('registers every primitive tool it says it does', async () => {
     harness = await harnessAlways({ body: {} });
     const { tools } = await harness.client.listTools();
 
-    expect(tools.map((tool) => tool.name).sort()).toEqual([...TOOL_NAMES].sort());
+    expect(tools.map((tool) => tool.name)).toEqual(expect.arrayContaining([...TOOL_NAMES]));
   });
 
   it('declares every tool read-only', async () => {

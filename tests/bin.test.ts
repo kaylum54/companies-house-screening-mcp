@@ -85,7 +85,7 @@ describe.skipIf(!built)('the compiled entry point', () => {
     const tools = (messages.find((message) => message.id === 2)?.result?.['tools'] ?? []) as {
       name: string;
     }[];
-    expect(tools).toHaveLength(9);
+    expect(tools).toHaveLength(11);
   });
 
   it('writes nothing but JSON-RPC to stdout', async () => {

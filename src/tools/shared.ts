@@ -6,6 +6,7 @@ import type { Meta } from '../domain/schemas.js';
 import { CompaniesHouseError, companyNameSupplied } from '../errors.js';
 import type { RequestMeta } from '../http/client.js';
 import { CompaniesHouseClient } from '../http/client.js';
+import type { RateLimitSnapshot } from '../http/rate-limiter.js';
 import type { Logger } from '../telemetry/logger.js';
 
 /** What every tool handler needs. Passed explicitly rather than reached for. */
@@ -92,6 +93,34 @@ export function buildMeta(meta: RequestMeta): Meta {
   if (meta.ageMs !== undefined) {
     base.age_seconds = Math.max(Math.round(meta.ageMs / 1000), 0);
   }
+  return base;
+}
+
+/**
+ * Combines the metadata of several requests into one envelope.
+ *
+ * The composite tools make up to four requests per company. The rules are
+ * chosen so that the summary never flatters the answer: it is only `cached`
+ * if every part was, it is `stale` if any part was, and the age reported is
+ * the oldest. A snapshot that is three-quarters fresh and one-quarter two
+ * days old should read as two days old.
+ */
+export function mergeMeta(metas: RequestMeta[], rateLimit: RateLimitSnapshot): Meta {
+  const base: Meta = {
+    cached: metas.length > 0 && metas.every((meta) => meta.cached),
+    stale: metas.some((meta) => meta.stale),
+    rate_limit_remaining: rateLimit.remaining,
+    rate_limit_resets_in_ms: rateLimit.resetInMs,
+    licence: 'OGL-v3.0'
+  };
+
+  const ages = metas
+    .map((meta) => meta.ageMs)
+    .filter((age): age is number => age !== undefined);
+  if (ages.length > 0) {
+    base.age_seconds = Math.max(Math.round(Math.max(...ages) / 1000), 0);
+  }
+
   return base;
 }
 
