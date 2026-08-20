@@ -48,6 +48,8 @@ export interface RequestMeta {
   stale: boolean;
   attempts: number;
   durationMs: number;
+  /** Age of the cached answer. Absent when the answer came from the network. */
+  ageMs?: number | undefined;
   rateLimit: RateLimitSnapshot;
 }
 
@@ -140,6 +142,7 @@ export class CompaniesHouseClient {
           stale: false,
           attempts: 0,
           durationMs: this.#clock.now() - startedAt,
+          ageMs: this.#clock.now() - lookup.entry.storedAt,
           rateLimit: this.#limiter.snapshot()
         }
       };
@@ -177,6 +180,7 @@ export class CompaniesHouseClient {
             stale: true,
             attempts: this.#config.maxRetries + 1,
             durationMs: this.#clock.now() - startedAt,
+            ageMs: this.#clock.now() - staleEntry.storedAt,
             rateLimit: this.#limiter.snapshot()
           }
         };

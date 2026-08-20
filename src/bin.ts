@@ -1,0 +1,61 @@
+#!/usr/bin/env node
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+
+import { ConfigError, loadConfig, redactConfig } from './config.js';
+import { CompaniesHouseClient } from './http/client.js';
+import { createServer } from './server.js';
+import { createLogger } from './telemetry/logger.js';
+import { packageVersion } from './version.js';
+
+/**
+ * stdio entry point.
+ *
+ * Nothing in this process may write to stdout: the transport owns it, and a
+ * stray write corrupts the JSON-RPC framing in a way that surfaces as an
+ * unexplained parse error on the client side. All diagnostics go to stderr.
+ */
+
+/** sysexits.h EX_CONFIG. Distinguishes "you set it up wrong" from "it crashed". */
+const EXIT_CONFIG = 78;
+
+async function main(): Promise<void> {
+  let config;
+  try {
+    config = loadConfig();
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      process.stderr.write(`${error.message}\n\nSee .env.example or the README for the full list.\n`);
+      process.exit(EXIT_CONFIG);
+    }
+    throw error;
+  }
+
+  const version = packageVersion();
+  const logger = createLogger({ level: config.logLevel });
+  const client = new CompaniesHouseClient({ config, logger });
+  const server = createServer({ client, logger, now: () => Date.now() }, version);
+
+  let closing = false;
+  const shutdown = (signal: string): void => {
+    if (closing) return;
+    closing = true;
+    logger.info('shutting down', { signal });
+    void server
+      .close()
+      .catch((error: unknown) => logger.error('error while closing', { error }))
+      .finally(() => process.exit(0));
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  await server.connect(new StdioServerTransport());
+
+  // Logged after connecting so that the line means "ready", not "starting".
+  logger.info('companies-house-mcp ready', { version, ...redactConfig(config) });
+}
+
+await main().catch((error: unknown) => {
+  process.stderr.write(`companies-house-mcp failed to start: ${String(error)}\n`);
+  process.exit(1);
+});

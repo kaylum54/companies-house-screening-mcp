@@ -197,6 +197,22 @@ export function invalidCompanyNumber(input: string, reason: string): CompaniesHo
   });
 }
 
+/**
+ * Raised when a retrieval tool is handed a company name.
+ *
+ * Separate from `invalidCompanyNumber` because the fix is different and the
+ * caller is much more likely to act on a message that names what it received.
+ */
+export function companyNameSupplied(input: string): CompaniesHouseError {
+  return new CompaniesHouseError({
+    code: 'INVALID_COMPANY_NUMBER',
+    message: `"${input}" looks like a company name, not a company number.`,
+    nextStep:
+      'Call find_company with this name to get candidate company numbers, then call this tool again with the number of the right one. Do not guess a number: a plausible wrong company number returns a real company and nothing will flag it as the wrong one.',
+    details: { input }
+  });
+}
+
 export function timeout(resource: string, timeoutMs: number): CompaniesHouseError {
   return new CompaniesHouseError({
     code: 'UPSTREAM_TIMEOUT',

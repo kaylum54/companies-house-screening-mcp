@@ -1,0 +1,5 @@
+# Keep line endings stable across platforms. Without this, a clone on Windows
+# rewrites every file to CRLF and the next contributor on Linux sees the whole
+# repository as modified.
+* text=auto eol=lf
+*.png binary

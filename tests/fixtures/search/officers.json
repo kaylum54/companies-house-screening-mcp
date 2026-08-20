@@ -1,0 +1,26 @@
+{
+  "kind": "search#officers",
+  "total_results": 2,
+  "items_per_page": 20,
+  "start_index": 0,
+  "items": [
+    {
+      "kind": "searchresults#officer",
+      "title": "Alice Jane FIXTURE",
+      "address_snippet": "1 Fixture Street, Manchester, M1 1AA",
+      "appointment_count": 3,
+      "date_of_birth": { "month": 7, "year": 1979 },
+      "description": "Total number of appointments 3",
+      "links": { "self": "/officers/aBcD1234EfGh5678IjKl/appointments" }
+    },
+    {
+      "kind": "searchresults#officer",
+      "title": "Alice FIXTURE",
+      "address_snippet": "12 Example Avenue, Cardiff, CF10 1AA",
+      "appointment_count": 1,
+      "date_of_birth": { "month": 11, "year": 1988 },
+      "description": "Total number of appointments 1",
+      "links": { "self": "/officers/zZyY9876XxWw5432VvUu/appointments" }
+    }
+  ]
+}

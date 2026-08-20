@@ -1,0 +1,35 @@
+{
+  "etag": "5566778899aabbccddeeff00112233445566778",
+  "status": ["liquidation"],
+  "cases": [
+    {
+      "type": "creditors-voluntary-liquidation",
+      "number": "1",
+      "dates": [
+        { "type": "wound-up-on", "date": "2023-05-11" },
+        { "type": "declaration-solvent-on", "date": "2023-04-28" }
+      ],
+      "practitioners": [
+        {
+          "name": "Jane Example",
+          "role": "practitioner",
+          "appointed_on": "2023-05-11",
+          "address": {
+            "address_line_1": "8 Insolvency Way",
+            "locality": "Leeds",
+            "postal_code": "LS1 1AA",
+            "country": "England"
+          }
+        },
+        {
+          "name": "Peter Placeholder",
+          "role": "practitioner",
+          "appointed_on": "2023-05-11",
+          "ceased_to_act_on": "2024-02-02"
+        }
+      ],
+      "notes": ["Case reference EX123456."],
+      "links": { "charge": "/company/SC123456/charges/aAbBcCdDeEfF" }
+    }
+  ]
+}

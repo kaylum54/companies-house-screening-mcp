@@ -1,0 +1,62 @@
+{
+  "active_count": 2,
+  "ceased_count": 1,
+  "total_results": 3,
+  "items_per_page": 25,
+  "start_index": 0,
+  "links": { "self": "/company/00000006/persons-with-significant-control" },
+  "items": [
+    {
+      "kind": "individual-person-with-significant-control",
+      "name": "Ms Alice Jane Fixture",
+      "name_elements": { "forename": "Alice", "middle_name": "Jane", "surname": "Fixture", "title": "Ms" },
+      "natures_of_control": [
+        "ownership-of-shares-75-to-100-percent",
+        "voting-rights-75-to-100-percent",
+        "right-to-appoint-and-remove-directors"
+      ],
+      "notified_on": "2016-04-06",
+      "nationality": "British",
+      "country_of_residence": "England",
+      "date_of_birth": { "month": 7, "year": 1979 },
+      "address": {
+        "address_line_1": "1 Fixture Street",
+        "locality": "Manchester",
+        "postal_code": "M1 1AA",
+        "country": "England"
+      },
+      "links": { "self": "/company/00000006/persons-with-significant-control/individual/abc123" }
+    },
+    {
+      "kind": "corporate-entity-person-with-significant-control",
+      "name": "EXAMPLE FIXTURE HOLDINGS LIMITED",
+      "natures_of_control": ["ownership-of-shares-25-to-50-percent"],
+      "notified_on": "2019-01-10",
+      "identification": {
+        "legal_authority": "Companies Act 2006",
+        "legal_form": "Private Limited Company",
+        "country_registered": "England",
+        "place_registered": "Companies House",
+        "registration_number": "07654321"
+      },
+      "address": {
+        "address_line_1": "1 Fixture Street",
+        "locality": "Manchester",
+        "postal_code": "M1 1AA",
+        "country": "England"
+      },
+      "links": { "self": "/company/00000006/persons-with-significant-control/corporate-entity/def456" }
+    },
+    {
+      "kind": "individual-person-with-significant-control",
+      "name": "Mr Brian Placeholder",
+      "natures_of_control": ["voting-rights-25-to-50-percent"],
+      "notified_on": "2016-04-06",
+      "ceased_on": "2019-01-09",
+      "nationality": "British",
+      "country_of_residence": "England",
+      "date_of_birth": { "month": 3, "year": 1965 },
+      "links": { "self": "/company/00000006/persons-with-significant-control/individual/ghi789" }
+    }
+  ]
+}

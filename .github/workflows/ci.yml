@@ -38,11 +38,14 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test
-        run: npm run test:coverage
-
+      # Build first: tests/bin.test.ts exercises the compiled entry point as a
+      # real process and skips itself when dist is absent. Testing before
+      # building would silently skip it in the one place it matters most.
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm run test:coverage
 
   live-smoke:
     # Fixtures make the suite fast and offline. This is the price of that: it

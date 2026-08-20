@@ -1,11 +1,30 @@
 /**
  * Public surface of the package.
  *
- * Phase 1 ships the transport foundation only: configuration, the HTTP client,
- * the rate limiter, the cache and the error model. The MCP server itself, the
- * tool definitions and the response projections arrive in phase 2, at which
- * point this file also gains the stdio entry point.
+ * The executable is `bin.ts`, not this file — importing the library must never
+ * start a server or read the environment as a side effect.
+ *
+ * Phases 1 and 2 are here: configuration, HTTP client, rate limiter, cache,
+ * error model, projections, output schemas, the nine tools and the server
+ * factory. The composite tools arrive in phase 3.
  */
+
+export {
+  projectCharges,
+  projectCompanyProfile,
+  projectCompanySearch,
+  projectFilingHistory,
+  projectInsolvency,
+  projectOfficerAppointments,
+  projectOfficerSearch,
+  projectOfficers,
+  projectPsc
+} from './domain/projections.js';
+export * as schemas from './domain/schemas.js';
+export { createServer, INSTRUCTIONS, SERVER_NAME } from './server.js';
+export { registerTools, TOOL_NAMES } from './tools/definitions.js';
+export { type ToolContext, type ToolResult } from './tools/shared.js';
+export { packageVersion } from './version.js';
 
 export { type Clock, FakeClock, systemClock } from './clock.js';
 export {

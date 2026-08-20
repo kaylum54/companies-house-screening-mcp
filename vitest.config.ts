@@ -10,6 +10,13 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
+      // bin.ts is covered by tests/bin.test.ts, which spawns it as a real
+      // process — the only way to exercise the shebang, the stdio framing and
+      // the config exit code. In-process v8 instrumentation cannot see a
+      // subprocess, so leaving it in would report 0% for a file that is
+      // tested, and the number would push everyone towards deleting the
+      // better test.
+      exclude: ['src/bin.ts'],
       thresholds: {
         lines: 85,
         functions: 85,

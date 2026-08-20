@@ -1,0 +1,45 @@
+{
+  "filing_history_status": "filing-history-available",
+  "total_count": 3,
+  "items_per_page": 25,
+  "start_index": 0,
+  "etag": "aabbccddeeff00112233445566778899aabbccdd",
+  "items": [
+    {
+      "date": "2025-12-14",
+      "category": "accounts",
+      "subcategory": "small",
+      "type": "AA",
+      "description": "accounts-with-accounts-type-small",
+      "description_values": { "made_up_date": "2025-03-31" },
+      "action_date": "2025-03-31",
+      "pages": 9,
+      "barcode": "XA1B2C3D",
+      "transaction_id": "MzQ1Njc4OTAxMmFkaXF6a2N4",
+      "links": {
+        "self": "/company/00000006/filing-history/MzQ1Njc4OTAxMmFkaXF6a2N4",
+        "document_metadata": "https://frontend-doc-api.company-information.service.gov.uk/document/aBcDeF"
+      }
+    },
+    {
+      "date": "2025-09-01",
+      "category": "confirmation-statement",
+      "type": "CS01",
+      "description": "confirmation-statement-with-no-updates",
+      "description_values": { "made_up_date": "2025-08-31" },
+      "pages": 3,
+      "links": { "self": "/company/00000006/filing-history/NDU2Nzg5MDEyM2FkaXF6a2N4" }
+    },
+    {
+      "date": "2021-04-20",
+      "category": "mortgage",
+      "type": "MR01",
+      "description": "legacy",
+      "description_values": {
+        "description": "Registration of a charge, created on 14 April 2021"
+      },
+      "pages": 5,
+      "links": { "self": "/company/00000006/filing-history/NTY3ODkwMTIzNGFkaXF6a2N4" }
+    }
+  ]
+}
