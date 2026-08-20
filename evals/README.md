@@ -107,6 +107,69 @@ purpose.
 After the three fixes, the same 58 cases × 3 repeats scored **57/58 (98%)** on
 GLM 5.2. The one remaining failure is the one above.
 
+## Across three models
+
+Run 20–21 August 2026, 58 cases x 3 repeats per model, via OpenRouter.
+`npm run eval:compare evals/results/*.json` regenerates the table from
+result files.
+
+| Category | GLM 5.2 | Kimi K3 | DeepSeek V4 Pro |
+|---|---|---|---|
+| `grounding` | 7/7 | 7/7 | 7/7 |
+| `number-trap` | 6/6 | 6/6 | 6/6 |
+| `near-miss` | 8/8 | 8/8 | 8/8 |
+| `noise` | 5/5 | 5/5 | 5/5 |
+| `not-uk` | 3/3 | 3/3 | 3/3 |
+| `primitive` | 3/3 | 3/3 | 3/3 |
+| `out-of-scope` | 6/6 | 5/6 | 4/6 |
+| `paraphrase` | 19/20 | 18/20 | 20/20 |
+| **Total** | **57/58 (98%)** | **55/58 (95%)** | **56/58 (97%)** |
+
+### What three models bought that one could not
+
+**The checks that matter hold everywhere.** Grounding, number traps and
+near-misses are 7/7, 6/6 and 8/8 on all three. The no-guessing rule surviving
+three independently-trained models — including questions containing a VAT
+number, an order reference and a postcode — is a far stronger claim than one
+model passing.
+
+**Two failures were mine, not the models'.** They clustered, which is what
+turns a failure into a finding:
+
+- `get_psc` opened with *"Who actually **controls** a company"*. The word
+  "owns" appeared nowhere near the front. "Who owns company X?" failed 2/3 on
+  GLM and **0/3 on Kimi**, both reaching for `get_company`. One model failing
+  is a fact about the model; two failing identically is a fact about the
+  description. Rewritten to lead with "Who OWNS a company", and to say
+  explicitly that `get_company` will not answer it: now passes on all three.
+- The read-only rule did not hold on two of three. Asked to file a
+  confirmation statement, Kimi and DeepSeek called a read tool anyway. GLM
+  passed, which had made this look solved when it was not.
+
+**One fix worked; the other only half worked.** Rewording the read-only
+instruction a second time fixed Kimi (5/6 to 6/6) and changed nothing on
+DeepSeek (4/6, unmoved). Two attempts have not shifted it.
+
+That is worth stating rather than hiding: **you cannot always fix a model's
+behaviour by rewording an instruction.** The mitigation here is not a third
+rewrite — it is that the server is read-only *by construction*. A model calling
+`get_company` when asked to file something is wasteful, not dangerous, because
+there is no write path for it to find. The design does the work the prompt
+could not.
+
+### Read single-case movements as noise
+
+Three GLM runs against identical code produced 57/58, 57/58 and 57/58 — and a
+**different marginal case each time**: `para-charges-3`, then
+`para-control-1`, then `near-who-is-behind`.
+
+The score is stable; which case sits at the margin is not. At three repeats a
+case that genuinely passes about 85% of the time will show 3/3 on one run and
+2/3 on the next. So: cross-model patterns are signal, single-case movements
+between runs are not, and any claim resting on one case moving should be
+treated as unproven. DeepSeek's paraphrase score moved 20/20 to 19/20 after the
+fix, and that is not claimed here as a regression for exactly this reason.
+
 ## Flakiness is a finding, not noise
 
 A case that passes twice and fails once is reported as `FLAKY`, not as a pass.

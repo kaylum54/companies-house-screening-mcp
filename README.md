@@ -219,8 +219,14 @@ a company number that was not in the question. A case that passes two runs in
 three is reported as flaky and fails, because intermittent selection means two
 descriptions overlap.
 
-No Companies House key is needed; nothing is executed. Details in
-[evals/README.md](evals/README.md), reasoning in
+Run across three models (GLM 5.2, Kimi K3, DeepSeek V4 Pro) it scores 95–98%.
+Grounding, number traps and near-misses pass **on all three** — the
+no-guessing rule holds across independently-trained models. The failures
+clustered in two places and both turned out to be defects in my own tool
+descriptions rather than in any model.
+
+No Companies House key is needed; nothing is executed. Full comparison and
+what it found in [evals/README.md](evals/README.md), reasoning in
 [ADR 10](docs/adr/0010-tool-selection-eval.md).
 
 ## Design notes

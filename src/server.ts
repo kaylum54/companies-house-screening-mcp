@@ -17,7 +17,7 @@ export const SERVER_NAME = 'companies-house';
  */
 export const INSTRUCTIONS = `Read-only access to the UK Companies House register: company profiles, officers, filing history, charges, persons with significant control, insolvency, and officer appointment networks.
 
-READ ONLY. This server cannot file, submit, change, update or delete anything. If you are asked to do any of those, say plainly that it is not possible here — do not call a read tool instead and present it as progress.
+READ ONLY. This server can only read the public register. It cannot file, submit, change, update, delete or register anything, and no tool here does. If you are asked to do any of those: answer that it is not possible, and call NO TOOL AT ALL. Looking the company up first does not help and is not progress.
 
 Start with company_snapshot for a single company and screen_companies for anything involving more than one — they fan out server-side and cost you one call instead of four. Reach for the primitive tools when you need a full list rather than a summary: every officer including resigned ones, every charge, the filing history, the PSC register.
 

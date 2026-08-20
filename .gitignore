@@ -10,3 +10,4 @@ coverage/
 # Eval run artefacts. The cases and the scoring are committed; the results of
 # any particular run are not — they are per-key, per-model and per-day.
 evals/results/
+

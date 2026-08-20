@@ -239,7 +239,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
     {
       title: 'Get persons with significant control',
       description:
-        'Who actually controls a company, which is often not who its directors are. Returns each person or entity with significant control, how that control is held (shareholding band, voting rights, right to appoint directors), and whether the interest is current or ceased. Use it for beneficial-ownership and know-your-business checks. Where a company cannot identify a controller it files a statement instead of a person, and that statement is returned in the name field. Needs a company number.',
+        'Who OWNS a company. Use this for any question about ownership, shareholders, beneficial owners or who is ultimately behind a business — the company profile does not carry ownership and get_company will not answer it. Returns each person or entity with significant control: how much they own (shareholding band), how that control is held (voting rights, right to appoint directors), and whether the interest is current or ceased. Ownership is often not the same as the directors, so this is a different question from get_officers. Where a company cannot identify a controller it files a statement instead of a person, and that statement is returned in the name field. Needs a company number.',
       inputSchema: {
         company_number: companyNumberInput,
         items_per_page: itemsPerPageInput,
