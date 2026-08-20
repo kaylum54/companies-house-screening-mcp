@@ -44,6 +44,7 @@ export type Category =
 
 export interface ArgAssertion {
   /** Dotted path into the tool call's arguments. */
+  /** Dotted path, or `any` to check every argument value. */
   path: string;
   equals?: string;
   /** Case-insensitive substring match. */
@@ -499,8 +500,11 @@ export const CASES: EvalCase[] = [
     category: 'primitive',
     question: 'Look up company 1234567 for me.',
     expectTool: ['get_company', 'company_snapshot', 'find_company'],
-    expectArgs: [{ path: 'company_number', contains: '1234567' }],
-    why: 'Seven digits is a company number written the way people write it. The server pads it; the model must not rewrite it into something else.'
+    // `any` rather than `company_number`: find_company is an acceptable choice
+    // here and takes `query`, so a path-specific assertion failed the case for
+    // picking a tool the case allows.
+    expectArgs: [{ path: 'any', contains: '1234567' }],
+    why: 'Seven digits is a company number written the way people write it. The server pads it; the model must not rewrite it into something else, whichever tool it reaches for.'
   },
   {
     id: 'primitive-number-in-prose',

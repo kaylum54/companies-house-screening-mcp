@@ -49,7 +49,13 @@ function readPath(input: Record<string, unknown>, path: string): unknown {
 }
 
 function checkArgument(call: ToolCall, assertion: ArgAssertion): Check {
-  const actual = readPath(call.input, assertion.path);
+  // `any` checks every argument value rather than one named path. Needed when
+  // a case accepts several tools that take differently-named arguments:
+  // asserting on `company_number` made a case fail for choosing find_company,
+  // which the case explicitly allowed and which takes `query` instead. The
+  // case was wrong, not the model.
+  const actual =
+    assertion.path === 'any' ? JSON.stringify(call.input) : readPath(call.input, assertion.path);
   const rendered = actual === undefined ? '(absent)' : String(actual);
 
   if (assertion.equals !== undefined) {

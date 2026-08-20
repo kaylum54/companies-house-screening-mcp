@@ -219,11 +219,11 @@ a company number that was not in the question. A case that passes two runs in
 three is reported as flaky and fails, because intermittent selection means two
 descriptions overlap.
 
-Run across three models (GLM 5.2, Kimi K3, DeepSeek V4 Pro) it scores 95–98%.
-Grounding, number traps and near-misses pass **on all three** — the
-no-guessing rule holds across independently-trained models. The failures
-clustered in two places and both turned out to be defects in my own tool
-descriptions rather than in any model.
+Run across three models (GLM 5.2, Kimi K3, DeepSeek V4 Pro) it scores 93–98%.
+The grounding group — given a company name and no number, search rather than
+recall one — passes **7/7 on all three**. The failures clustered, and three of
+them turned out to be defects in my own tool descriptions and one in the eval
+itself, rather than in any model.
 
 No Companies House key is needed; nothing is executed. Full comparison and
 what it found in [evals/README.md](evals/README.md), reasoning in
