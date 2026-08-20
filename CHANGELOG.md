@@ -6,6 +6,15 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Publishing moved to npm Trusted Publishing. The workflow authenticates by
+  OIDC against the trusted publisher configured on the package, so there is no
+  `NODE_AUTH_TOKEN` and no `NPM_TOKEN` secret — nothing to leak and nothing to
+  rotate. It replaced a granular token, which npm rejected anyway: publishing
+  from CI requires a token flagged to bypass 2FA, and npm is removing those for
+  direct publishing in January 2027.
+
 ### Changed — tool descriptions, driven by the expanded eval
 
 - `screen_companies` now leads with its trigger condition — *more than one

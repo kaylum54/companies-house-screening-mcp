@@ -59,15 +59,30 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
+      # Trusted publishing needs npm 11.5.1 or newer. An older npm does not
+      # fail loudly — it falls back to looking for a token that is no longer
+      # there, and reports an auth error that says nothing about the real
+      # cause. Pinning the floor here makes that impossible.
+      - run: npm install -g npm@latest
+
       - run: npm ci
 
-      # `prepublishOnly` runs the full verification again, including
-      # release-check. Belt and braces: this job could in principle be run
-      # without the one above.
+      # Published via npm Trusted Publishing: the `id-token: write` permission
+      # above lets npm verify this workflow's OIDC identity directly against
+      # the trusted publisher configured on the package. There is no
+      # NODE_AUTH_TOKEN and no NPM_TOKEN secret — nothing to leak and nothing
+      # to rotate.
+      #
+      # It replaced a granular token, which npm rejected anyway: publishing
+      # from CI needs a token flagged to bypass 2FA, and npm is removing those
+      # for direct publishing in January 2027.
+      #
+      # `--provenance` is implied under trusted publishing but stated so the
+      # intent survives someone reading only this line. `prepublishOnly` runs
+      # the full verification again; belt and braces, since this job could in
+      # principle run without the one above.
       - name: Publish to npm
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   docker:
     needs: verify
