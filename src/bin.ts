@@ -2,6 +2,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { ConfigError, loadConfig, redactConfig } from './config.js';
+import { loadEnvFile } from './env-file.js';
 import { CompaniesHouseClient } from './http/client.js';
 import { createServer } from './server.js';
 import { createLogger } from './telemetry/logger.js';
@@ -19,6 +20,19 @@ import { packageVersion } from './version.js';
 const EXIT_CONFIG = 78;
 
 async function main(): Promise<void> {
+  // Opt-in only, and by explicit path. A host launches this server with its
+  // own working directory, so reading a `.env` from wherever that happens to
+  // be is a way to pick up someone else's credentials by accident.
+  const envFile = process.env['CH_ENV_FILE'];
+  if (envFile !== undefined && envFile.trim() !== '') {
+    const result = loadEnvFile(envFile.trim());
+    if (!result.loaded) {
+      const reason = result.error === undefined ? 'no such file' : result.error;
+      process.stderr.write(`CH_ENV_FILE points at ${result.path}, which could not be read: ${reason}.\n`);
+      process.exit(EXIT_CONFIG);
+    }
+  }
+
   let config;
   try {
     config = loadConfig();

@@ -1,12 +1,20 @@
+import { join } from 'node:path';
+
 import { defineConfig } from 'vitest/config';
+
+import { loadEnvFile } from './src/env-file.js';
+
+// Loads the repository's own .env from a known path, so `npm test` picks up a
+// key without one having to be exported in every new terminal. Variables
+// already set in the shell win over the file.
+loadEnvFile(join(import.meta.dirname, '.env'));
 
 export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
-    // The live smoke test hits the real API and is opt-in via CH_LIVE_SMOKE=1.
-    // It is excluded from the default run so that `npm test` works offline
-    // and without an API key.
-    exclude: process.env['CH_LIVE_SMOKE'] ? [] : ['tests/live.smoke.test.ts'],
+    // The live smoke test hits the real API and has its own config
+    // (vitest.live.config.ts), so it never runs as part of `npm test`.
+    exclude: ['tests/live.smoke.test.ts'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

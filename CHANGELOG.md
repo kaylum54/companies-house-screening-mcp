@@ -6,6 +6,27 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `npm run test:live` failed on Windows. The script used the bash-only
+  `VAR=value command` prefix, which npm runs through cmd.exe on Windows —
+  producing `'CH_LIVE_SMOKE' is not recognized`. The live test now has its own
+  vitest config instead of an environment-variable switch, so no inline env
+  prefix is needed and the command works identically on every platform. The
+  same bash-only form has been removed from the documentation.
+
+### Added — `.env` support
+
+- Development commands (`npm test`, `test:live`, `eval`, `record-fixtures`)
+  read a `.env` at the repository root. Values already set in the shell win
+  over the file.
+- The published server does **not** read a `.env` by default. A host launches
+  it with the host's working directory, so reading whatever `.env` is there is
+  a way to load the wrong credentials. Set `CH_ENV_FILE` to an explicit path to
+  opt in; an unreadable path exits with EX_CONFIG rather than starting.
+- `.env.example` now documents both keys, including how to get them and which
+  Companies House key type is the right one.
+
 ### Added — phase 5, the tool-selection eval
 
 - `npm run eval` asks a real model which tool it would reach for, given the

@@ -39,7 +39,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:live": "CH_LIVE_SMOKE=1 vitest run tests/live.smoke.test.ts",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "record-fixtures": "tsx scripts/record-fixtures.ts",
     "prepublishOnly": "npm run typecheck && npm run docs:check && npm run test && npm run build",
     "docs:generate": "tsx scripts/generate-tool-docs.ts && tsx scripts/generate-recipes.ts",

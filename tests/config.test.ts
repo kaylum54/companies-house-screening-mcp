@@ -1,6 +1,11 @@
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { ConfigError, defaultCacheDir, loadConfig, redactConfig } from '../src/config.js';
+import { loadEnvFile } from '../src/env-file.js';
+import { withTempDir } from './helpers/support.js';
 
 const base = { COMPANIES_HOUSE_API_KEY: 'abc123' } satisfies NodeJS.ProcessEnv;
 
@@ -98,5 +103,48 @@ describe('redactConfig', () => {
   it('keeps the rest of the configuration readable', () => {
     const config = loadConfig({ ...base, CH_CACHE_DIR: '/tmp/x' });
     expect(redactConfig(config)['rateLimit']).toBe(600);
+  });
+});
+
+describe('loadEnvFile', () => {
+  it('loads values from a file', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, '.env');
+      await writeFile(path, 'CH_TEST_ONLY_VALUE=from_file\n', 'utf8');
+
+      expect(loadEnvFile(path).loaded).toBe(true);
+      expect(process.env['CH_TEST_ONLY_VALUE']).toBe('from_file');
+      delete process.env['CH_TEST_ONLY_VALUE'];
+    });
+  });
+
+  it('lets the shell win over the file', async () => {
+    // "I exported the variable and the file overrode it" is a bad afternoon.
+    await withTempDir(async (dir) => {
+      const path = join(dir, '.env');
+      await writeFile(path, 'CH_TEST_ONLY_PRECEDENCE=from_file\n', 'utf8');
+      process.env['CH_TEST_ONLY_PRECEDENCE'] = 'from_shell';
+
+      loadEnvFile(path);
+      expect(process.env['CH_TEST_ONLY_PRECEDENCE']).toBe('from_shell');
+      delete process.env['CH_TEST_ONLY_PRECEDENCE'];
+    });
+  });
+
+  it('reports a missing file without throwing', async () => {
+    await withTempDir(async (dir) => {
+      const result = loadEnvFile(join(dir, 'absent.env'));
+      expect(result.loaded).toBe(false);
+      expect(result.error).toBeUndefined();
+    });
+  });
+
+  it('distinguishes a missing file from an unreadable one', async () => {
+    // A directory where a file is expected: exists, cannot be read as a file.
+    await withTempDir(async (dir) => {
+      const result = loadEnvFile(dir);
+      expect(result.loaded).toBe(false);
+      expect(result.error).toBeDefined();
+    });
   });
 });

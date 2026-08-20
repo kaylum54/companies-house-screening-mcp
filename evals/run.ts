@@ -1,11 +1,12 @@
 /**
  * Runs the tool-selection eval against a real model.
  *
- *   ANTHROPIC_API_KEY=... npm run eval
- *   ANTHROPIC_API_KEY=... npm run eval -- --repeat 3
- *   ANTHROPIC_API_KEY=... npm run eval -- --case name-only-profile --model claude-sonnet-5
+ *   npm run eval
+ *   npm run eval -- --repeat 3
+ *   npm run eval -- --case name-only-profile --model claude-sonnet-5
  *
- * No Companies House key is needed — no tool is executed. The server is
+ * ANTHROPIC_API_KEY comes from the environment or from a .env at the
+ * repository root. No Companies House key is needed — no tool is executed. The server is
  * started only to read its real tool definitions and instructions, so what the
  * model sees here is exactly what a host would send it.
  */
@@ -13,6 +14,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { loadEnvFile } from '../src/env-file.js';
 import { harnessRoutes } from '../tests/helpers/harness.js';
 import type { EvalCase } from './cases.js';
 import { CASES } from './cases.js';
@@ -123,6 +125,7 @@ function report(cases: EvalCase[], results: Map<string, CaseResult[]>, repeat: n
 }
 
 async function main(): Promise<void> {
+  loadEnvFile(join(import.meta.dirname, '..', '.env'));
   const options = parseArgs(process.argv.slice(2));
 
   if (process.env['ANTHROPIC_API_KEY'] === undefined) {

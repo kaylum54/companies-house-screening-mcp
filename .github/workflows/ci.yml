@@ -73,7 +73,6 @@ jobs:
       - name: Live API smoke test
         env:
           COMPANIES_HOUSE_API_KEY: ${{ secrets.COMPANIES_HOUSE_API_KEY }}
-          CH_LIVE_SMOKE: '1'
           CH_CACHE_ENABLED: 'false'
         run: |
           if [ -z "$COMPANIES_HOUSE_API_KEY" ]; then

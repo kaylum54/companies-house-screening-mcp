@@ -1,7 +1,10 @@
 /**
  * Replaces the hand-authored fixtures with real recorded responses.
  *
- *   COMPANIES_HOUSE_API_KEY=... npm run record-fixtures
+ *   npm run record-fixtures
+ *
+ * COMPANIES_HOUSE_API_KEY comes from the environment or from a .env at the
+ * repository root.
  *
  * Read the resulting diff rather than committing it blind. It is the first
  * honest answer to "is our understanding of this API correct", and anything
@@ -14,6 +17,8 @@
  *   CH_FIXTURE_DISSOLVED_COMPANY=SC000000
  *   CH_FIXTURE_INSOLVENT_COMPANY=00000000
  *
+ * in the same .env.
+ *
  * Without those the script records everything else and says which it skipped.
  */
 
@@ -21,6 +26,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { loadConfig } from '../src/config.js';
+import { loadEnvFile } from '../src/env-file.js';
 import type { ResourceKind } from '../src/http/cache.js';
 import type { QueryParams } from '../src/http/client.js';
 import { CompaniesHouseClient } from '../src/http/client.js';
@@ -73,6 +79,7 @@ const FIXTURES: FixtureSpec[] = [
 const FIXTURE_ROOT = join(import.meta.dirname, '..', 'tests', 'fixtures');
 
 async function main(): Promise<void> {
+  loadEnvFile(join(import.meta.dirname, '..', '.env'));
   const logger = createLogger({ level: 'info' });
   const config = loadConfig();
   // Recording through the cache would happily re-record what is already on

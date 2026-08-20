@@ -14,8 +14,11 @@ servers and nothing else here would catch it.
 
 ## Running it
 
+Put `ANTHROPIC_API_KEY` in a `.env` at the repository root (see
+`.env.example`) or export it in your shell, then:
+
 ```bash
-ANTHROPIC_API_KEY=your_key npm run eval
+npm run eval
 ```
 
 Options:

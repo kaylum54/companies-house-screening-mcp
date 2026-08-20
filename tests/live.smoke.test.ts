@@ -15,11 +15,15 @@ import { loadConfig } from '../src/config.js';
  * Fixtures make the suite fast and deterministic; this test is the price of
  * that, and skipping it is how a fixture-based suite quietly becomes fiction.
  *
- * Run with:
- *   COMPANIES_HOUSE_API_KEY=... npm run test:live
+ * Run with `npm run test:live`, having put COMPANIES_HOUSE_API_KEY in the
+ * environment or in a .env file at the repository root.
+ *
+ * It runs under its own vitest config, so it is never picked up by
+ * `npm test`. When no key is available it skips rather than fails, which is
+ * what makes it safe to leave in a scheduled CI job on a fork with no secret.
  */
 
-const enabled = process.env['CH_LIVE_SMOKE'] === '1' && process.env['COMPANIES_HOUSE_API_KEY'] !== undefined;
+const enabled = process.env['COMPANIES_HOUSE_API_KEY'] !== undefined;
 
 describe.skipIf(!enabled)('live API smoke test', () => {
   const client = () => new CompaniesHouseClient({ config: loadConfig() });

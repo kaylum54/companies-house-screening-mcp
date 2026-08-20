@@ -10,6 +10,7 @@
  */
 
 export { attempt, type Attempt, DEFAULT_CONCURRENCY, mapWithConcurrency } from './concurrency.js';
+export { type EnvFileResult, loadEnvFile } from './env-file.js';
 export {
   buildSnapshot,
   type SectionFailure,

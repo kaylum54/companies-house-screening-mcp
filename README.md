@@ -107,6 +107,7 @@ Only one variable is required.
 | `CH_TIMEOUT_MS` | `10000` | Per request. |
 | `CH_MAX_RETRIES` | `3` | Retries after the first attempt. |
 | `CH_LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug`. Logs go to stderr. |
+| `CH_ENV_FILE` | — | Absolute path to a `.env` for the server to read. Not set by default, deliberately. |
 
 ## Development
 
@@ -130,11 +131,17 @@ nothing configured. Fixtures are currently hand-authored to the documented
 shape — see [tests/fixtures/README.md](tests/fixtures/README.md) for what that
 means and how to replace them with real recordings.
 
-Once you hold a key:
+Once you hold a key, copy `.env.example` to `.env` and fill it in:
 
 ```bash
-COMPANIES_HOUSE_API_KEY=your_key npm run test:live
+npm run test:live
 ```
+
+Every development command reads that file. Anything already set in your shell
+wins over it. The published server does **not** read a `.env` unless
+`CH_ENV_FILE` names one — a host launches it with the host's working
+directory, and picking up whatever `.env` happens to be there is a good way to
+load the wrong credentials.
 
 That test runs nightly in CI. Its job is not to pass — it is to fail loudly the
 week Companies House changes a field, so the fixtures get refreshed before a
@@ -149,7 +156,7 @@ never get chosen, because its description is vague or overlaps another. That
 is the most common real defect in published MCP servers.
 
 ```bash
-ANTHROPIC_API_KEY=your_key npm run eval -- --repeat 3
+npm run eval -- --repeat 3
 ```
 
 Fourteen questions phrased the way a person would phrase them, scored on which
