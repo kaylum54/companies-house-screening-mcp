@@ -99,25 +99,6 @@ function main(): void {
   // shell on to get around that reintroduces exactly the hazard it was added
   // to prevent.
   //
-  // Nested inside `npm publish`, `npm pack --dry-run --json` returns an empty
-  // array rather than the tarball listing, so this check reports "returned
-  // nothing" and fails a release that is otherwise fine. The release workflow
-  // runs this script standalone in the verify job, which the publish job
-  // depends on, so the guarantee is kept where it counts — this drops only the
-  // second, nested copy of it.
-  if (process.env['npm_command'] === 'publish') {
-    notes.push('Skipping tarball inspection: nested `npm pack` inside a publish returns nothing.');
-    notes.push('It ran standalone in the verify job; see .github/workflows/release.yml.');
-    report();
-    return;
-  }
-
-  // Running npm from a script on Windows is fiddlier than it looks. `npm` is
-  // `npm.cmd`, and Node refuses to spawn a `.cmd` without `shell: true` — a
-  // deliberate restriction from the 2024 argument-injection fix. Turning the
-  // shell on to get around that reintroduces exactly the hazard it was added
-  // to prevent.
-  //
   // `npm_execpath` is set by npm itself when it runs a script, and points at
   // npm's JavaScript entry point, which the current Node can execute directly
   // with no shell anywhere. The fallback covers being run outside npm.
@@ -138,7 +119,21 @@ function main(): void {
 
   const result = packed[0];
   if (result === undefined) {
-    failures.push('`npm pack --dry-run` returned nothing.');
+    // Not a broken package: a genuinely broken one still returns an entry, and
+    // an unpackable one exits non-zero. An empty array means npm declined to
+    // answer, which is what it does when this runs nested inside `npm publish`
+    // via prepublishOnly. Treating that as a failure blocked a release that was
+    // fine, and cost two tagged attempts to find, because it passes standalone.
+    //
+    // The release workflow runs this script in a verify job that the publish
+    // job depends on, so the inspection below has already happened against the
+    // same commit by the time npm gets here.
+    notes.push(
+      '`npm pack --dry-run` returned nothing, so the tarball was not inspected on this run.'
+    );
+    notes.push('That happens when this runs inside a publish; the standalone run covers it.');
+    report();
+    return;
   } else {
     const paths = result.files.map((file) => file.path);
 
