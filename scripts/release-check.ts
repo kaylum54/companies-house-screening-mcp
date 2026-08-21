@@ -47,6 +47,21 @@ const check = (condition: boolean, failure: string): void => {
   if (!condition) failures.push(failure);
 };
 
+/** Prints what was found and sets the exit code. Called from every exit path. */
+function report(): void {
+  for (const note of notes) process.stdout.write(`  ${note}\n`);
+
+  if (failures.length > 0) {
+    process.stderr.write(
+      `\nNot ready to publish:\n${failures.map((line) => `  - ${line}\n`).join('')}`
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  process.stdout.write('  Release checks passed.\n');
+}
+
 function main(): void {
   const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as Manifest;
 
@@ -78,6 +93,25 @@ function main(): void {
   // `prepack`, which is what builds dist. Looking for the entry point first
   // would report it missing on a clean checkout.
   //
+  // Running npm from a script on Windows is fiddlier than it looks. `npm` is
+  // `npm.cmd`, and Node refuses to spawn a `.cmd` without `shell: true` — a
+  // deliberate restriction from the 2024 argument-injection fix. Turning the
+  // shell on to get around that reintroduces exactly the hazard it was added
+  // to prevent.
+  //
+  // Nested inside `npm publish`, `npm pack --dry-run --json` returns an empty
+  // array rather than the tarball listing, so this check reports "returned
+  // nothing" and fails a release that is otherwise fine. The release workflow
+  // runs this script standalone in the verify job, which the publish job
+  // depends on, so the guarantee is kept where it counts — this drops only the
+  // second, nested copy of it.
+  if (process.env['npm_command'] === 'publish') {
+    notes.push('Skipping tarball inspection: nested `npm pack` inside a publish returns nothing.');
+    notes.push('It ran standalone in the verify job; see .github/workflows/release.yml.');
+    report();
+    return;
+  }
+
   // Running npm from a script on Windows is fiddlier than it looks. `npm` is
   // `npm.cmd`, and Node refuses to spawn a `.cmd` without `shell: true` — a
   // deliberate restriction from the 2024 argument-injection fix. Turning the
@@ -161,15 +195,7 @@ function main(): void {
   check(existsSync(join(ROOT, 'LICENSE')), 'LICENSE is missing.');
   check(existsSync(join(ROOT, 'README.md')), 'README.md is missing.');
 
-  for (const note of notes) process.stdout.write(`  ${note}\n`);
-
-  if (failures.length > 0) {
-    process.stderr.write(`\nNot ready to publish:\n${failures.map((line) => `  - ${line}\n`).join('')}`);
-    process.exitCode = 1;
-    return;
-  }
-
-  process.stdout.write('  Release checks passed.\n');
+  report();
 }
 
 main();

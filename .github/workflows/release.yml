@@ -78,9 +78,13 @@ jobs:
       # for direct publishing in January 2027.
       #
       # `--provenance` is implied under trusted publishing but stated so the
-      # intent survives someone reading only this line. `prepublishOnly` runs
-      # the full verification again; belt and braces, since this job could in
-      # principle run without the one above.
+      # intent survives someone reading only this line.
+      #
+      # `prepublishOnly` runs the checks again here, minus the tarball
+      # inspection: nested inside a publish, `npm pack --dry-run` returns
+      # nothing and the check fails a release that is fine. The verify job
+      # above runs it in full and this job depends on that, so nothing is
+      # lost.
       - name: Publish to npm
         run: npm publish --provenance --access public
 
