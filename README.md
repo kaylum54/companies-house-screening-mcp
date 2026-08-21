@@ -5,9 +5,13 @@ register](https://developer.company-information.service.gov.uk/) from an MCP
 host. Batch screening of a supplier list, one-call company snapshots, and
 factual signals rather than a risk score.
 
-> **Status: phase 6 of 6.** Eleven tools, documentation generated from the
-> running server and gated in CI, a tool-selection eval, and fixtures recorded
-> from the live API. Release pipeline built; not yet published.
+[![npm](https://img.shields.io/npm/v/companies-house-screening-mcp)](https://www.npmjs.com/package/companies-house-screening-mcp)
+[![CI](https://github.com/kaylum54/companies-house-screening-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/kaylum54/companies-house-screening-mcp/actions/workflows/ci.yml)
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
+
+Published with [npm provenance](https://docs.npmjs.com/generating-provenance-statements)
+and an attested container image, so the artefact is traceable to the commit
+that produced it.
 
 ## There is another one, and you should know about it
 
@@ -63,7 +67,7 @@ Or with Docker — note `-i` and no `-t`, because a TTY corrupts the JSON-RPC
 framing:
 
 ```bash
-docker run --rm -i -e COMPANIES_HOUSE_API_KEY=your_key ghcr.io/OWNER/companies-house-screening-mcp
+docker run --rm -i -e COMPANIES_HOUSE_API_KEY=your_key ghcr.io/kaylum54/companies-house-screening-mcp
 ```
 
 Get a free API key at
@@ -71,6 +75,78 @@ Get a free API key at
 register, create an application against the **Live** environment, and create a
 key of type **REST** (a stream key authenticates the same way but is for a
 different service).
+
+## What it is for
+
+Two cases it was actually built around. More in
+[docs/recipes](docs/recipes/README.md), which are executed on every build.
+
+### Screening a supplier list
+
+The quarterly onboarding list lands: forty new suppliers, first invoices due in
+a fortnight. One call.
+
+```json
+{
+  "tool": "screen_companies",
+  "arguments": { "companies": ["04138203", "Bramble Facilities", "SC443221"] }
+}
+```
+
+One row per company with its signal codes. Skip the rows carrying nothing; open
+the ones with `accounts_overdue` or `outstanding_charges` using
+`company_snapshot`.
+
+The behaviour that earns its place is what happens to the awkward entries.
+"Bramble Facilities" matches several companies, so it comes back under
+`unresolved` **with its candidates** rather than resolved to a best guess. And
+if the rate limit runs out at company 31, the remaining nine come back under
+`not_screened` with the reset time — because a table that quietly stops at 31
+looks exactly like a table where nine companies were clean.
+
+Officers are excluded by default (one extra request per company), so the
+officer-based signals cannot appear unless you ask for them. `sections_used`
+says so on every response.
+
+### Verifying an invoice before paying it
+
+A first invoice from an unfamiliar supplier, or an email asking to change bank
+details on an existing account.
+
+```json
+{
+  "tool": "company_snapshot",
+  "arguments": { "company_number": "04138203" }
+}
+```
+
+Four checks in one response: the company exists, `status` is `active`,
+`registered_office_address` matches what is printed on the invoice, and
+`age_years` plus the `incorporated_within_last_year` signal say whether this
+counterparty existed a month ago. The address is flattened to one line
+specifically so it can be compared without reassembling nine fields.
+
+**This is the case the no-names rule is for.** Invoice-redirection fraud works
+because the paperwork looks right. If a tool accepts a company *name* and a
+model invents a number to look it up, you get a confident "verified — active,
+good standing" about **a different real company**, with real directors and real
+filings, and nothing anywhere flags it. You would have used a verification step
+to approve the fraud.
+
+So passing a name is refused before any request is made:
+
+```json
+{
+  "error": {
+    "code": "INVALID_COMPANY_NUMBER",
+    "message": "\"Royal Mail Group Limited\" looks like a company name, not a company number.",
+    "next_step": "Call find_company with this name to get candidate company numbers, then call this tool again with the number of the right one. Do not guess a number: a plausible wrong company number returns a real company and nothing will flag it as the wrong one."
+  }
+}
+```
+
+What it cannot tell you: whether a bank account belongs to that company. This
+raises or lowers suspicion; it does not settle it.
 
 ## Why another API wrapper
 
@@ -263,7 +339,7 @@ read-only.
 | 3 | `company_snapshot` and `screen_companies` | done |
 | 4 | Generated tool docs with a CI drift check, five worked recipes | done |
 | 5 | Tool-selection eval suite, live smoke test in CI, remaining ADRs | done |
-| 6 | npm and Docker release with provenance | pipeline built, not yet published |
+| 6 | npm and Docker release with provenance | done — published 2026-08-20 |
 
 ## Licence
 
