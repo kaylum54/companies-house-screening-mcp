@@ -43,8 +43,15 @@ export interface ServerRateLimitHint {
   recordedAtMs: number;
 }
 
-/** Which constraint stopped a request, when one did. */
-export type BudgetBound = 'global' | 'client' | 'penalty';
+/**
+ * Which constraint stopped a request, when one did.
+ *
+ * `unavailable` is not a constraint at all — it means the window could not be
+ * consulted. It is distinguished because telling a caller they have hit a rate
+ * limit, when in fact the limiter is down, sends them away to wait for a reset
+ * that has nothing to do with their problem.
+ */
+export type BudgetBound = 'global' | 'client' | 'penalty' | 'unavailable';
 
 export interface BudgetOutcome {
   granted: boolean;
@@ -102,6 +109,29 @@ export interface BudgetState {
   serverRemaining?: number | undefined;
   serverResetAt?: number | undefined;
   serverRecordedAt?: number | undefined;
+}
+
+/**
+ * Validates persisted state before it is loaded.
+ *
+ * Durable Object storage outlives any single deploy, exactly as a KV namespace
+ * does — and cache entries get `isCacheEntry` for precisely this reason. An
+ * unvalidated load throws inside `blockConcurrencyWhile`, and because the bad
+ * value stays in storage the credential's window is then refused forever
+ * rather than degrading. Ignoring an unreadable state costs one window's worth
+ * of history; trusting it costs the window.
+ */
+export function isBudgetState(value: unknown): value is BudgetState {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    Array.isArray(candidate['timestamps']) &&
+    candidate['timestamps'].every((entry) => typeof entry === 'number') &&
+    typeof candidate['clients'] === 'object' &&
+    candidate['clients'] !== null &&
+    !Array.isArray(candidate['clients']) &&
+    typeof candidate['blockedUntil'] === 'number'
+  );
 }
 
 export class SlidingWindowBudget {

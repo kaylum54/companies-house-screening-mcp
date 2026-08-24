@@ -240,6 +240,68 @@ describe('DurableObjectBudgetStore', () => {
     expect(outcome.retryInMs).toBeGreaterThan(0);
   });
 
+  it('does not fail a successful request because a hint could not be recorded', async () => {
+    // `observe` runs after every single Companies House response. If a Durable
+    // Object hiccup threw here, a 200 the upstream already answered would be
+    // turned into a failed request over a correction we did not need.
+    const store = new DurableObjectBudgetStore({
+      namespace: {
+        idFromName: (name) => ({ toString: () => name }),
+        get: () => ({
+          fetch: async () => {
+            throw new Error('durable object unreachable');
+          }
+        })
+      },
+      budgetName: 'key-pooled',
+      budgetOptions: OPTIONS
+    });
+
+    await expect(store.observe({ remaining: 5, recordedAtMs: 1000 })).resolves.toBeUndefined();
+    await expect(store.penalise(2000)).resolves.toBeUndefined();
+  });
+
+  it('reports an unreachable window as unavailable, not as a rate limit', async () => {
+    // Telling a caller they have exhausted a 600-request budget, when in fact
+    // the coordinator is down, is a wrong diagnosis that sends them away to
+    // wait for a reset with nothing to do with their problem.
+    const store = new DurableObjectBudgetStore({
+      namespace: {
+        idFromName: (name) => ({ toString: () => name }),
+        get: () => ({
+          fetch: async () => {
+            throw new Error('durable object unreachable');
+          }
+        })
+      },
+      budgetName: 'key-pooled',
+      budgetOptions: OPTIONS
+    });
+
+    expect((await store.acquire('a', 1000)).boundBy).toBe('unavailable');
+  });
+
+  it('ignores persisted state it cannot read rather than refusing forever', async () => {
+    // Durable Object storage outlives any deploy. Throwing on a value written
+    // by an older shape of this code would refuse that credential's window
+    // permanently, because the bad value stays in storage.
+    const storage = new Map<string, unknown>([['budget', { unexpected: true }]]);
+    const state: DurableObjectState = {
+      storage: {
+        get: async <T>(key: string): Promise<T | undefined> => storage.get(key) as T | undefined,
+        put: async <T>(key: string, value: T): Promise<void> => {
+          storage.set(key, JSON.parse(JSON.stringify(value)) as unknown);
+        }
+      },
+      blockConcurrencyWhile: async <T>(callback: () => Promise<T>): Promise<T> => callback()
+    };
+
+    const object = new BudgetDurableObject(state);
+    const outcome = await call(object, { op: 'acquire', clientId: 'a', now: 1000, options: OPTIONS });
+
+    expect(outcome.granted).toBe(true);
+  });
+
   it('can be told to fail open, for an operator who would rather risk the key', async () => {
     const store = new DurableObjectBudgetStore({
       namespace: {

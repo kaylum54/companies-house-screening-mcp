@@ -5,6 +5,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { FakeClock } from '../src/clock.js';
 import { createMcpHttpServer } from '../src/node/http-server.js';
 import { silentLogger } from '../src/telemetry/logger.js';
 import { fakeFetchRouter } from './helpers/fake-fetch.js';
@@ -42,13 +43,17 @@ interface Started {
 
 const running: Server[] = [];
 
-async function start(overrides: Parameters<typeof testConfig>[0] = {}): Promise<Started> {
+async function start(
+  overrides: Parameters<typeof testConfig>[0] = {},
+  clock?: FakeClock
+): Promise<Started> {
   const fake = routes();
   const server = createMcpHttpServer({
     config: testConfig({ cacheEnabled: false, ...overrides }),
     logger: silentLogger,
     version: '9.9.9-test',
-    fetchImpl: fake.fetch
+    fetchImpl: fake.fetch,
+    ...(clock === undefined ? {} : { clock })
   });
 
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -211,6 +216,23 @@ describe('HTTP transport — sessions', () => {
 });
 
 describe('HTTP transport — session lifetime', () => {
+  it('sweeps an idle session without waiting for a new client to arrive', async () => {
+    // The sweep used to run only when a new client initialized, so idle
+    // sessions were reclaimed exactly when the server was busy and never when
+    // it was quiet — the opposite of what CH_SESSION_IDLE_MS promises.
+    const clock = new FakeClock(0);
+    const { url } = await start({ sessionIdleMs: 60_000 }, clock);
+
+    const client = await connect(url);
+    await expect(client.listTools()).resolves.toBeDefined();
+
+    clock.advance(120_000);
+    // Any request at all drives the sweep; this one touches no session.
+    await fetch(url.replace('/mcp', '/health'));
+
+    await expect(client.listTools()).rejects.toThrow();
+  });
+
   it('evicts the least recently used session once the cap is reached', async () => {
     // Opening a session costs nothing and anyone can. Without a cap, a stream
     // of initialize posts retains a server and a transport apiece forever.

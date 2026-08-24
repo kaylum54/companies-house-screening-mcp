@@ -52,6 +52,8 @@ export interface RunningHttpServer {
 }
 
 const MCP_PATH = '/mcp';
+/** How often the idle sweep may actually run, however many requests arrive. */
+const SWEEP_INTERVAL_MS = 30_000;
 const HEALTH_PATH = '/health';
 const SESSION_HEADER = 'mcp-session-id';
 
@@ -165,6 +167,22 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     void entry.session.server.close().catch(() => undefined);
   }
 
+  let lastSweep = 0;
+
+  /**
+   * Sweeping was previously driven only by a new client initializing, which
+   * meant idle sessions were reclaimed exactly when the server was busy and
+   * never when it was quiet — the opposite of what the setting promises. It
+   * now runs on any request, throttled so a busy server is not walking the
+   * map on every one, and without a timer that would keep the process alive.
+   */
+  function maybeSweep(): void {
+    const now = clock.now();
+    if (now - lastSweep < SWEEP_INTERVAL_MS) return;
+    lastSweep = now;
+    sweep();
+  }
+
   function sweep(): void {
     const cutoff = clock.now() - config.sessionIdleMs;
     for (const [id, entry] of sessions) {
@@ -199,6 +217,8 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
   });
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    maybeSweep();
+
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
     if (url.pathname === HEALTH_PATH) {

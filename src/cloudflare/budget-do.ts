@@ -1,5 +1,5 @@
 import type { BudgetOutcome, BudgetState, ServerRateLimitHint } from '../http/budget.js';
-import { SlidingWindowBudget } from '../http/budget.js';
+import { isBudgetState, SlidingWindowBudget } from '../http/budget.js';
 import type { DurableObjectState } from './types.js';
 
 /**
@@ -80,8 +80,12 @@ export class BudgetDurableObject {
     const budget = new SlidingWindowBudget(options);
     try {
       await this.#state.blockConcurrencyWhile(async () => {
-        const stored = await this.#state.storage.get<BudgetState>(STATE_KEY);
-        if (stored !== undefined) budget.loadState(stored);
+        const stored = await this.#state.storage.get<unknown>(STATE_KEY);
+        // Written by a possibly older shape of this code, and it outlives any
+        // single deploy. An unreadable value is dropped rather than loaded:
+        // starting from an empty window loses this window's history, whereas
+        // throwing here would refuse the credential permanently.
+        if (isBudgetState(stored)) budget.loadState(stored);
       });
     } catch (error) {
       // Storage refused. The window is then unknown rather than empty, so the

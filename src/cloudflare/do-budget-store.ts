@@ -63,12 +63,27 @@ export class DurableObjectBudgetStore implements BudgetStore {
     return this.#call({ op: 'peek', clientId, now });
   }
 
+  /**
+   * Both of these are best-effort corrections applied *after* a successful
+   * Companies House response, so a failure here must stay here. `observe` runs
+   * on every single response; letting it throw would turn a Durable Object
+   * hiccup into a failed request that the upstream had already answered.
+   */
   async penalise(resetAtMs: number): Promise<void> {
-    await this.#send({ op: 'penalise', resetAtMs });
+    try {
+      await this.#send({ op: 'penalise', resetAtMs });
+    } catch {
+      // The window keeps its own count; a missed penalty is a smaller problem
+      // than a failed request that already succeeded.
+    }
   }
 
   async observe(hint: ServerRateLimitHint): Promise<void> {
-    await this.#send({ op: 'observe', hint });
+    try {
+      await this.#send({ op: 'observe', hint });
+    } catch {
+      // As above. The server hint is a correction, never the source of truth.
+    }
   }
 
   async #call(operation: Record<string, unknown>): Promise<BudgetOutcome> {
@@ -108,7 +123,7 @@ export class DurableObjectBudgetStore implements BudgetStore {
       remaining: 0,
       retryInMs: 1_000,
       limit: 0,
-      boundBy: 'global'
+      boundBy: 'unavailable'
     };
   }
 }

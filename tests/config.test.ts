@@ -149,3 +149,22 @@ describe('loadEnvFile', () => {
     });
   });
 });
+
+describe('loadConfig — CH_CACHE_DIR', () => {
+  it('treats an empty value as unset rather than as a fatal error', () => {
+    // Trimming used to happen inside `defaultCacheDir`. Losing it turned an
+    // empty variable — which a shell produces easily — into exit code 78.
+    const config = loadConfig({ COMPANIES_HOUSE_API_KEY: 'k', CH_CACHE_DIR: '' });
+    expect(config.cacheDir).toBeUndefined();
+  });
+
+  it('treats whitespace as unset rather than as a directory named "   "', () => {
+    const config = loadConfig({ COMPANIES_HOUSE_API_KEY: 'k', CH_CACHE_DIR: '   ' });
+    expect(config.cacheDir).toBeUndefined();
+  });
+
+  it('keeps a real path, trimmed', () => {
+    const config = loadConfig({ COMPANIES_HOUSE_API_KEY: 'k', CH_CACHE_DIR: ' /var/cache ' });
+    expect(config.cacheDir).toBe('/var/cache');
+  });
+});

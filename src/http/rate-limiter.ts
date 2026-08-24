@@ -121,6 +121,11 @@ export class RateLimiter {
       if (outcome.granted) return;
       last = outcome;
 
+      // A window that cannot be consulted will not become consultable by being
+      // asked sixty more times. Fail now, with a reason that says so, rather
+      // than after a minute of round trips to something that is down.
+      if (outcome.boundBy === 'unavailable') throw rateLimited(outcome);
+
       const now = this.#clock.now();
       if (now + outcome.retryInMs > deadline) throw rateLimited(outcome);
 
@@ -218,6 +223,21 @@ export class RateLimiter {
 
 function rateLimited(outcome: BudgetOutcome): CompaniesHouseError {
   const seconds = Math.ceil(outcome.retryInMs / 1000);
+
+  if (outcome.boundBy === 'unavailable') {
+    // Deliberately not phrased as a rate limit. The caller has not exceeded
+    // anything, and sending them away to wait for a window reset would be a
+    // wrong diagnosis of somebody else's outage.
+    return new CompaniesHouseError({
+      code: 'UPSTREAM_UNAVAILABLE',
+      message: 'The rate-limit coordinator could not be reached, so no request could be safely made.',
+      nextStep:
+        'This is a fault in this server, not in your request or your budget. Retry shortly; if it persists, check the deployment.',
+      retryAfterMs: outcome.retryInMs,
+      retryable: true
+    });
+  }
+
   const cause =
     outcome.boundBy === 'client'
       ? 'This session has used its share of the shared Companies House budget for the current five-minute window.'

@@ -154,7 +154,14 @@ export class CompaniesHouseClient {
     // and an ignored, empty password. The trailing colon is required.
     this.#authorization = `Basic ${toBase64(`${config.apiKey}:`)}`;
     this.#clientId = options.clientId ?? DEFAULT_CLIENT_ID;
-    this.#lastRateLimit = this.#limiter.lastKnown;
+    // Seeded from the ceiling rather than the shared limiter's cached value:
+    // this session has spent nothing, and inheriting the previous caller's
+    // figure is the same cross-session leak the field exists to prevent.
+    this.#lastRateLimit = {
+      remaining: this.#limiter.effectiveLimit,
+      resetInMs: 0,
+      limit: this.#limiter.effectiveLimit
+    };
   }
 
   /**

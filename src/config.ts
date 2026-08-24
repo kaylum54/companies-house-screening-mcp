@@ -137,6 +137,13 @@ const ENV_NAMES: Record<string, string> = {
   maxWaitMs: 'CH_MAX_WAIT_MS'
 };
 
+/** Treats an unset variable and a variable set to whitespace as the same thing. */
+function blankToUndefined(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed === '' ? undefined : trimmed;
+}
+
 export class ConfigError extends Error {
   readonly issues: string[];
 
@@ -162,7 +169,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     rateWindowMs: env['CH_RATE_WINDOW_MS'],
     rateSafetyMargin: env['CH_RATE_SAFETY_MARGIN'],
     cacheEnabled: env['CH_CACHE_ENABLED'],
-    cacheDir: env['CH_CACHE_DIR'],
+    // Blank means "not set", not "use the empty string". Trimming used to
+    // happen inside `defaultCacheDir`; losing it here turned `CH_CACHE_DIR=`
+    // into a fatal config error and `CH_CACHE_DIR='   '` into a directory
+    // literally named three spaces.
+    cacheDir: blankToUndefined(env['CH_CACHE_DIR']),
     timeoutMs: env['CH_TIMEOUT_MS'],
     maxRetries: env['CH_MAX_RETRIES'],
     retryBaseMs: env['CH_RETRY_BASE_MS'],

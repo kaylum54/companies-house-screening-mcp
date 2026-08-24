@@ -129,6 +129,31 @@ All notable changes to this project are recorded here. The format follows
   occupied port bypassed the entry point's error handling entirely; it now
   reports the port and exits with the config code.
 
+### Fixed — found by the third review pass
+
+- **A Durable Object hiccup could fail a request the upstream had already
+  answered.** `observe` runs after every Companies House response and was
+  unguarded, so a coordinator blip turned a successful 200 into a thrown error.
+  Both `observe` and `penalise` are best-effort corrections and now stay that
+  way.
+- **An unreachable limiter reported "you hit the rate limit."** It now reports
+  `UPSTREAM_UNAVAILABLE` and fails immediately, instead of spending the full
+  wait window retrying something that is down and then blaming the caller's
+  budget.
+- **Idle sessions were never actually swept.** The sweep ran only when a new
+  client initialized, so `CH_SESSION_IDLE_MS` reclaimed sessions when the
+  server was busy and never when it was quiet. It now runs on any request,
+  throttled.
+- **`CH_CACHE_DIR=` became a fatal config error**, and `CH_CACHE_DIR='   '` a
+  directory named three spaces. Trimming used to happen inside
+  `defaultCacheDir` and was lost when it moved; blank now means unset again.
+- **Persisted Durable Object state is validated before loading.** It outlives
+  any deploy, exactly as a KV namespace does, and an unreadable value threw
+  inside `blockConcurrencyWhile` — permanently refusing that credential's
+  window, because the bad value stayed in storage.
+- **A new session's first cache-hit response reported the previous caller's
+  budget.** The per-session figure was seeded from the shared limiter.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside
