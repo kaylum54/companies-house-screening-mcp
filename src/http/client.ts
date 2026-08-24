@@ -147,7 +147,10 @@ export class CompaniesHouseClient {
         windowMs: config.rateWindowMs,
         safetyMargin: config.rateSafetyMargin,
         clock: this.#clock,
-        random: this.#random
+        random: this.#random,
+        // Unset means wait, which is stdio's long-standing behaviour and the
+        // right one for a single local caller. Servers pass a ceiling.
+        ...(config.maxWaitMs === undefined ? {} : { maxWaitMs: config.maxWaitMs })
       });
 
     // Companies House uses HTTP basic auth with the API key as the username

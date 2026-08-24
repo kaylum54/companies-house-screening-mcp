@@ -259,6 +259,35 @@ describe('SlidingWindowBudget — retry times', () => {
     expect(budget.peek('a', 2000).remaining).toBe(100);
   });
 
+  it('quotes how long a client actually has to wait for its share', () => {
+    // The client's oldest timestamp expiring frees exactly one slot, and a
+    // client held to its reservation is usually many slots over. Quoting that
+    // gave a wait comfortably too short — printed verbatim in
+    // screen_companies' skipped rows, and used to decide whether to sleep or
+    // give up.
+    //
+    // A client only ends up far over its reservation by bursting while the
+    // window was quiet and then being caught by arrivals — which is exactly
+    // the situation the work-conserving rule creates, so it is the normal case
+    // rather than a contrived one.
+    const budget = build({ clientReservation: 10 });
+
+    // Quiet window: this caller bursts well past its share.
+    for (let i = 0; i < 40; i += 1) budget.acquire('heavy', 1000 + i * 10);
+    // Then twenty others arrive, closing bursting behind it.
+    for (let j = 0; j < 20; j += 1) budget.acquire(`other-${j}`, 1400 + j * 10);
+
+    const outcome = budget.peek('heavy', 2000);
+    expect(outcome.granted).toBe(false);
+    expect(outcome.boundBy).toBe('client');
+
+    // Thirty-one of its own requests have to age out, not one. Quoting the
+    // single oldest was five minutes of understatement.
+    const oldestOnly = 1000 + WINDOW - 2000;
+    expect(outcome.retryInMs).toBeGreaterThan(oldestOnly);
+    expect(outcome.retryInMs).toBe(1300 + WINDOW - 2000);
+  });
+
   it('does not pad a short server hold with the local window', () => {
     // A five-second hold from the server, with hundreds of local slots free.
     // Folding in the local oldest-entry expiry reported a whole window, so the

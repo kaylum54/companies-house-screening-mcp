@@ -155,7 +155,7 @@ Everything is environment variables. Only the first is required.
 | `CH_TRUST_PROXY_HEADERS` | `false` | Believe `X-Forwarded-For` / `CF-Connecting-IP` when identifying callers. Turn on **only** behind a proxy you control |
 | `CH_MAX_SESSIONS` | `1000` | Open sessions kept before the least recently used is evicted |
 | `CH_SESSION_IDLE_MS` | `1800000` | How long a session may idle before being swept |
-| `CH_MAX_WAIT_MS` | `60000` | How long a request waits for budget before `RATE_LIMITED` |
+| `CH_MAX_WAIT_MS` | `60000` (hosted only) | How long a request waits for budget before `RATE_LIMITED`. Unset on stdio, which waits for the window |
 | `CH_RATE_LIMIT` | `600` | Lower it if the key is shared with something else |
 | `CH_CACHE_ENABLED` | `true` | |
 | `CH_LOG_LEVEL` | `info` | |

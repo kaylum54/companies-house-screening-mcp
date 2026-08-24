@@ -267,6 +267,20 @@ All notable changes to this project are recorded here. The format follows
   while the default provider admits everyone, but a 401 without it leaves an
   MCP client nothing to discover, which is the OAuth path the seam exists for.
 
+### Fixed — found by the ninth review pass
+
+- **stdio no longer inherits the hosted server's give-up deadline.** Adding a
+  wait ceiling for HTTP silently applied it to the local server too, so an
+  over-budget call now failed immediately where it used to wait for the window.
+  The ceiling belongs to a server — where a hung request holds a connection and
+  the client times out anyway — and the entry points now supply it. `stdio`
+  waits, as it always has, and `CH_MAX_WAIT_MS` overrides either.
+- **A client refused by its own share was told to come back far too early.**
+  The retry time quoted the client's oldest request expiring, which frees one
+  slot, while a client that burst past its reservation before the window filled
+  needs many. It is now derived from the admission rule: whichever of "enough
+  of mine age out" or "the window reopens for bursting" happens first.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

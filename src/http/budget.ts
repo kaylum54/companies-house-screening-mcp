@@ -482,11 +482,42 @@ export class SlidingWindowBudget {
     return Math.max(localMs, serverMs);
   }
 
+  /**
+   * When a client refused by its own share may next proceed.
+   *
+   * The oldest timestamp expiring frees exactly one slot, and a client held to
+   * its reservation is usually many slots over — so quoting it reports a wait
+   * that is comfortably too short, and `screen_companies` prints it in every
+   * skipped row. The admission rule says such a client proceeds once EITHER
+   * its own usage drops below its reservation OR the window drops below its
+   * burst limit, so the honest answer is whichever of those happens first, and
+   * each is the expiry of a specific timestamp rather than the earliest one.
+   */
   #clientRetryInMs(clientId: string, now: number): number {
+    const reservation = this.#clientReservation;
     const stamps = this.#clients.get(clientId);
-    const oldest = stamps?.[0];
-    if (oldest === undefined) return this.#globalRetryInMs(now);
-    return Math.max(oldest + this.#windowMs - now, 1);
+    if (reservation === undefined || stamps === undefined || stamps.length === 0) {
+      return this.#globalRetryInMs(now);
+    }
+
+    const expiryOf = (list: number[], index: number): number | undefined => {
+      const stamp = list[index];
+      return stamp === undefined ? undefined : Math.max(stamp + this.#windowMs - now, 1);
+    };
+
+    // Enough of this client's own requests must age out to drop it back under
+    // its reservation.
+    const ownWait = expiryOf(stamps, stamps.length - reservation);
+
+    // ...or enough of anyone's must age out to reopen bursting.
+    const burstLimit = this.#burstLimitFor(clientId);
+    const globalWait = expiryOf(this.#timestamps, this.#timestamps.length - burstLimit);
+
+    const candidates = [ownWait, globalWait].filter(
+      (value): value is number => value !== undefined
+    );
+    if (candidates.length === 0) return this.#globalRetryInMs(now);
+    return Math.min(...candidates);
   }
 
   #prune(now: number): void {

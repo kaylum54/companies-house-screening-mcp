@@ -7,7 +7,7 @@ import type { Config } from '../config.js';
 import { ConfigError, loadConfig } from '../config.js';
 import { ResponseCache } from '../http/cache.js';
 import { CompaniesHouseClient } from '../http/client.js';
-import { RateLimiter } from '../http/rate-limiter.js';
+import { RateLimiter, SERVER_MAX_WAIT_MS } from '../http/rate-limiter.js';
 import { createLogger } from '../telemetry/logger.js';
 import { fingerprint, NoAuthProvider } from '../transport/identity.js';
 import type { AuthProvider } from '../transport/identity.js';
@@ -163,7 +163,7 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
       cache,
       limiter: new RateLimiter({
         clock,
-        maxWaitMs: config.maxWaitMs,
+        maxWaitMs: config.maxWaitMs ?? SERVER_MAX_WAIT_MS,
         // Passed explicitly: without them the limiter falls back to the
         // documented defaults for its reported ceiling, and a deployment that
         // set CH_RATE_LIMIT would be told a number that was never true.

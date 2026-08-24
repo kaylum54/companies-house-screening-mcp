@@ -190,3 +190,43 @@ describe('RateLimiter — exhausting the retry bound', () => {
     });
   });
 });
+
+describe('RateLimiter — the wait ceiling', () => {
+  it('waits for the window by default, as the stdio server always has', async () => {
+    // Adding a ceiling for the hosted server must not have silently changed
+    // what a local install does. stdio has one caller, no connection to hold
+    // open, and waiting out the window is the behaviour that shipped.
+    const clock = new FakeClock(0);
+    const limiter = new RateLimiter({
+      limit: 1,
+      windowMs: 300_000,
+      safetyMargin: 1,
+      clock,
+      jitterMs: 0,
+      random: () => 0
+    });
+
+    await limiter.acquire();
+
+    // The second acquisition waits rather than throwing at t=0.
+    const pending = limiter.acquire();
+    await expect(pending).resolves.toBeDefined();
+    expect(clock.now()).toBeGreaterThanOrEqual(300_000);
+  });
+
+  it('gives up once a ceiling is set, so a server does not hang a connection', async () => {
+    const clock = new FakeClock(0);
+    const limiter = new RateLimiter({
+      limit: 1,
+      windowMs: 300_000,
+      safetyMargin: 1,
+      clock,
+      jitterMs: 0,
+      random: () => 0,
+      maxWaitMs: 1_000
+    });
+
+    await limiter.acquire();
+    await expect(limiter.acquire()).rejects.toMatchObject({ code: 'RATE_LIMITED' });
+  });
+});

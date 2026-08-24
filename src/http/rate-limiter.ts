@@ -54,6 +54,9 @@ export interface RateLimiterOptions extends SlidingWindowBudgetOptions {
    * MCP client times out, the user sees a hang rather than an explanation, and
    * the request occupies a connection the whole time. Failing with a real
    * retry time is more useful than succeeding eventually.
+   *
+   * Defaults to no ceiling, so that adding this option did not silently change
+   * what the stdio server had always done.
    */
   maxWaitMs?: number;
 }
@@ -80,7 +83,11 @@ export interface RateLimitSnapshot {
 /** Identity used when a caller does not distinguish itself. Correct for stdio. */
 export const DEFAULT_CLIENT_ID = 'default';
 
-const DEFAULT_MAX_WAIT_MS = 60_000;
+/** No ceiling: waiting is the pre-existing stdio behaviour. Servers set one. */
+const DEFAULT_MAX_WAIT_MS = Number.POSITIVE_INFINITY;
+
+/** What the hosted entry points use when the operator has not chosen. */
+export const SERVER_MAX_WAIT_MS = 60_000;
 
 export class RateLimiter {
   readonly #clock: Clock;

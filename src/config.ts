@@ -100,8 +100,16 @@ export const configSchema = z.object({
   maxSessions: positiveInt('CH_MAX_SESSIONS').default(1_000),
   /** How long a session may sit idle before it is swept. */
   sessionIdleMs: positiveInt('CH_SESSION_IDLE_MS').default(1_800_000),
-  /** How long a request will wait for budget before failing with RATE_LIMITED. */
-  maxWaitMs: positiveInt('CH_MAX_WAIT_MS').default(60_000)
+  /**
+   * How long a request will wait for budget before failing with RATE_LIMITED.
+   *
+   * Deliberately undefaulted. A ceiling is right for a server, where a hung
+   * request holds a connection and the client times out anyway, and wrong for
+   * stdio, where the previous behaviour was to wait for the window and there
+   * is one caller to keep waiting. The HTTP entry points supply the server
+   * answer; stdio leaves it unset and waits, as it always did.
+   */
+  maxWaitMs: positiveInt('CH_MAX_WAIT_MS').optional()
 });
 
 export type Config = z.infer<typeof configSchema>;

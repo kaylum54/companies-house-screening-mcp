@@ -11,7 +11,7 @@ import type { BudgetStore } from '../http/budget-store.js';
 import { MemoryBudgetStore } from '../http/budget-store.js';
 import { ResponseCache } from '../http/cache.js';
 import { CompaniesHouseClient } from '../http/client.js';
-import { RateLimiter } from '../http/rate-limiter.js';
+import { RateLimiter, SERVER_MAX_WAIT_MS } from '../http/rate-limiter.js';
 import type { Logger } from '../telemetry/logger.js';
 import type { AuthProvider, ClientIdentity } from '../transport/identity.js';
 import { describe, NoAuthProvider } from '../transport/identity.js';
@@ -78,7 +78,7 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     cache,
     limiter: new RateLimiter({
       clock,
-      maxWaitMs: config.maxWaitMs,
+      maxWaitMs: config.maxWaitMs ?? SERVER_MAX_WAIT_MS,
       store: createPooledBudgetStore(config)
     }),
     ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl })
