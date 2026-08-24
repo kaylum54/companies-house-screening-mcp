@@ -7,7 +7,7 @@ import { silentLogger } from '../telemetry/logger.js';
 import type { CacheEntry, CacheStore, ResourceKind } from './cache.js';
 import { DEFAULT_TTLS, ResponseCache } from './cache.js';
 import type { RateLimitSnapshot } from './rate-limiter.js';
-import { RateLimiter } from './rate-limiter.js';
+import { DEFAULT_CLIENT_ID, RateLimiter } from './rate-limiter.js';
 
 /**
  * The HTTP layer.
@@ -89,6 +89,14 @@ export interface CompaniesHouseClientOptions {
   /** Injectable for tests. Defaults to global fetch. */
   fetchImpl?: typeof fetch;
   random?: () => number;
+  /**
+   * Identity this client spends the budget as.
+   *
+   * Only meaningful when the budget enforces fair shares, which is to say on a
+   * shared HTTP deployment. stdio leaves it at the default because there is
+   * one caller and nobody to be fair to. See `withClientId`.
+   */
+  clientId?: string | undefined;
 }
 
 /** Statuses worth trying again. Everything else is the caller's problem. */
@@ -103,6 +111,7 @@ export class CompaniesHouseClient {
   readonly #fetch: typeof fetch;
   readonly #random: () => number;
   readonly #authorization: string;
+  readonly #clientId: string;
 
   constructor(options: CompaniesHouseClientOptions) {
     const { config } = options;
@@ -134,10 +143,49 @@ export class CompaniesHouseClient {
     // Companies House uses HTTP basic auth with the API key as the username
     // and an ignored, empty password. The trailing colon is required.
     this.#authorization = `Basic ${toBase64(`${config.apiKey}:`)}`;
+    this.#clientId = options.clientId ?? DEFAULT_CLIENT_ID;
   }
 
+  /**
+   * A view of this client that spends the budget as `clientId`.
+   *
+   * Deliberately shares the cache and the limiter with the original rather
+   * than building its own. Those two are the whole point of a hosted
+   * deployment: one warm cache serving every session, and one window that all
+   * of them are counted against. What varies per session is only *whose share*
+   * a request comes out of, which is a single field. See ADR 13.
+   */
+  withClientId(clientId: string): CompaniesHouseClient {
+    return new CompaniesHouseClient({
+      config: this.#config,
+      logger: this.#logger,
+      clock: this.#clock,
+      cache: this.#cache,
+      limiter: this.#limiter,
+      fetchImpl: this.#fetch,
+      random: this.#random,
+      clientId
+    });
+  }
+
+  /**
+   * Last budget seen. Cheap, slightly behind on a shared deployment, and
+   * correct for reporting what a call just cost.
+   */
   get rateLimit(): RateLimitSnapshot {
-    return this.#limiter.snapshot();
+    return this.#limiter.lastKnown;
+  }
+
+  /**
+   * Authoritative budget for `clientId`, at the cost of a round trip.
+   *
+   * Anything that *plans* against the budget must use this rather than the
+   * cached getter. On a shared server the cached number can be an entire
+   * window out of date, and `screen_companies` sizing a batch against a stale
+   * figure is exactly the silently-short table ADR 8 forbids.
+   */
+  async budget(clientId?: string): Promise<RateLimitSnapshot> {
+    return this.#limiter.snapshot(clientId ?? this.#clientId);
   }
 
   get cache(): ResponseCache {
@@ -165,7 +213,7 @@ export class CompaniesHouseClient {
           attempts: 0,
           durationMs: this.#clock.now() - startedAt,
           ageMs: this.#clock.now() - lookup.entry.storedAt,
-          rateLimit: this.#limiter.snapshot()
+          rateLimit: this.#limiter.lastKnown
         }
       };
     }
@@ -203,7 +251,7 @@ export class CompaniesHouseClient {
             attempts: this.#config.maxRetries + 1,
             durationMs: this.#clock.now() - startedAt,
             ageMs: this.#clock.now() - staleEntry.storedAt,
-            rateLimit: this.#limiter.snapshot()
+            rateLimit: this.#limiter.lastKnown
           }
         };
       }
@@ -230,7 +278,7 @@ export class CompaniesHouseClient {
         await this.#clock.sleep(this.#backoffMs(attempt, lastError));
       }
 
-      await this.#limiter.acquire();
+      await this.#limiter.acquire(this.#clientId);
 
       let response: Response;
       try {
@@ -246,7 +294,7 @@ export class CompaniesHouseClient {
         continue;
       }
 
-      this.#limiter.applyServerHeaders(response.headers);
+      await this.#limiter.applyServerHeaders(response.headers);
 
       if (response.status === 304 && staleEntry !== undefined) {
         await this.#cache.refresh(key, staleEntry);
@@ -258,7 +306,7 @@ export class CompaniesHouseClient {
             stale: false,
             attempts: attempt + 1,
             durationMs: this.#clock.now() - startedAt,
-            rateLimit: this.#limiter.snapshot()
+            rateLimit: this.#limiter.lastKnown
           }
         };
       }
@@ -280,14 +328,14 @@ export class CompaniesHouseClient {
             stale: false,
             attempts: attempt + 1,
             durationMs: this.#clock.now() - startedAt,
-            rateLimit: this.#limiter.snapshot()
+            rateLimit: this.#limiter.lastKnown
           }
         };
       }
 
       const retryAfterMs = this.#retryAfterMs(response.headers);
       if (response.status === 429 && retryAfterMs !== undefined) {
-        this.#limiter.penalise(this.#clock.now() + retryAfterMs);
+        await this.#limiter.penalise(this.#clock.now() + retryAfterMs);
       }
 
       lastError = fromHttpStatus({

@@ -1,5 +1,9 @@
 import type { Clock } from '../clock.js';
 import { systemClock } from '../clock.js';
+import { CompaniesHouseError } from '../errors.js';
+import type { BudgetOutcome, SlidingWindowBudgetOptions } from './budget.js';
+import type { BudgetStore } from './budget-store.js';
+import { MemoryBudgetStore } from './budget-store.js';
 
 /**
  * Rate limiting against the documented Companies House budget.
@@ -20,25 +24,42 @@ import { systemClock } from '../clock.js';
  *   we already track locally, never as the source of truth. If they vanish
  *   tomorrow, nothing here changes behaviour.
  *
- * A safety margin is applied because the budget belongs to the *key*, not to
- * this process. If the same key is used by a cron job or a second editor
- * window, running to exactly 600 guarantees somebody gets a 429.
+ * What this class is now: the *waiting* half. All the arithmetic moved into
+ * `SlidingWindowBudget` behind a `BudgetStore`, so the same window can be held
+ * in this process or in a Durable Object shared by every session. This class
+ * decides how long to wait and when to give up, which is a policy question
+ * that belongs to the caller's runtime rather than to the shared window.
+ *
+ * The safety margin still applies, and still exists because the budget belongs
+ * to the *key*, not to this process — a cron job on the same key is invisible
+ * to any store. What has changed is that other *sessions* are no longer
+ * invisible: they share the store, so the margin is now covering only the
+ * traffic this deployment genuinely cannot see.
  */
 
-export interface RateLimiterOptions {
-  /** Documented request ceiling for the window. */
-  limit?: number;
-  windowMs?: number;
-  /** Fraction of `limit` this process will use. 0.95 leaves 30 in reserve. */
-  safetyMargin?: number;
+export interface RateLimiterOptions extends SlidingWindowBudgetOptions {
   clock?: Clock;
   /** Upper bound on random jitter added to every wait, in milliseconds. */
   jitterMs?: number;
   random?: () => number;
+  /**
+   * Where the window lives. Defaults to an in-process store, which is correct
+   * for stdio and for a single always-on instance.
+   */
+  store?: BudgetStore;
+  /**
+   * How long `acquire` will wait before giving up and raising RATE_LIMITED.
+   *
+   * A limiter that waits forever is fine for a CLI and wrong for a server: the
+   * MCP client times out, the user sees a hang rather than an explanation, and
+   * the request occupies a connection the whole time. Failing with a real
+   * retry time is more useful than succeeding eventually.
+   */
+  maxWaitMs?: number;
 }
 
 export interface RateLimitSnapshot {
-  /** Requests this process believes it may still make in the window. */
+  /** Requests this caller may still make in the window. */
   remaining: number;
   /** Milliseconds until at least one more request becomes available. */
   resetInMs: number;
@@ -46,102 +67,111 @@ export interface RateLimitSnapshot {
   limit: number;
 }
 
+/** Identity used when a caller does not distinguish itself. Correct for stdio. */
+export const DEFAULT_CLIENT_ID = 'default';
+
+const DEFAULT_MAX_WAIT_MS = 60_000;
+
 export class RateLimiter {
-  readonly #limit: number;
-  readonly #effectiveLimit: number;
-  readonly #windowMs: number;
   readonly #clock: Clock;
   readonly #jitterMs: number;
   readonly #random: () => number;
+  readonly #store: BudgetStore;
+  readonly #maxWaitMs: number;
+  readonly #effectiveLimit: number;
 
-  /** Timestamps of requests made inside the current window, oldest first. */
-  #timestamps: number[] = [];
-  /** Set after a 429 or a Retry-After. No request leaves before this time. */
-  #blockedUntil = 0;
-  /** Most recent server-reported remaining budget, when headers were present. */
-  #serverRemaining: number | undefined;
-  #serverResetAt: number | undefined;
-  /** When the server hint was recorded, so it can expire without a reset header. */
-  #serverRecordedAt: number | undefined;
-  /** Serialises acquisition so concurrent callers cannot both pass the check. */
-  #chain: Promise<void> = Promise.resolve();
+  /**
+   * Last outcome seen, so that response metadata can report the budget without
+   * a round trip on a path that has already paid for one.
+   */
+  #lastKnown: RateLimitSnapshot;
 
   constructor(options: RateLimiterOptions = {}) {
-    this.#limit = options.limit ?? 600;
-    this.#windowMs = options.windowMs ?? 300_000;
-    const margin = options.safetyMargin ?? 0.95;
-    this.#effectiveLimit = Math.max(1, Math.floor(this.#limit * margin));
     this.#clock = options.clock ?? systemClock;
     this.#jitterMs = options.jitterMs ?? 50;
     this.#random = options.random ?? Math.random;
+    this.#maxWaitMs = options.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
+
+    const store = options.store ?? new MemoryBudgetStore(options);
+    this.#store = store;
+    this.#effectiveLimit =
+      store instanceof MemoryBudgetStore
+        ? store.effectiveLimit
+        : Math.max(1, Math.floor((options.limit ?? 600) * (options.safetyMargin ?? 0.95)));
+
+    this.#lastKnown = { remaining: this.#effectiveLimit, resetInMs: 0, limit: this.#effectiveLimit };
   }
 
   /**
    * Resolves when the caller may make a request, waiting if necessary.
    *
-   * Acquisitions are serialised through a promise chain. Without it, ten
-   * concurrent callers all read a budget of one, all decide they may proceed,
-   * and the limiter has failed at precisely the moment it mattered.
+   * @throws {CompaniesHouseError} RATE_LIMITED when the wait would exceed
+   * `maxWaitMs`. Callers that would rather resize their work than wait should
+   * ask `snapshot` first — that is what `screen_companies` does.
    */
-  acquire(): Promise<void> {
-    const run = this.#chain.then(() => this.#acquireInner());
-    // Keep the chain alive even if one acquisition rejects.
-    this.#chain = run.then(
-      () => undefined,
-      () => undefined
-    );
-    return run;
-  }
+  async acquire(clientId: string = DEFAULT_CLIENT_ID): Promise<void> {
+    const deadline = this.#clock.now() + this.#maxWaitMs;
 
-  async #acquireInner(): Promise<void> {
     // Bounded so that a pathological clock cannot spin here forever.
     for (let attempt = 0; attempt < 64; attempt += 1) {
-      this.#prune();
+      const outcome = await this.#store.acquire(clientId, this.#clock.now());
+      this.#remember(outcome);
+      if (outcome.granted) return;
+
       const now = this.#clock.now();
+      if (now + outcome.retryInMs > deadline) throw rateLimited(outcome);
 
-      if (now < this.#blockedUntil) {
-        await this.#clock.sleep(this.#blockedUntil - now + this.#jitter());
-        continue;
-      }
-
-      if (this.#availableNow(now) > 0) {
-        this.#timestamps.push(now);
-        if (this.#serverRemaining !== undefined && this.#serverRemaining > 0) {
-          this.#serverRemaining -= 1;
-        }
-        return;
-      }
-
-      const oldest = this.#timestamps[0];
-      const waitMs = oldest === undefined ? this.#windowMs : oldest + this.#windowMs - now;
-      await this.#clock.sleep(Math.max(waitMs, 1) + this.#jitter());
+      await this.#clock.sleep(Math.max(outcome.retryInMs, 1) + this.#jitter());
     }
 
     throw new Error('RateLimiter.acquire exceeded its retry bound; the injected clock is not advancing.');
   }
 
-  /** Records that the server rejected a request, and holds traffic until `resetAt`. */
-  penalise(resetAtMs: number): void {
-    this.#blockedUntil = Math.max(this.#blockedUntil, resetAtMs);
+  /**
+   * Authoritative view of what `clientId` may spend, without spending it.
+   *
+   * Async because on a shared deployment the answer is not in this process,
+   * and a stale answer here becomes a `screen_companies` table that promises
+   * rows the limiter then refuses.
+   */
+  async snapshot(clientId: string = DEFAULT_CLIENT_ID): Promise<RateLimitSnapshot> {
+    const outcome = await this.#store.peek(clientId, this.#clock.now());
+    return this.#remember(outcome);
   }
 
   /**
-   * Folds Companies House rate-limit headers into local state.
+   * Last budget seen, without a round trip.
+   *
+   * For response metadata only. It is by definition slightly behind on a
+   * shared deployment, which is acceptable for a number the caller reads
+   * after the fact and not acceptable for one it plans against.
+   */
+  get lastKnown(): RateLimitSnapshot {
+    return this.#lastKnown;
+  }
+
+  /** Records that the server rejected a request, and holds traffic until `resetAt`. */
+  async penalise(resetAtMs: number): Promise<void> {
+    await this.#store.penalise(resetAtMs);
+  }
+
+  /**
+   * Folds Companies House rate-limit headers into the window.
    *
    * Header names follow the service's own spelling — `X-Ratelimit-Remain`,
    * not `Remaining`. Both are read because the shorter form is undocumented
    * and could change to the conventional one without notice.
    */
-  applyServerHeaders(headers: Headers): void {
+  async applyServerHeaders(headers: Headers): Promise<void> {
     const remainRaw = headers.get('x-ratelimit-remain') ?? headers.get('x-ratelimit-remaining');
     const resetRaw = headers.get('x-ratelimit-reset');
 
+    let remaining: number | undefined;
+    let resetAtMs: number | undefined;
+
     if (remainRaw !== null) {
       const parsed = Number.parseInt(remainRaw, 10);
-      if (Number.isFinite(parsed) && parsed >= 0) {
-        this.#serverRemaining = parsed;
-        this.#serverRecordedAt = this.#clock.now();
-      }
+      if (Number.isFinite(parsed) && parsed >= 0) remaining = parsed;
     }
 
     if (resetRaw !== null) {
@@ -149,26 +179,12 @@ export class RateLimiter {
       if (Number.isFinite(parsed)) {
         // Documented nowhere, so accept both seconds and milliseconds since
         // the epoch by checking the magnitude.
-        this.#serverResetAt = parsed > 1e11 ? parsed : parsed * 1000;
+        resetAtMs = parsed > 1e11 ? parsed : parsed * 1000;
       }
     }
-  }
 
-  snapshot(): RateLimitSnapshot {
-    this.#prune();
-    const now = this.#clock.now();
-    const remaining = this.#availableNow(now);
-    const oldest = this.#timestamps[0];
-
-    let resetInMs = 0;
-    if (remaining === 0) {
-      resetInMs = oldest === undefined ? this.#windowMs : Math.max(oldest + this.#windowMs - now, 0);
-    }
-    if (now < this.#blockedUntil) {
-      resetInMs = Math.max(resetInMs, this.#blockedUntil - now);
-    }
-
-    return { remaining, resetInMs, limit: this.#effectiveLimit };
+    if (remaining === undefined && resetAtMs === undefined) return;
+    await this.#store.observe({ remaining, resetAtMs, recordedAtMs: this.#clock.now() });
   }
 
   /** Test and diagnostic hook. Not part of the public contract. */
@@ -176,39 +192,35 @@ export class RateLimiter {
     return this.#effectiveLimit;
   }
 
-  #availableNow(now: number): number {
-    const local = this.#effectiveLimit - this.#timestamps.length;
-    if (this.#serverRemaining === undefined) return Math.max(local, 0);
-
-    // The hint expires either at the reset time the server gave us or, when it
-    // gave us none, one window after we recorded it. Without that second rule
-    // a `remain: 0` header with no `reset` header would block this process
-    // forever, which is a deadlock caused entirely by an undocumented field.
-    const expired =
-      this.#serverResetAt !== undefined
-        ? now >= this.#serverResetAt
-        : this.#serverRecordedAt !== undefined && now - this.#serverRecordedAt >= this.#windowMs;
-
-    if (expired) {
-      this.#serverRemaining = undefined;
-      this.#serverResetAt = undefined;
-      this.#serverRecordedAt = undefined;
-      return Math.max(local, 0);
-    }
-
-    return Math.max(Math.min(local, this.#serverRemaining), 0);
-  }
-
-  #prune(): void {
-    const cutoff = this.#clock.now() - this.#windowMs;
-    let firstLive = 0;
-    while (firstLive < this.#timestamps.length && this.#timestamps[firstLive]! <= cutoff) {
-      firstLive += 1;
-    }
-    if (firstLive > 0) this.#timestamps = this.#timestamps.slice(firstLive);
+  #remember(outcome: BudgetOutcome): RateLimitSnapshot {
+    this.#lastKnown = {
+      remaining: outcome.remaining,
+      resetInMs: outcome.granted ? 0 : outcome.retryInMs,
+      limit: outcome.limit
+    };
+    return this.#lastKnown;
   }
 
   #jitter(): number {
     return Math.floor(this.#random() * this.#jitterMs);
   }
+}
+
+function rateLimited(outcome: BudgetOutcome): CompaniesHouseError {
+  const seconds = Math.ceil(outcome.retryInMs / 1000);
+  const cause =
+    outcome.boundBy === 'client'
+      ? 'This session has used its share of the shared Companies House budget for the current five-minute window.'
+      : 'The Companies House rate limit of 600 requests per five minutes has been reached.';
+
+  return new CompaniesHouseError({
+    code: 'RATE_LIMITED',
+    message: cause,
+    nextStep:
+      outcome.boundBy === 'client'
+        ? `Wait ${seconds} seconds, or supply your own Companies House API key to get a budget of your own.`
+        : `Wait ${seconds} seconds before making further calls.`,
+    retryAfterMs: outcome.retryInMs,
+    retryable: true
+  });
 }

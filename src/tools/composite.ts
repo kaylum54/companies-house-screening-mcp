@@ -361,11 +361,17 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         // blocks and handing back a table that silently stops at row
         // nineteen is not.
         const perCompany = sections.length;
-        const affordable = Math.max(Math.floor(client.rateLimit.remaining / perCompany), 0);
+        // Asked of the budget itself rather than read off the last response.
+        // On a shared deployment the cached figure can be a whole window out
+        // of date, and sizing the batch against it would promise rows the
+        // limiter then refuses — a table that stops early for a reason the
+        // caller was never told, which is the failure ADR 8 exists to prevent.
+        const budget = await client.budget();
+        const affordable = Math.max(Math.floor(budget.remaining / perCompany), 0);
         const toScreen = resolved.slice(0, affordable);
         const notScreened = resolved.slice(affordable).map((resolution) => ({
           input: resolution.input,
-          reason: `Not enough rate-limit budget left in this five-minute window. Screening this company needs ${perCompany} requests. Retry in ${Math.ceil(client.rateLimit.resetInMs / 1000)} seconds, or pass a shorter list.`
+          reason: `Not enough rate-limit budget left in this five-minute window. Screening this company needs ${perCompany} requests. Retry in ${Math.ceil(budget.resetInMs / 1000)} seconds, or pass a shorter list.`
         }));
 
         if (notScreened.length > 0) {
