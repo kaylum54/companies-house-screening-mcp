@@ -174,6 +174,30 @@ All notable changes to this project are recorded here. The format follows
   the caller's next reconnect would build a second one on the same credential —
   metering one Companies House key against two local windows.
 
+### Fixed — found by the fifth review pass
+
+- **A stale reset time expired a fresh rate-limit hint.** Companies House sends
+  `X-Ratelimit-*` inconsistently; a response carrying only a reset, followed by
+  one carrying only a count, left the old reset in place, which discarded the
+  new count the instant it was read — throwing away the server's warning and
+  running the limiter into 429s, the one thing these headers exist to avoid.
+- **An in-use private budget could be evicted by the size cap.** The live
+  session kept the orphaned store, so the caller's next reconnect built a
+  second full window on the same credential. Budgets held by a live session are
+  now excluded from eviction, and the map stays bounded because sessions are.
+- **The Durable Object wrote its whole window on every upstream response.**
+  `observe` persisted a correction the code itself calls "never the source of
+  truth", roughly doubling storage traffic on the request path. Penalties still
+  persist, because a 429 must survive an eviction.
+- **A non-object request body crashed the Durable Object into a fail-closed
+  outcome** instead of returning 400, because `JSON.parse` accepts `null`.
+- **The startup log dropped `clientReservation`** — the derived value was
+  overwritten by the config spread that followed it — in exactly the case where
+  someone would want to read it.
+- **The portability guard only matched static imports**, so a future
+  `await import('node:fs')` would have slipped past. It was the form `cache.ts`
+  itself used to contain.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

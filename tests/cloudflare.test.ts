@@ -228,6 +228,38 @@ describe('BudgetDurableObject', () => {
     expect(a.remaining).not.toBe(b.remaining);
   });
 
+  it('rejects a body that parses to something other than an object', async () => {
+    // `JSON.parse('null')` succeeds. Reading `.options` off it throws outside
+    // both try blocks, and the store reads that failure as an unreachable
+    // window — failing the caller closed over what should be a plain 400.
+    const object = new BudgetDurableObject(fakeState());
+    for (const body of ['null', '42', '"a string"', '[]']) {
+      const response = await object.fetch(
+        new Request('https://budget.invalid/', { method: 'POST', body })
+      );
+      expect(response.status).toBe(400);
+    }
+  });
+
+  it('does not write the whole window just to record a server hint', async () => {
+    // `observe` runs after every upstream response. Persisting there would
+    // roughly double storage traffic on the request path for a correction the
+    // code itself treats as never being the source of truth.
+    const state = fakeState();
+    const object = new BudgetDurableObject(state);
+
+    await call(object, {
+      op: 'observe',
+      hint: { remaining: 5, recordedAtMs: 1000 },
+      options: OPTIONS
+    });
+    expect(state.dump()).toEqual({});
+
+    // A penalty is different: a 429 must survive an eviction.
+    await call(object, { op: 'penalise', resetAtMs: 9000, options: OPTIONS });
+    expect(Object.keys(state.dump())).toContain('budget');
+  });
+
   it('rejects a malformed body', async () => {
     const object = new BudgetDurableObject(fakeState());
     const response = await object.fetch(

@@ -282,12 +282,22 @@ export class SlidingWindowBudget {
 
   /** Folds a server rate-limit hint into local state. */
   observe(hint: ServerRateLimitHint): void {
+    if (hint.resetAtMs !== undefined) {
+      this.#serverResetAt = hint.resetAtMs;
+    }
+
     if (hint.remaining !== undefined) {
       this.#serverRemaining = hint.remaining;
       this.#serverRecordedAt = hint.recordedAtMs;
-    }
-    if (hint.resetAtMs !== undefined) {
-      this.#serverResetAt = hint.resetAtMs;
+
+      // A new count with no reset time attached must not inherit the previous
+      // response's. Left in place, a reset that has already passed expires the
+      // fresh correction the moment it is read — so the server's warning is
+      // discarded and the limiter runs to its own ceiling straight into 429s,
+      // which is the one situation these undocumented headers exist to avoid.
+      if (hint.resetAtMs === undefined) {
+        this.#serverResetAt = undefined;
+      }
     }
   }
 

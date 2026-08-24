@@ -192,6 +192,18 @@ describe('SlidingWindowBudget — penalties and server hints', () => {
     expect(budget.peek('a', 1000).remaining).toBe(2);
   });
 
+  it('does not let a stale reset time expire a fresh count', () => {
+    // Companies House sends these headers inconsistently. A response carrying
+    // only a reset time, followed by one carrying only a count, used to leave
+    // the old reset in place — which expired the new count the instant it was
+    // read, discarding the server's warning and running us into 429s.
+    const budget = build();
+    budget.observe({ resetAtMs: 2000, recordedAtMs: 1000 });
+    budget.observe({ remaining: 3, recordedAtMs: 3000 });
+
+    expect(budget.peek('a', 3000).remaining).toBe(3);
+  });
+
   it('expires a hint that came with no reset time, rather than deadlocking', () => {
     // A `remain: 0` with no `reset` is an undocumented header telling us to
     // stop forever. It gets one window, then we go back to our own count.

@@ -56,11 +56,18 @@ describe('runtime portability', () => {
       if (RUNTIME_SPECIFIC.some((prefix) => rel.startsWith(prefix))) continue;
 
       const source = await readFile(file, 'utf8');
-      // Import statements only. A `node:fs` mentioned in a comment explaining
-      // why it is absent is not a violation.
-      for (const match of source.matchAll(/^\s*import\s[^;]*?from\s+'(node:[^']+)'/gm)) {
-        const specifier = match[1] as string;
-        if (!ALLOWED_CORE_IMPORTS.has(specifier)) {
+      // Static and dynamic forms both. A `node:fs` mentioned in a comment
+      // explaining why it is absent is not a violation, but `await
+      // import('node:fs')` very much is — and that is the form this file used
+      // to contain, so matching only static imports would have missed it.
+      const specifiers = [
+        ...[...source.matchAll(/^\s*import\s[^;]*?from\s+'(node:[^']+)'/gm)].map((m) => m[1]),
+        ...[...source.matchAll(/\bimport\s*\(\s*'(node:[^']+)'\s*\)/g)].map((m) => m[1]),
+        ...[...source.matchAll(/\brequire\s*\(\s*'(node:[^']+)'\s*\)/g)].map((m) => m[1])
+      ];
+
+      for (const specifier of specifiers) {
+        if (specifier !== undefined && !ALLOWED_CORE_IMPORTS.has(specifier)) {
           offenders.push(`${rel} imports ${specifier}`);
         }
       }
@@ -86,7 +93,7 @@ describe('runtime portability', () => {
 
     for (const file of files) {
       const source = await readFile(file, 'utf8');
-      for (const match of source.matchAll(/^\s*import\s[^;]*?from\s+'(node:[^']+)'/gm)) {
+      for (const match of source.matchAll(/(?:from|import\s*\(|require\s*\()\s*'(node:[^']+)'/g)) {
         expect(ALLOWED_CORE_IMPORTS).toContain(match[1]);
       }
     }

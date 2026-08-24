@@ -92,7 +92,10 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
    * is the caller's identity fingerprint, matching how Cloudflare names the
    * Durable Object for the same caller so the two runtimes agree.
    */
-  const privateBudgets = new Map<string, { store: MemoryBudgetStore; lastSeen: number }>();
+  const privateBudgets = new Map<
+    string,
+    { store: MemoryBudgetStore; lastSeen: number; refs: number }
+  >();
 
   /**
    * Wraps a private budget so that *using* it counts as activity.
@@ -132,18 +135,36 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
    * least recently created.
    */
   function rememberPrivateBudget(label: string, store: MemoryBudgetStore): void {
-    privateBudgets.set(label, { store, lastSeen: clock.now() });
+    privateBudgets.set(label, { store, lastSeen: clock.now(), refs: 1 });
     if (privateBudgets.size <= config.maxSessions) return;
 
+    // Only budgets with no live session are candidates. Evicting one that a
+    // session still holds does not free it — the session keeps the orphaned
+    // store — and the caller's next reconnect then builds a *second* full
+    // window on the same credential, so one Companies House key ends up
+    // metered against two local windows. That is worse than the unbounded map
+    // this cap exists to prevent, and the map stays bounded anyway: every
+    // referenced budget belongs to a live session, and sessions are themselves
+    // capped at `maxSessions`.
     let oldestLabel: string | undefined;
     let oldest = Number.POSITIVE_INFINITY;
     for (const [key, entry] of privateBudgets) {
+      if (entry.refs > 0) continue;
       if (entry.lastSeen < oldest) {
         oldest = entry.lastSeen;
         oldestLabel = key;
       }
     }
     if (oldestLabel !== undefined) privateBudgets.delete(oldestLabel);
+  }
+
+  /** Called when a session ends, so its private budget becomes evictable. */
+  function releasePrivateBudget(label: string | undefined): void {
+    if (label === undefined) return;
+    const entry = privateBudgets.get(label);
+    if (entry === undefined) return;
+    entry.refs = Math.max(entry.refs - 1, 0);
+    entry.lastSeen = clock.now();
   }
 
   const sessionFactory = {
@@ -157,6 +178,7 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
       const existing = privateBudgets.get(label);
       if (existing !== undefined) {
         existing.lastSeen = clock.now();
+        existing.refs += 1;
         return trackUsage(label, existing.store);
       }
       const created = new MemoryBudgetStore({
@@ -174,6 +196,8 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     transport: StreamableHTTPServerTransport;
     session: Session;
     lastSeen: number;
+    /** Private budget this session holds a reference to, if any. */
+    budgetLabel: string | undefined;
   }
 
   /**
@@ -195,6 +219,7 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     const entry = sessions.get(id);
     if (entry === undefined) return;
     sessions.delete(id);
+    releasePrivateBudget(entry.budgetLabel);
     void entry.session.server.close().catch(() => undefined);
   }
 
@@ -356,15 +381,22 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     identity: ClientIdentity
   ): Promise<void> {
     const session = createSession(sessionFactory, identity);
+    // Only a caller spending their own key holds a private budget; anyone on
+    // the pooled key shares the one window and has nothing to release.
+    const budgetLabel =
+      identity.apiKey !== undefined && identity.apiKey !== config.apiKey
+        ? identity.clientId
+        : undefined;
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
-        sessions.set(id, { transport, session, lastSeen: clock.now() });
+        sessions.set(id, { transport, session, lastSeen: clock.now(), budgetLabel });
         logger.info('session opened', { sessionId: id, ...describe(identity) });
         sweep();
       },
       onsessionclosed: (id) => {
+        releasePrivateBudget(sessions.get(id)?.budgetLabel);
         sessions.delete(id);
         logger.info('session closed', { sessionId: id });
       }
@@ -373,6 +405,7 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     transport.onclose = () => {
       const id = transport.sessionId;
       if (id !== undefined) sessions.delete(id);
+      releasePrivateBudget(budgetLabel);
       void session.server.close().catch(() => undefined);
     };
 

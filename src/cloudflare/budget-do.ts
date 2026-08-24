@@ -125,6 +125,14 @@ export class BudgetDurableObject {
       return json({ error: 'malformed operation' }, 400);
     }
 
+    // `JSON.parse` happily yields `null`, a number or a string. Reading
+    // `.options` off any of those throws outside both try blocks, and the
+    // store reads the resulting failure as an unreachable window — failing the
+    // caller closed over what should have been a plain 400.
+    if (typeof operation !== 'object' || operation === null || Array.isArray(operation)) {
+      return json({ error: 'operation must be an object' }, 400);
+    }
+
     if (operation.options === undefined || operation.options === null) {
       return json({ error: 'operation is missing its budget options' }, 400);
     }
@@ -152,8 +160,13 @@ export class BudgetDurableObject {
         await this.#persist(budget);
         return json({ ok: true });
       case 'observe':
+        // Deliberately not persisted. This runs after every single upstream
+        // response, and writing the whole window each time would double the
+        // storage traffic on the request path — roughly 300 writes for one
+        // fifty-company screen — to durably record a correction this code
+        // itself treats as never being the source of truth. Losing it to an
+        // eviction costs nothing the local count does not already know.
         budget.observe(operation.hint);
-        await this.#persist(budget);
         return json({ ok: true });
       default:
         return json({ error: 'unknown operation' }, 400);

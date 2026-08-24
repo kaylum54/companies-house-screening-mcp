@@ -99,8 +99,12 @@ async function main(): Promise<void> {
   logger.info('companies-house-screening-mcp ready over http', {
     version,
     endpoint: `http://${config.httpHost}:${config.httpPort}/mcp`,
-    clientReservation: defaultClientReservation(config),
-    ...redactConfig(config)
+    ...redactConfig(config),
+    // After the spread, not before: `redactConfig` carries its own
+    // `clientReservation`, which is `undefined` whenever the value is derived
+    // rather than set — so ordering this first dropped it from the log line in
+    // exactly the case where somebody wants to read it.
+    clientReservation: defaultClientReservation(config)
   });
 
   if (config.httpHost === '127.0.0.1' || config.httpHost === 'localhost') {
