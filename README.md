@@ -39,11 +39,43 @@ that matter:
 | **Nothing dropped quietly** | Partial results are labelled; a screening table that comes back short always says why. [ADR 8](docs/adr/0008-partial-results-and-budget-honesty.md). |
 | **Documentation that cannot go stale** | The tool reference is generated from the running server and every example executes; CI fails if either drifts. [ADR 9](docs/adr/0009-documentation-is-generated-and-gated.md). |
 | **A tool-selection eval** | Asks a real model which tool it reaches for, and fails on flakiness. [ADR 10](docs/adr/0010-tool-selection-eval.md). |
+| **Runs hosted or local** | Streamable HTTP as well as stdio, so it works in claude.ai on web and mobile — with one shared rate-limit budget that is actually authoritative rather than one guess per process. [ADR 12](docs/adr/0012-remote-transport-alongside-stdio.md), [ADR 13](docs/adr/0013-one-key-shared-budget-fair-shares.md). |
 
-Eleven decisions are written up in [docs/adr](docs/adr), including the ones
+Fifteen decisions are written up in [docs/adr](docs/adr), including the ones
 that did not go the obvious way.
 
 ## Install
+
+Two ways to run it, and they answer different questions.
+
+### Hosted — paste a URL
+
+Works in claude.ai on web and mobile, Claude Code, Cursor, and anything else
+that speaks remote MCP. Nothing to install and no API key to obtain.
+
+```
+https://your-deployment/mcp
+```
+
+In claude.ai: Settings → Connectors → Add custom connector → paste the URL.
+In Claude Code:
+
+```bash
+claude mcp add --transport http companies-house https://your-deployment/mcp
+```
+
+The hosted server holds one Companies House key and shares its 600-requests-per-
+five-minutes between everyone using it, with a guaranteed share each so that a
+batch screening run cannot starve a single lookup. If that gets tight, send
+`X-Companies-House-Api-Key` and you get a private budget.
+
+To run your own, see [docs/deployment.md](docs/deployment.md) — Node or
+Cloudflare Workers, with the trade-offs written out.
+
+### Local — stdio
+
+Still the right answer for one person on one machine: no infrastructure, no
+hosting bill, and your own full rate-limit budget.
 
 ```bash
 npx -y companies-house-screening-mcp

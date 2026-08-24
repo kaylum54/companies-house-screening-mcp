@@ -1,10 +1,20 @@
 # syntax=docker/dockerfile:1
 
-# An MCP stdio server in a container. There is no port and no HTTP surface:
-# the host talks to it over stdin and stdout, so it must be run with `-i` and
-# without `-t` (a TTY would corrupt the JSON-RPC framing).
+# The image runs either transport. It defaults to stdio, which is the one that
+# needs the awkward flags.
+#
+# stdio — the host talks over stdin and stdout, so it must be run with `-i` and
+# without `-t` (a TTY would corrupt the JSON-RPC framing):
 #
 #   docker run --rm -i -e COMPANIES_HOUSE_API_KEY=... ghcr.io/OWNER/companies-house-screening-mcp
+#
+# HTTP — override the command and publish the port. Note CH_HTTP_HOST: the
+# server binds loopback by default, which inside a container means nothing
+# outside it can connect. See docs/deployment.md.
+#
+#   docker run --rm -p 8787:8787 \
+#     -e COMPANIES_HOUSE_API_KEY=... -e CH_HTTP_HOST=0.0.0.0 \
+#     ghcr.io/OWNER/companies-house-screening-mcp node dist/http-bin.js
 
 FROM node:24-alpine AS build
 
@@ -39,5 +49,7 @@ ENV CH_CACHE_DIR=/home/node/.cache/companies-house-screening-mcp
 RUN mkdir -p "$CH_CACHE_DIR" && chown -R node:node "$CH_CACHE_DIR"
 USER node
 
-# Diagnostics go to stderr; stdout belongs to the transport.
-ENTRYPOINT ["node", "dist/bin.js"]
+# Diagnostics go to stderr; under stdio, stdout belongs to the transport.
+# ENTRYPOINT is not used, so the command can be overridden to run the HTTP
+# entry point without fighting `--entrypoint`.
+CMD ["node", "dist/bin.js"]

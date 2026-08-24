@@ -6,6 +6,79 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added — the server is reachable without a laptop
+
+- **Streamable HTTP transport**, alongside stdio rather than replacing it. This
+  makes the server usable from claude.ai on web and mobile, hosted agent
+  platforms, and anything else that cannot spawn a local process. stdio is
+  unchanged and remains the right answer for a single user on one machine.
+  New binary: `companies-house-screening-mcp-http`.
+  ([ADR 12](docs/adr/0012-remote-transport-alongside-stdio.md))
+- **Cloudflare Workers deployment**, with the rate-limit window in a Durable
+  Object. A Durable Object is single-threaded and globally unique per key, so
+  the budget stays correct under scale-out by construction rather than by being
+  told to run one instance. Requires the Workers Paid plan, because a single
+  `screen_companies` run makes ~150 external subrequests in one invocation and
+  the free plan allows 50. See `wrangler.toml` and
+  [docs/deployment.md](docs/deployment.md).
+- **Bring your own key**, via `X-Companies-House-Api-Key`. A caller supplying
+  one gets a private rate-limit window while still sharing the response cache.
+  The key is never logged, cached, returned in a tool result, or exposed to the
+  model; a malformed value is treated as absent rather than passed into an auth
+  header.
+- **An authless-now, OAuth-ready identity seam.** `AuthProvider` resolves a
+  request to a `ClientIdentity` that everything downstream consumes without
+  knowing how it was established, so adding OAuth later means writing one
+  provider rather than reworking the limiter and every entry point.
+  ([ADR 15](docs/adr/0015-authless-now-oauth-ready.md))
+
+### Fixed — the rate limiter is now authoritative
+
+- **The budget is shared, not guessed.** It counted requests per process while
+  Companies House meters per key, so several sessions on one key each believed
+  they owned the whole window. The arithmetic moved into a pure
+  `SlidingWindowBudget` behind a `BudgetStore`, letting identical code run in
+  one process or in a Durable Object.
+  ([ADR 13](docs/adr/0013-one-key-shared-budget-fair-shares.md))
+- **Fair shares, so one caller cannot starve another.** Each caller is
+  guaranteed a reservation and may exceed it only while the window has room.
+  The headroom held back scales with the callers actually active, so a lone
+  caller on a quiet server keeps roughly 90% of the budget while a newcomer is
+  still guaranteed a share.
+- **`peek` no longer promises more than `acquire` grants.** It approximated the
+  admission rule instead of deriving from it. `screen_companies` sizes its
+  batch against `peek`, so the bug was a table promising rows the limiter would
+  then refuse — the exact silent shortfall
+  [ADR 8](docs/adr/0008-partial-results-and-budget-honesty.md) exists to
+  prevent.
+- **`screen_companies` asks the budget rather than reading a cached figure.**
+  On a shared deployment the cached snapshot can be a whole window out of date.
+
+### Changed — breaking, at 0.x
+
+- `RateLimiter.snapshot()` is now **async**, and returns the caller's view of
+  the budget. `RateLimiter.lastKnown` is the synchronous cached value, for
+  response metadata only. `penalise` and `applyServerHeaders` are async too.
+- `ResponseCache` takes a **`store`** rather than a `dir`. Node callers pass
+  `new FileCacheStore({ dir })`; a Worker passes `KvCacheStore`; omitting it
+  gives a memory-only cache.
+- `defaultCacheDir`, `packageVersion` and `loadEnvFile` moved to `src/node/`.
+  They are still exported from the package root. `config.cacheDir` is now
+  optional, because only a runtime with a filesystem has anywhere to point it.
+  ([ADR 14](docs/adr/0014-runtime-portable-core.md))
+
+### Added — guardrails
+
+- `tests/runtime-portability.test.ts` fails on any `node:` import outside
+  `src/node/`, with `node:crypto` as a single audited exception. It found
+  `version.ts` importing `node:module` on its first run — a violation that
+  would have broken the Worker at deploy time and that no test running under
+  Node would have noticed.
+- 74 new tests covering fair sharing and starvation, `peek`/`acquire`
+  agreement, the HTTP handshake and tool parity with stdio, session and budget
+  isolation, key handling, Durable Object eviction and restore, and fail-closed
+  behaviour when the limiter is unreachable.
+
 ### Changed
 
 - Publishing moved to npm Trusted Publishing. The workflow authenticates by
