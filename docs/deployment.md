@@ -87,6 +87,13 @@ Node built-in the portable core uses — see
 [ADR 14](adr/0014-runtime-portable-core.md)) and raises the subrequest limit
 explicitly rather than relying on the default.
 
+Two things worth knowing about `[limits]`: it applies only on the Standard
+Usage Model, and it is enforced when deployed to Cloudflare's network rather
+than in `wrangler dev`. So a local run will not reproduce a subrequest ceiling
+either way. Note also that Wrangler does not reject unknown keys inside
+`[limits]`, so a typo there fails silently — the field names are `subrequests`
+and `cpu_ms`.
+
 **Do not put the API key in `[vars]`.** Vars are plain text in the dashboard
 and in your repository. Use `wrangler secret put`.
 
@@ -127,9 +134,12 @@ their own 600/5min, is not subject to fair-share limits, and still benefits
 from the shared cache, because register data is public and identical whoever
 fetched it.
 
-**claude.ai's connector UI cannot set custom headers.** Those users should run
-the server themselves over stdio, which gives them their own budget and has
-always worked.
+**Not every client can send a custom header.** Claude Code can
+(`--header "X-Companies-House-Api-Key: ..."`); claude.ai's connector UI appears
+not to, as of August 2026 — that comes from issue reports rather than published
+documentation, so check before relying on it either way. Where a client cannot,
+the answer is to run the server over stdio, which gives that user their own
+budget and has always worked.
 
 The key is read once, never logged, never cached, never returned in a tool
 result, and never reaches the model. A malformed value is treated as absent
@@ -139,7 +149,12 @@ rather than passed into an auth header.
 
 ## Configuration
 
-Everything is environment variables. Only the first is required.
+Everything is environment variables. Only the first is required. The table
+below covers the ones that matter to a hosted deployment; `.env.example` in the
+repository lists the full set, including the HTTP-client tuning
+(`CH_API_BASE_URL`, `CH_TIMEOUT_MS`, `CH_MAX_RETRIES`, `CH_RETRY_BASE_MS`,
+`CH_RATE_WINDOW_MS`, `CH_RATE_SAFETY_MARGIN`, `CH_CACHE_DIR`) that applies to
+every transport alike.
 
 | Variable | Default | Notes |
 |---|---|---|
@@ -172,7 +187,8 @@ Roughly: one `company_snapshot` costs 4, and 23 companies of a
 
 A caller may exceed its reservation whenever the window has room — the
 reservation is a floor under everyone else, not a ceiling on anyone. A lone
-caller on a quiet server keeps roughly 90% of the budget.
+caller on a quiet server keeps 499 of the 570-request effective window: all of
+it bar one reservation held back for whoever arrives next.
 
 ---
 

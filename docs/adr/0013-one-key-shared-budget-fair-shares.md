@@ -54,8 +54,9 @@ by default, 71 of 570 — and may exceed it only while the window has room.
 first design used a fixed burst threshold and stranded a quarter of the budget
 against a crowd that might never arrive. Instead, a caller may burst until the
 window is down to one reservation for every *other* currently-active client
-plus one for a newcomer. A lone caller on a quiet server keeps roughly 90% of
-the budget; a newcomer is still guaranteed a share on arrival.
+plus one for a newcomer. With the defaults that leaves a lone caller 499 of the
+570-request effective window — all of it bar the one reservation held back —
+while a newcomer is still guaranteed its share on arrival.
 
 **Overflow degrades into the shape ADR 8 already defines.** Work that does not
 fit comes back under `not_screened` with a real reset time. Nothing is dropped
@@ -84,7 +85,10 @@ refused — the precise silent shortfall ADR 8 exists to prevent. There is now a
 test asserting that what `peek` promises is what `acquire` grants, in both the
 quiet and contended cases.
 
-Bringing your own key requires setting an HTTP header, which claude.ai's
-custom connector UI cannot currently do. For those users the answer is to run
-the server themselves over stdio, which has always worked and is another
-reason ADR 12 kept it.
+Bringing your own key requires setting an HTTP header. Clients differ on
+whether they can: Claude Code takes `--header`, and at the time of writing
+(August 2026) claude.ai's custom connector UI appears not to offer it — that
+last point comes from an issue report against the connector UI rather than from
+published documentation, so it is worth re-checking rather than treating as
+settled. Where a client cannot send the header, the answer is to run the server
+over stdio, which has always worked and is another reason ADR 12 kept it.

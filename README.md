@@ -42,20 +42,26 @@ that matter:
 | **Runs hosted or local** | Streamable HTTP as well as stdio, so it works in claude.ai on web and mobile — with one shared rate-limit budget that is actually authoritative rather than one guess per process. [ADR 12](docs/adr/0012-remote-transport-alongside-stdio.md), [ADR 13](docs/adr/0013-one-key-shared-budget-fair-shares.md). |
 
 Fifteen decisions are written up in [docs/adr](docs/adr), including the ones
-that did not go the obvious way.
+that did not go the obvious way. [docs/mcp-surface.md](docs/mcp-surface.md)
+describes what the server implements as an MCP server — capabilities,
+transports, session and budget semantics — read off the running server rather
+than from intent.
 
 ## Install
 
 Two ways to run it, and they answer different questions.
 
-### Hosted — paste a URL
+### Hosted — you deploy it, users paste a URL
 
-Works in claude.ai on web and mobile, Claude Code, Cursor, and anything else
-that speaks remote MCP. Nothing to install and no API key to obtain.
+**There is no public instance of this server.** You run one; the people you
+give the URL to need nothing but the link — no install, no Node, no Companies
+House key of their own. That is the point of the hosted mode, and it is what
+makes the server usable from claude.ai on web and mobile, where no local
+process can be spawned.
 
-```
-https://your-deployment/mcp
-```
+Deploy to Cloudflare Workers or any single Node host —
+[docs/deployment.md](docs/deployment.md) has both, with the costs and the
+trade-offs stated. Then hand out your endpoint:
 
 In claude.ai: Settings → Connectors → Add custom connector → paste the URL.
 In Claude Code:
@@ -64,13 +70,17 @@ In Claude Code:
 claude mcp add --transport http companies-house https://your-deployment/mcp
 ```
 
-The hosted server holds one Companies House key and shares its 600-requests-per-
-five-minutes between everyone using it, with a guaranteed share each so that a
-batch screening run cannot starve a single lookup. If that gets tight, send
-`X-Companies-House-Api-Key` and you get a private budget.
+Your deployment holds one Companies House key and shares its 600 requests per
+five minutes across everyone using it. Each caller is guaranteed a share, so a
+50-company screening run cannot starve somebody's single lookup. A caller who
+finds that tight can send `X-Companies-House-Api-Key` and get a private budget
+of their own — in Claude Code, `--header "X-Companies-House-Api-Key: ..."`.
 
-To run your own, see [docs/deployment.md](docs/deployment.md) — Node or
-Cloudflare Workers, with the trade-offs written out.
+Before you make a deployment public, read the
+[**what to expect**](docs/deployment.md#before-you-make-it-public) section: an
+authless URL means anyone holding it spends your budget, and whether you may
+pool one personal API key for third parties is a question for the Companies
+House developer terms.
 
 ### Local — stdio
 

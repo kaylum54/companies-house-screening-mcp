@@ -6,10 +6,14 @@
 ## Context
 
 The hosted server holds the operator's API key and is meant to be plug and
-play: paste a URL into a client and it works. claude.ai custom connectors
-support both authless servers and OAuth 2.1 with dynamic client registration,
-but the connector UI cannot currently set an arbitrary `Authorization` header,
-so a static bearer token is not an option for the clients that matter most.
+play: paste a URL into a client and it works. Anthropic's own documentation
+says claude.ai custom connectors support both authless servers and OAuth 2.1
+with dynamic client registration; separately, issue reports against the
+connector UI indicate it does not offer a way to set an arbitrary
+`Authorization` header. If that second point is right — and it is the weaker of
+the two, so it is worth re-checking — a static bearer token is not an option
+for the clients that matter most. Both statements describe someone else's
+product as of August 2026 and may age.
 
 That leaves a genuine choice between an authless URL, which anyone who finds
 it can use against the operator's budget, and OAuth 2.1, which is real work —

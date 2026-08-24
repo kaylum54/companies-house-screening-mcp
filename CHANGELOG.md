@@ -43,8 +43,9 @@ All notable changes to this project are recorded here. The format follows
 - **Fair shares, so one caller cannot starve another.** Each caller is
   guaranteed a reservation and may exceed it only while the window has room.
   The headroom held back scales with the callers actually active, so a lone
-  caller on a quiet server keeps roughly 90% of the budget while a newcomer is
-  still guaranteed a share.
+  caller on a quiet server keeps 499 of the 570-request effective window — all
+  of it bar one held-back reservation — while a newcomer is still guaranteed a
+  share on arrival.
 - **`peek` no longer promises more than `acquire` grants.** It approximated the
   admission rule instead of deriving from it. `screen_companies` sizes its
   batch against `peek`, so the bug was a table promising rows the limiter would
