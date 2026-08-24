@@ -124,13 +124,19 @@ export interface BudgetState {
 export function isBudgetState(value: unknown): value is BudgetState {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
-  return (
-    Array.isArray(candidate['timestamps']) &&
-    candidate['timestamps'].every((entry) => typeof entry === 'number') &&
-    typeof candidate['clients'] === 'object' &&
-    candidate['clients'] !== null &&
-    !Array.isArray(candidate['clients']) &&
-    typeof candidate['blockedUntil'] === 'number'
+  if (!Array.isArray(candidate['timestamps'])) return false;
+  if (!candidate['timestamps'].every((entry) => typeof entry === 'number')) return false;
+  if (typeof candidate['blockedUntil'] !== 'number') return false;
+
+  const clients = candidate['clients'];
+  if (typeof clients !== 'object' || clients === null || Array.isArray(clients)) return false;
+
+  // The values matter as much as the container: `loadState` spreads each one
+  // and `#prune` calls `.shift()` on it, so a non-array here throws inside
+  // `blockConcurrencyWhile` — which is the very failure this guard exists to
+  // stop, arriving one level deeper than the first version checked.
+  return Object.values(clients as Record<string, unknown>).every(
+    (stamps) => Array.isArray(stamps) && stamps.every((entry) => typeof entry === 'number')
   );
 }
 

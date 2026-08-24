@@ -7,6 +7,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Clock } from '../clock.js';
 import { systemClock } from '../clock.js';
 import type { Config } from '../config.js';
+import type { BudgetStore } from '../http/budget-store.js';
 import { MemoryBudgetStore } from '../http/budget-store.js';
 import { ResponseCache } from '../http/cache.js';
 import { CompaniesHouseClient } from '../http/client.js';
@@ -94,11 +95,41 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
   const privateBudgets = new Map<string, { store: MemoryBudgetStore; lastSeen: number }>();
 
   /**
+   * Wraps a private budget so that *using* it counts as activity.
+   *
+   * Without this, `lastSeen` was only set when a session was created, so a
+   * heavily-used private window aged exactly as fast as an abandoned one. Being
+   * evicted mid-use is not a small matter: the caller's next reconnect builds a
+   * fresh full window on a credential that already has one, and Companies House
+   * meters the credential, so that key is then being spent against two local
+   * windows at once.
+   */
+  function trackUsage(label: string, store: MemoryBudgetStore): BudgetStore {
+    const touchBudget = (): void => {
+      const entry = privateBudgets.get(label);
+      if (entry !== undefined) entry.lastSeen = clock.now();
+    };
+
+    return {
+      acquire: async (clientId, now) => {
+        touchBudget();
+        return store.acquire(clientId, now);
+      },
+      peek: async (clientId, now) => {
+        touchBudget();
+        return store.peek(clientId, now);
+      },
+      penalise: async (resetAtMs) => store.penalise(resetAtMs),
+      observe: async (hint) => store.observe(hint)
+    };
+  }
+
+  /**
    * Bounded for the same reason `sessions` is: the key is caller-supplied, the
    * endpoint is authless, and rotating fabricated keys would otherwise grow
-   * this map for the life of the process. Evicting an entry costs that caller
-   * a fresh window, which is the mild failure — the pooled budget, which is
-   * the one worth protecting, is untouched by any of this.
+   * this map for the life of the process. With `trackUsage` above, the entry
+   * evicted is genuinely the least recently *used* rather than merely the
+   * least recently created.
    */
   function rememberPrivateBudget(label: string, store: MemoryBudgetStore): void {
     privateBudgets.set(label, { store, lastSeen: clock.now() });
@@ -122,11 +153,11 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     version,
     cache,
     pooledClient,
-    createBudgetStore: (label: string) => {
+    createBudgetStore: (label: string): BudgetStore => {
       const existing = privateBudgets.get(label);
       if (existing !== undefined) {
         existing.lastSeen = clock.now();
-        return existing.store;
+        return trackUsage(label, existing.store);
       }
       const created = new MemoryBudgetStore({
         limit: config.rateLimit,
@@ -134,7 +165,7 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
         safetyMargin: config.rateSafetyMargin
       });
       rememberPrivateBudget(label, created);
-      return created;
+      return trackUsage(label, created);
     },
     fetchImpl: options.fetchImpl
   };

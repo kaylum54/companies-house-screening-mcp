@@ -1,7 +1,7 @@
 import type { Clock } from '../clock.js';
 import { systemClock } from '../clock.js';
 import { CompaniesHouseError } from '../errors.js';
-import type { BudgetOutcome, SlidingWindowBudgetOptions } from './budget.js';
+import type { BudgetBound, BudgetOutcome, SlidingWindowBudgetOptions } from './budget.js';
 import type { BudgetStore } from './budget-store.js';
 import { MemoryBudgetStore } from './budget-store.js';
 
@@ -65,6 +65,16 @@ export interface RateLimitSnapshot {
   resetInMs: number;
   /** The effective ceiling after the safety margin. */
   limit: number;
+  /**
+   * Why the budget is zero, when it is.
+   *
+   * Carried through because `remaining: 0` has two very different meanings: a
+   * spent window, which the caller should wait out, and a limiter that could
+   * not be reached, which they should not. Dropping it here is what let
+   * `screen_companies` describe an outage as an exhausted budget while the
+   * single-lookup path was carefully avoiding exactly that.
+   */
+  boundBy?: BudgetBound | undefined;
 }
 
 /** Identity used when a caller does not distinguish itself. Correct for stdio. */
@@ -99,7 +109,11 @@ export class RateLimiter {
         ? store.effectiveLimit
         : Math.max(1, Math.floor((options.limit ?? 600) * (options.safetyMargin ?? 0.95)));
 
-    this.#lastKnown = { remaining: this.#effectiveLimit, resetInMs: 0, limit: this.#effectiveLimit };
+    this.#lastKnown = {
+      remaining: this.#effectiveLimit,
+      resetInMs: 0,
+      limit: this.#effectiveLimit
+    };
   }
 
   /**
@@ -211,7 +225,8 @@ export class RateLimiter {
     this.#lastKnown = {
       remaining: outcome.remaining,
       resetInMs: outcome.granted ? 0 : outcome.retryInMs,
-      limit: outcome.limit
+      limit: outcome.limit,
+      boundBy: outcome.boundBy
     };
     return this.#lastKnown;
   }
@@ -219,6 +234,16 @@ export class RateLimiter {
   #jitter(): number {
     return Math.floor(this.#random() * this.#jitterMs);
   }
+}
+
+export function budgetUnavailable(retryInMs: number): CompaniesHouseError {
+  return rateLimited({
+    granted: false,
+    remaining: 0,
+    retryInMs,
+    limit: 0,
+    boundBy: 'unavailable'
+  });
 }
 
 function rateLimited(outcome: BudgetOutcome): CompaniesHouseError {

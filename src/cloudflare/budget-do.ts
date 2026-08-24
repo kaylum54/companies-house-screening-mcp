@@ -61,6 +61,16 @@ type Operation =
 export class BudgetDurableObject {
   readonly #state: DurableObjectState;
   #budget: SlidingWindowBudget | undefined;
+  /**
+   * The in-flight first restore.
+   *
+   * Guarding on `#budget` alone is not enough: two concurrent first requests
+   * would each build and restore a window, the later assignment would win, and
+   * the slot granted against the discarded one would vanish from the persisted
+   * count. Memoizing the promise means the second caller waits for the first
+   * rather than racing it.
+   */
+  #initialising: Promise<SlidingWindowBudget> | undefined;
 
   constructor(state: DurableObjectState) {
     this.#state = state;
@@ -77,8 +87,11 @@ export class BudgetDurableObject {
     const existing = this.#budget;
     if (existing !== undefined) return existing;
 
-    const budget = new SlidingWindowBudget(options);
-    try {
+    const inFlight = this.#initialising;
+    if (inFlight !== undefined) return inFlight;
+
+    const attempt = (async (): Promise<SlidingWindowBudget> => {
+      const budget = new SlidingWindowBudget(options);
       await this.#state.blockConcurrencyWhile(async () => {
         const stored = await this.#state.storage.get<unknown>(STATE_KEY);
         // Written by a possibly older shape of this code, and it outlives any
@@ -87,17 +100,21 @@ export class BudgetDurableObject {
         // throwing here would refuse the credential permanently.
         if (isBudgetState(stored)) budget.loadState(stored);
       });
+      this.#budget = budget;
+      return budget;
+    })();
+
+    // Cleared on failure, never cached: storage refusing once must not leave a
+    // rejected promise that fails every later request closed. Caching the
+    // half-built empty budget would be worse still — it would hand out a fresh
+    // allowance for a window we simply could not read.
+    this.#initialising = attempt;
+    try {
+      return await attempt;
     } catch (error) {
-      // Storage refused. The window is then unknown rather than empty, so the
-      // budget is NOT published for reuse — the next request retries the
-      // restore instead of inheriting a half-built one. Caching a failure here
-      // would turn one bad read into a permanently broken object, and caching
-      // the empty budget would hand out a fresh allowance, which is worse.
+      this.#initialising = undefined;
       throw error;
     }
-
-    this.#budget = budget;
-    return budget;
   }
 
   async fetch(request: Request): Promise<Response> {

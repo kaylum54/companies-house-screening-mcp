@@ -154,6 +154,26 @@ All notable changes to this project are recorded here. The format follows
 - **A new session's first cache-hit response reported the previous caller's
   budget.** The per-session figure was seeded from the shared limiter.
 
+### Fixed — found by the fourth review pass
+
+- **`screen_companies` described a limiter outage as an exhausted budget.**
+  `RateLimitSnapshot` dropped the reason a budget was zero, so an unreachable
+  coordinator produced a table where every row blamed a spent five-minute
+  window. The single-lookup path had been fixed for exactly this and the two
+  tools contradicted each other during the same outage. The reason is now
+  carried through, and the batch tool reports the outage.
+- **`isBudgetState` checked the container but not its contents.** A stored
+  `clients` entry that was not an array passed the guard and threw inside
+  `blockConcurrencyWhile` — the failure the guard exists to prevent, one level
+  deeper than it was looking.
+- **Two concurrent first requests to a Durable Object could each build a
+  window.** The later assignment won and the slot granted against the discarded
+  one vanished from the persisted count. The in-flight restore is now memoized.
+- **An actively-used private budget aged as though idle.** Its timestamp was
+  only set when a session was created, so a busy window could be evicted and
+  the caller's next reconnect would build a second one on the same credential —
+  metering one Companies House key against two local windows.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

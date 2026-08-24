@@ -168,6 +168,66 @@ describe('BudgetDurableObject', () => {
     expect(recovered.granted).toBe(true);
   });
 
+  it('ignores persisted state whose per-client entries are the wrong shape', async () => {
+    // The container being an object is not enough: `loadState` spreads each
+    // value and `#prune` calls `.shift()` on it, so a non-array here throws
+    // inside blockConcurrencyWhile — one level deeper than a shallow check
+    // looks, and with the same permanent consequence.
+    const storage = new Map<string, unknown>([
+      ['budget', { timestamps: [1], clients: { a: 'not-an-array' }, blockedUntil: 0 }]
+    ]);
+    const state: DurableObjectState = {
+      storage: {
+        get: async <T>(key: string): Promise<T | undefined> => storage.get(key) as T | undefined,
+        put: async <T>(key: string, value: T): Promise<void> => {
+          storage.set(key, JSON.parse(JSON.stringify(value)) as unknown);
+        }
+      },
+      blockConcurrencyWhile: async <T>(callback: () => Promise<T>): Promise<T> => callback()
+    };
+
+    const outcome = await call(new BudgetDurableObject(state), {
+      op: 'acquire',
+      clientId: 'a',
+      now: 1000,
+      options: OPTIONS
+    });
+    expect(outcome.granted).toBe(true);
+  });
+
+  it('builds one window when two first requests arrive together', async () => {
+    // Guarding on the built budget alone lets two concurrent first requests
+    // each restore a window; the later assignment wins and the slot granted
+    // against the discarded one disappears from the persisted count.
+    const storage = new Map<string, unknown>();
+    let restores = 0;
+    const state: DurableObjectState = {
+      storage: {
+        get: async <T>(key: string): Promise<T | undefined> => {
+          restores += 1;
+          // Yield, so a second caller can arrive mid-restore.
+          await Promise.resolve();
+          return storage.get(key) as T | undefined;
+        },
+        put: async <T>(key: string, value: T): Promise<void> => {
+          storage.set(key, JSON.parse(JSON.stringify(value)) as unknown);
+        }
+      },
+      blockConcurrencyWhile: async <T>(callback: () => Promise<T>): Promise<T> => callback()
+    };
+
+    const object = new BudgetDurableObject(state);
+    const [a, b] = await Promise.all([
+      call(object, { op: 'acquire', clientId: 'x', now: 1000, options: OPTIONS }),
+      call(object, { op: 'acquire', clientId: 'x', now: 1000, options: OPTIONS })
+    ]);
+
+    expect(restores).toBe(1);
+    // Both were granted against the same window, so they are distinct draws.
+    expect([a.granted, b.granted]).toEqual([true, true]);
+    expect(a.remaining).not.toBe(b.remaining);
+  });
+
   it('rejects a malformed body', async () => {
     const object = new BudgetDurableObject(fakeState());
     const response = await object.fetch(

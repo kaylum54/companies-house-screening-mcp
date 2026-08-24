@@ -25,8 +25,9 @@ import { buildSnapshot } from '../domain/snapshot.js';
 import { CompaniesHouseError } from '../errors.js';
 import type { RequestMeta } from '../http/client.js';
 import { CompaniesHouseClient } from '../http/client.js';
+import { budgetUnavailable } from '../http/rate-limiter.js';
 import type { ToolContext } from './shared.js';
-import { companyNumberInput, guard, mergeMeta, ok, resolveCompanyNumber, verboseInput, withRaw } from './shared.js';
+import { companyNumberInput, fail, guard, mergeMeta, ok, resolveCompanyNumber, verboseInput, withRaw } from './shared.js';
 
 /**
  * The composite tools.
@@ -367,6 +368,15 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         // limiter then refuses — a table that stops early for a reason the
         // caller was never told, which is the failure ADR 8 exists to prevent.
         const budget = await client.budget();
+
+        // `remaining: 0` has two meanings and only one of them is "wait".
+        // Returning fifty rows that each blame an exhausted budget would be a
+        // confident wrong diagnosis of an outage in this server, so say what
+        // actually happened instead.
+        if (budget.boundBy === 'unavailable') {
+          return fail(budgetUnavailable(budget.resetInMs), logger);
+        }
+
         const affordable = Math.max(Math.floor(budget.remaining / perCompany), 0);
         const toScreen = resolved.slice(0, affordable);
         // `resetInMs` is zero whenever *some* budget remains — the window is
