@@ -230,6 +230,35 @@ describe('SlidingWindowBudget — retry times', () => {
     expect(outcome.retryInMs).toBeGreaterThan(WINDOW);
   });
 
+  it('quotes the real length of a hint-imposed block that carries no reset', () => {
+    // `remain: 0` with no `reset` blocks for a full window from when it was
+    // recorded. Quoting the local oldest-entry expiry reported seconds for a
+    // block lasting minutes, and the limiter then retried into a guaranteed
+    // refusal — while screen_companies printed the wrong number verbatim.
+    const budget = build();
+    budget.acquire('a', 1000);
+    budget.observe({ remaining: 0, recordedAtMs: 1000 });
+
+    const outcome = budget.peek('a', 1500);
+    expect(outcome.granted).toBe(false);
+    // Blocked until 1000 + WINDOW, so ~WINDOW away — not the ~1.5s the local
+    // timestamp would have suggested.
+    expect(outcome.retryInMs).toBeGreaterThan(WINDOW / 2);
+  });
+
+  it('does not let a fresh reset time extend a stale exhausted count', () => {
+    // The mirror image of the case above. A reset arriving without a count
+    // used to be pinned onto the previous response's `remaining: 0`, extending
+    // a block that should have ended by a whole extra window.
+    const budget = build();
+    budget.observe({ remaining: 0, recordedAtMs: 1000 });
+    budget.observe({ resetAtMs: 1000 + WINDOW * 10, recordedAtMs: 2000 });
+
+    // The stale count is gone with the hint that carried it, so the local
+    // window is all that matters and it is untouched.
+    expect(budget.peek('a', 2000).remaining).toBe(100);
+  });
+
   it('ignores a server reset time that is not what is blocking us', () => {
     const budget = build({ limit: 1 });
     budget.acquire('a', 1000);

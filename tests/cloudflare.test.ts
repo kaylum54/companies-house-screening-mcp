@@ -592,6 +592,22 @@ describe('the Worker fetch handler', () => {
     expect(response.status).toBe(500);
   });
 
+  it.each(['GET', 'DELETE'])('answers %s with 405 rather than opening a stream', async (method) => {
+    // The Worker is stateless, so there is no notification stream to hold open
+    // and no session to delete. Letting a GET through built a session, opened
+    // an SSE stream, and then tore it down in the `finally` before the
+    // response left — so a client would reconnect forever, paying a full
+    // config parse, auth and Durable Object wiring each time.
+    const response = await createFetchHandler()(
+      new Request('https://worker.test/mcp', { method }),
+      env(),
+      ctx
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get('allow')).toBe('POST');
+  });
+
   it('404s a path that is not the MCP endpoint', async () => {
     const response = await createFetchHandler()(
       new Request('https://worker.test/'),

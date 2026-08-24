@@ -79,6 +79,20 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
       return json(jsonRpcError(-32601, `No such endpoint. The MCP endpoint is ${MCP_PATH}.`), 404);
     }
 
+    // Answered before anything is built. This deployment is stateless — see
+    // the note at the top — so there are no server-initiated notifications to
+    // stream and no session to delete. Letting a GET through opened a
+    // standalone SSE stream that the `finally` below then tore down before the
+    // response left, so a client that opens the notification stream after
+    // initialize would reconnect in a loop, paying a full config parse, auth
+    // and Durable Object wiring on every attempt.
+    if (request.method !== 'POST') {
+      return new Response(
+        JSON.stringify(jsonRpcError(-32600, 'This endpoint is stateless; only POST is supported.')),
+        { status: 405, headers: { 'content-type': 'application/json', allow: 'POST' } }
+      );
+    }
+
     let config: Config;
     try {
       config = loadConfig(env as NodeJS.ProcessEnv);

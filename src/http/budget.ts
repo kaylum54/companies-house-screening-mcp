@@ -296,24 +296,26 @@ export class SlidingWindowBudget {
   }
 
   /** Folds a server rate-limit hint into local state. */
+  /**
+   * Folds a server rate-limit hint into the window.
+   *
+   * A hint replaces the server's view rather than patching it, because the two
+   * headers arrive independently and pairing a new one with a leftover old one
+   * is wrong in both directions:
+   *
+   * - A fresh count with a stale reset is expired the moment it is read, so
+   *   the server's warning that we are running out gets discarded and the
+   *   limiter runs to its own ceiling straight into the 429s these headers
+   *   exist to help us avoid.
+   * - A fresh reset with a stale `remaining: 0` extends a block that should
+   *   have ended by a whole extra window, refusing a budget that is fine.
+   *
+   * So each field is taken only from the hint in hand.
+   */
   observe(hint: ServerRateLimitHint): void {
-    if (hint.resetAtMs !== undefined) {
-      this.#serverResetAt = hint.resetAtMs;
-    }
-
-    if (hint.remaining !== undefined) {
-      this.#serverRemaining = hint.remaining;
-      this.#serverRecordedAt = hint.recordedAtMs;
-
-      // A new count with no reset time attached must not inherit the previous
-      // response's. Left in place, a reset that has already passed expires the
-      // fresh correction the moment it is read — so the server's warning is
-      // discarded and the limiter runs to its own ceiling straight into 429s,
-      // which is the one situation these undocumented headers exist to avoid.
-      if (hint.resetAtMs === undefined) {
-        this.#serverResetAt = undefined;
-      }
-    }
+    this.#serverRemaining = hint.remaining;
+    this.#serverResetAt = hint.resetAtMs;
+    this.#serverRecordedAt = hint.remaining === undefined ? undefined : hint.recordedAtMs;
   }
 
   toState(): BudgetState {
@@ -451,13 +453,19 @@ export class SlidingWindowBudget {
     const oldest = this.#timestamps[0];
     const localMs = oldest === undefined ? undefined : Math.max(oldest + this.#windowMs - now, 1);
 
-    // Only meaningful while the hint is actually the thing blocking us.
-    const serverMs =
-      this.#serverRemaining !== undefined &&
-      this.#serverRemaining <= 0 &&
-      this.#serverResetAt !== undefined
-        ? Math.max(this.#serverResetAt - now, 1)
-        : undefined;
+    // Only meaningful while the hint is actually the thing blocking us. When
+    // it carries no reset time the block still ends — one window after it was
+    // recorded, per the expiry rule in `#globalAvailable`. Quoting the local
+    // expiry instead reported seconds for a block that lasts minutes, and
+    // `RateLimiter.acquire` then retried into a guaranteed refusal.
+    let serverMs: number | undefined;
+    if (this.#serverRemaining !== undefined && this.#serverRemaining <= 0) {
+      if (this.#serverResetAt !== undefined) {
+        serverMs = Math.max(this.#serverResetAt - now, 1);
+      } else if (this.#serverRecordedAt !== undefined) {
+        serverMs = Math.max(this.#serverRecordedAt + this.#windowMs - now, 1);
+      }
+    }
 
     if (localMs === undefined && serverMs === undefined) return this.#windowMs;
     if (localMs === undefined) return serverMs as number;

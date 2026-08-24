@@ -232,6 +232,26 @@ All notable changes to this project are recorded here. The format follows
   `<= 0` guard and reached `screen_companies` as `slice(0, NaN)` — every
   company reported unaffordable against a budget that was never spent.
 
+### Fixed — found by the seventh review pass
+
+- **A hint-imposed block reported seconds for a wait lasting minutes.** A
+  `remain: 0` header with no `reset` blocks for a full window from when it was
+  recorded, but the retry time came from the local oldest timestamp — so the
+  limiter retried into a guaranteed refusal and `screen_companies` printed the
+  wrong number verbatim.
+- **A server hint is now the server's whole view, not a patch onto the last
+  one.** The two headers arrive independently, and pairing a new one with a
+  leftover old one is wrong in both directions: a fresh count with a stale
+  reset is expired the moment it is read, and a fresh reset with a stale
+  `remaining: 0` extended a block that should have ended by an entire window.
+  Only the first direction was handled.
+- **The Worker answered `GET /mcp` by opening a stream it then destroyed.** The
+  deployment is stateless, so it built a session, opened an SSE stream and tore
+  it down in the same request — leaving a client that opens the notification
+  stream reconnecting in a loop, paying a full config parse, auth and Durable
+  Object wiring each time. Non-POST is now refused with 405 before anything is
+  built, as the Node entry point already did.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside
