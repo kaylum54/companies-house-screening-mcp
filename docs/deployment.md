@@ -205,6 +205,54 @@ A single call that cannot proceed within `CH_MAX_WAIT_MS` fails with
 
 ---
 
+## Checking a deployment actually works
+
+Two requests, in order. The first needs no MCP knowledge and tells you the
+process is up:
+
+```bash
+curl https://your-deployment/health
+# {"status":"ok","version":"0.2.0"}
+```
+
+The second is a real MCP handshake:
+
+```bash
+curl -i -X POST https://your-deployment/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+        "protocolVersion":"2025-06-18","capabilities":{},
+        "clientInfo":{"name":"curl","version":"1"}}}'
+```
+
+**The `Accept` header matters and is the single most likely thing to trip you
+up.** Omit `text/event-stream` and the MCP SDK answers `406`, which looks
+exactly like a broken deployment and is not one. Every real client sends both
+types; only hand-written curl gets this wrong.
+
+What a healthy response looks like differs by transport, and both are correct:
+
+| | Node | Workers |
+|---|---|---|
+| Status | `200` | `200` |
+| `Mcp-Session-Id` | issued | absent — the Worker is stateless |
+| `Content-Type` | `text/event-stream` | `application/json` |
+
+### When it does not work
+
+| Symptom | Cause |
+|---|---|
+| `406` | `Accept` is missing `text/event-stream`. See above |
+| `404` on `/mcp` | Wrong path. The endpoint is `/mcp`; `/` returns 404 by design |
+| `403` | An `Origin` header was sent and is not in `CH_ALLOWED_ORIGINS`. Browsers send one; curl and MCP clients do not |
+| `500` "The server is misconfigured" | A binding or variable is missing. The detail is deliberately not returned — read it in `wrangler tail` or your process logs |
+| `405` on `GET /mcp` (Workers) | Expected. The Worker is stateless, so there is no stream to open |
+| Everything 503s | The Durable Object cannot be reached. The limiter fails closed rather than spending the key blind |
+
+`npx wrangler tail` streams live logs from a deployed Worker, which is where
+the misconfiguration detail goes.
+
 ## Before you make it public
 
 - **Check the Companies House developer terms.** Pooling one personal API key
