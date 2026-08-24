@@ -176,6 +176,21 @@ describe('HTTP transport — sessions', () => {
   });
 });
 
+describe('HTTP transport — session lifetime', () => {
+  it('evicts the least recently used session once the cap is reached', async () => {
+    // Opening a session costs nothing and anyone can. Without a cap, a stream
+    // of initialize posts retains a server and a transport apiece forever.
+    const { url } = await start({ maxSessions: 2 });
+
+    const first = await connect(url);
+    await connect(url);
+    await connect(url);
+
+    // The first session was evicted to make room, so its id no longer resolves.
+    await expect(first.listTools()).rejects.toThrow();
+  });
+});
+
 describe('HTTP transport — hardening', () => {
   it('rejects a browser origin that was not allow-listed', async () => {
     const { url } = await start();
@@ -273,6 +288,18 @@ describe('HTTP transport — caller-supplied identity', () => {
     expect(withSpoofB).toBeLessThan(withSpoofA);
   });
 
+  it('ignores CF-Connecting-IP too, since only Cloudflare can vouch for it', async () => {
+    // Inside a Worker the platform sets this header and strips any client
+    // copy. Arriving at a Node process it is just a header the caller typed,
+    // and trusting it would reopen the bypass X-Forwarded-For was closed for.
+    const { url } = await start({ rateLimit: 100, rateSafetyMargin: 1, clientReservation: 2 });
+
+    const first = await budgetAfter(url, { 'cf-connecting-ip': '203.0.113.1' });
+    const second = await budgetAfter(url, { 'cf-connecting-ip': '198.51.100.9' });
+
+    expect(second).toBeLessThan(first);
+  });
+
   it('believes X-Forwarded-For when the operator says a proxy is in front', async () => {
     const { url } = await start({ trustProxyHeaders: true });
     const client = await connect(url, { 'x-forwarded-for': '203.0.113.1' });
@@ -318,6 +345,58 @@ describe('HTTP transport — bring your own key', () => {
     expect(calls.at(-1)?.headers['authorization']).toBe(expected);
 
     await client.close();
+  });
+
+  it('gives the same key one budget, however many times it reconnects', async () => {
+    // Creating a private budget per session would mean a client reconnecting
+    // between calls got a fresh 570 requests every time, which is not a rate
+    // limiter at all.
+    const { url } = await start({ rateLimit: 20, rateSafetyMargin: 1 });
+    const headers = { 'x-companies-house-api-key': 'one-key' };
+
+    const first = await connect(url, headers);
+    const a = await first.callTool({
+      name: 'get_company',
+      arguments: { company_number: '04138203' }
+    });
+    await first.close();
+
+    const second = await connect(url, headers);
+    const b = await second.callTool({
+      name: 'get_company',
+      arguments: { company_number: '00000006' }
+    });
+    await second.close();
+
+    const remaining = (r: typeof a): number =>
+      (r.structuredContent as { meta?: { rate_limit_remaining?: number } }).meta
+        ?.rate_limit_remaining ?? -1;
+
+    expect(remaining(b)).toBeLessThan(remaining(a));
+  });
+
+  it('keeps two different caller keys on separate budgets', async () => {
+    const { url } = await start({ rateLimit: 20, rateSafetyMargin: 1 });
+
+    const first = await connect(url, { 'x-companies-house-api-key': 'key-one' });
+    const a = await first.callTool({
+      name: 'get_company',
+      arguments: { company_number: '04138203' }
+    });
+    await first.close();
+
+    const second = await connect(url, { 'x-companies-house-api-key': 'key-two' });
+    const b = await second.callTool({
+      name: 'get_company',
+      arguments: { company_number: '00000006' }
+    });
+    await second.close();
+
+    const remaining = (r: typeof a): number =>
+      (r.structuredContent as { meta?: { rate_limit_remaining?: number } }).meta
+        ?.rate_limit_remaining ?? -1;
+
+    expect(remaining(b)).toBe(remaining(a));
   });
 
   it('never puts a caller key into a tool response', async () => {

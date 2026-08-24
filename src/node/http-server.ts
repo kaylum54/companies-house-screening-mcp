@@ -81,6 +81,16 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl })
   });
 
+  /**
+   * Private windows, one per credential — keyed, not created per session.
+   *
+   * Creating one per session would mean a caller reconnecting between calls
+   * got a fresh 570 requests every time, which is not a rate limiter. The key
+   * is the caller's identity fingerprint, matching how Cloudflare names the
+   * Durable Object for the same caller so the two runtimes agree.
+   */
+  const privateBudgets = new Map<string, MemoryBudgetStore>();
+
   const sessionFactory = {
     config,
     logger,
@@ -88,17 +98,72 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     version,
     cache,
     pooledClient,
-    // A caller with their own key gets a window of their own, in this process.
-    createBudgetStore: () =>
-      new MemoryBudgetStore({
+    createBudgetStore: (label: string) => {
+      const existing = privateBudgets.get(label);
+      if (existing !== undefined) return existing;
+      const created = new MemoryBudgetStore({
         limit: config.rateLimit,
         windowMs: config.rateWindowMs,
         safetyMargin: config.rateSafetyMargin
-      }),
+      });
+      privateBudgets.set(label, created);
+      return created;
+    },
     fetchImpl: options.fetchImpl
   };
 
-  const sessions = new Map<string, { transport: StreamableHTTPServerTransport; session: Session }>();
+  interface Registered {
+    transport: StreamableHTTPServerTransport;
+    session: Session;
+    lastSeen: number;
+  }
+
+  /**
+   * Open sessions.
+   *
+   * Bounded in two directions, because opening one costs nothing and anybody
+   * can: idle sessions are swept, and the oldest is evicted once the cap is
+   * reached. Without either, a stream of `initialize` posts retains an
+   * `McpServer` and a transport apiece for the life of the process.
+   */
+  const sessions = new Map<string, Registered>();
+
+  function touch(id: string): void {
+    const entry = sessions.get(id);
+    if (entry !== undefined) entry.lastSeen = clock.now();
+  }
+
+  function drop(id: string): void {
+    const entry = sessions.get(id);
+    if (entry === undefined) return;
+    sessions.delete(id);
+    void entry.session.server.close().catch(() => undefined);
+  }
+
+  function sweep(): void {
+    const cutoff = clock.now() - config.sessionIdleMs;
+    for (const [id, entry] of sessions) {
+      if (entry.lastSeen <= cutoff) {
+        logger.info('session expired', { sessionId: id });
+        drop(id);
+      }
+    }
+
+    // Still over the cap after sweeping: evict least recently used until under.
+    while (sessions.size > config.maxSessions) {
+      let oldestId: string | undefined;
+      let oldest = Number.POSITIVE_INFINITY;
+      for (const [id, entry] of sessions) {
+        if (entry.lastSeen < oldest) {
+          oldest = entry.lastSeen;
+          oldestId = id;
+        }
+      }
+      if (oldestId === undefined) break;
+      logger.warn('session evicted: too many open sessions', { sessionId: oldestId });
+      drop(oldestId);
+    }
+  }
 
   const http = createHttpServer((req, res) => {
     void handle(req, res).catch((error: unknown) => {
@@ -141,6 +206,7 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
         sendJson(res, 404, jsonRpcError(-32001, 'Unknown or expired session.'));
         return;
       }
+      touch(sessionId as string);
       await existing.transport.handleRequest(req, res);
       return;
     }
@@ -179,6 +245,7 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
         sendJson(res, 404, jsonRpcError(-32001, 'Unknown or expired session.'));
         return;
       }
+      touch(sessionId);
       await existing.transport.handleRequest(req, res, parsed);
       return;
     }
@@ -217,8 +284,9 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
-        sessions.set(id, { transport, session });
+        sessions.set(id, { transport, session, lastSeen: clock.now() });
         logger.info('session opened', { sessionId: id, ...describe(identity) });
+        sweep();
       },
       onsessionclosed: (id) => {
         sessions.delete(id);
@@ -285,15 +353,16 @@ function headerValue(req: IncomingMessage, name: string): string | undefined {
  * into one identity, so the setting has to exist — it just has to be a
  * decision rather than a default.
  *
- * `CF-Connecting-IP` is always trusted: Cloudflare sets it and strips any
- * client-supplied copy, so it cannot be forged by the caller.
+ * `CF-Connecting-IP` gets no special treatment here. It is only trustworthy
+ * inside Cloudflare's runtime, where the platform sets it and strips any
+ * client copy; arriving at a Node process it is just another header the caller
+ * typed. The Worker reads it directly from its own request, which is the only
+ * place it means anything.
  */
 function remoteAddress(req: IncomingMessage, trustProxyHeaders: boolean): string | undefined {
-  const platform = headerValue(req, 'cf-connecting-ip');
-  if (platform !== undefined && platform.trim() !== '') return platform.trim();
-
   if (trustProxyHeaders) {
-    const forwarded = headerValue(req, 'x-forwarded-for');
+    const forwarded =
+      headerValue(req, 'x-forwarded-for') ?? headerValue(req, 'cf-connecting-ip');
     if (forwarded !== undefined && forwarded.trim() !== '') {
       return forwarded.split(',')[0]?.trim();
     }

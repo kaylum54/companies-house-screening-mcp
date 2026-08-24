@@ -373,7 +373,34 @@ describe('screen_companies', () => {
     expect(screened.length + notScreened.length).toBe(3);
     expect(notScreened.length).toBeGreaterThan(0);
     expect(notScreened[0]?.['reason']).toContain('rate-limit budget');
+    // Budget remains — just not a whole company's worth — so the window has
+    // not reset and there is no honest number of seconds to quote. Saying
+    // "retry in 0 seconds" would be worse than saying nothing.
+    expect(notScreened[0]?.['reason']).toContain('shorter list');
+    expect(notScreened[0]?.['reason']).not.toContain('Retry in 0 seconds');
+  });
+
+  it('quotes a real retry time once the window is genuinely exhausted', async () => {
+    // Spend the entire window first. Now nothing is left at all, the window
+    // itself is what the caller is waiting for, and the reset time is a real
+    // number worth printing — unlike the case above, where budget remained.
+    harness = await harnessRoutes(FULL_ROUTES, { rateLimit: 1 });
+    await harness.client.callTool({
+      name: 'get_company',
+      arguments: { company_number: '04138203' }
+    });
+
+    const result = structured(
+      await harness.client.callTool({
+        name: 'screen_companies',
+        arguments: { companies: ['04138203', '00000006'] }
+      })
+    );
+
+    const notScreened = result['not_screened'] as Record<string, unknown>[];
+    expect(notScreened.length).toBeGreaterThan(0);
     expect(notScreened[0]?.['reason']).toContain('Retry in');
+    expect(notScreened[0]?.['reason']).not.toContain('Retry in 0 seconds');
   });
 
   it('keeps going when one company in the list fails', async () => {

@@ -369,9 +369,17 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         const budget = await client.budget();
         const affordable = Math.max(Math.floor(budget.remaining / perCompany), 0);
         const toScreen = resolved.slice(0, affordable);
+        // `resetInMs` is zero whenever *some* budget remains — the window is
+        // not exhausted, there is simply not enough of it left for another
+        // whole company. Fair sharing makes that the common case, and "retry
+        // in 0 seconds" would be worse than saying nothing.
+        const retry =
+          budget.resetInMs > 0
+            ? `Retry in ${Math.ceil(budget.resetInMs / 1000)} seconds, or pass a shorter list.`
+            : 'Pass a shorter list, or retry once the current five-minute window rolls over.';
         const notScreened = resolved.slice(affordable).map((resolution) => ({
           input: resolution.input,
-          reason: `Not enough rate-limit budget left in this five-minute window. Screening this company needs ${perCompany} requests. Retry in ${Math.ceil(budget.resetInMs / 1000)} seconds, or pass a shorter list.`
+          reason: `Not enough rate-limit budget left in this five-minute window. Screening this company needs ${perCompany} requests. ${retry}`
         }));
 
         if (notScreened.length > 0) {

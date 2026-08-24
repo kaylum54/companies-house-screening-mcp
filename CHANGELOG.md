@@ -80,6 +80,34 @@ All notable changes to this project are recorded here. The format follows
   of environment variables that failed validation. The detail now goes to the
   operator's logs and the caller gets "The server is misconfigured."
 
+### Fixed — found by the code-review pass
+
+- **A private budget is now one per key, not one per session.** Creating a
+  store per session meant a caller reconnecting between calls received a fresh
+  full window each time, so a client that reconnected per request was never
+  rate-limited at all. It also disagreed with the Cloudflare path, which
+  already keyed by caller.
+- **`CF-Connecting-IP` is gated like `X-Forwarded-For`.** It is only
+  trustworthy inside Cloudflare's runtime; arriving at a Node process it is a
+  header the caller typed, and trusting it reopened the bypass the previous fix
+  had just closed.
+- **The session registry is bounded.** Idle sessions are swept and the least
+  recently used is evicted at `CH_MAX_SESSIONS`; previously every `initialize`
+  retained a server and transport for the life of the process.
+- **Response metadata no longer reports another caller's budget.** `rateLimit`
+  read the shared limiter's cached value, so a request served entirely from
+  cache could report whatever the last caller saw — including `remaining: 0`.
+  Each session now tracks its own.
+- **No more "Retry in 0 seconds."** When budget remained but not a whole
+  company's worth, `not_screened` quoted a reset time of zero. Fair sharing
+  makes that state common; the message now says what to do instead.
+- **A failed Durable Object restore no longer latches.** One rejected storage
+  read left a permanently rejected promise that failed every later request
+  closed. The next request now retries.
+- **The Worker reports its real version** — inlined at build time — rather than
+  `0.0.0`, and its pooled limiter now honours `CH_RATE_LIMIT` instead of
+  falling back to the documented default when reporting its ceiling.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

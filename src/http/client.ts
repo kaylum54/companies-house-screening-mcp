@@ -112,6 +112,16 @@ export class CompaniesHouseClient {
   readonly #random: () => number;
   readonly #authorization: string;
   readonly #clientId: string;
+  /**
+   * Budget last seen *by this client*.
+   *
+   * Not read off the limiter: `withClientId` shares one limiter across every
+   * pooled session, so the limiter's cached figure belongs to whichever caller
+   * acquired most recently. Reporting that in this session's response metadata
+   * would attribute another caller's spending — including a `remaining: 0` —
+   * to a request that may have been served entirely from cache.
+   */
+  #lastRateLimit: RateLimitSnapshot;
 
   constructor(options: CompaniesHouseClientOptions) {
     const { config } = options;
@@ -144,6 +154,7 @@ export class CompaniesHouseClient {
     // and an ignored, empty password. The trailing colon is required.
     this.#authorization = `Basic ${toBase64(`${config.apiKey}:`)}`;
     this.#clientId = options.clientId ?? DEFAULT_CLIENT_ID;
+    this.#lastRateLimit = this.#limiter.lastKnown;
   }
 
   /**
@@ -169,11 +180,11 @@ export class CompaniesHouseClient {
   }
 
   /**
-   * Last budget seen. Cheap, slightly behind on a shared deployment, and
-   * correct for reporting what a call just cost.
+   * Last budget this session saw. Cheap, slightly behind on a shared
+   * deployment, and correct for reporting what a call just cost.
    */
   get rateLimit(): RateLimitSnapshot {
-    return this.#limiter.lastKnown;
+    return this.#lastRateLimit;
   }
 
   /**
@@ -185,7 +196,9 @@ export class CompaniesHouseClient {
    * figure is exactly the silently-short table ADR 8 forbids.
    */
   async budget(clientId?: string): Promise<RateLimitSnapshot> {
-    return this.#limiter.snapshot(clientId ?? this.#clientId);
+    const snapshot = await this.#limiter.snapshot(clientId ?? this.#clientId);
+    this.#lastRateLimit = snapshot;
+    return snapshot;
   }
 
   get cache(): ResponseCache {
@@ -279,6 +292,9 @@ export class CompaniesHouseClient {
       }
 
       await this.#limiter.acquire(this.#clientId);
+      // Captured immediately after acquiring, while the limiter's cached value
+      // is still this session's.
+      this.#lastRateLimit = this.#limiter.lastKnown;
 
       let response: Response;
       try {

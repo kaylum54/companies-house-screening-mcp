@@ -1,5 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 
+import packageJson from '../../package.json' with { type: 'json' };
+
 import { systemClock } from '../clock.js';
 import type { Config } from '../config.js';
 import { ConfigError, loadConfig } from '../config.js';
@@ -36,6 +38,14 @@ import type { DurableObjectState, ExecutionContext, WorkerEnv } from './types.js
  * requires the Workers Paid plan; `wrangler.toml` raises the limit explicitly
  * rather than relying on the default.
  */
+
+/**
+ * Inlined at build time by the bundler. Kept as a module-level import rather
+ * than a hand-maintained constant so it cannot drift from the published
+ * version — the same argument `version.ts` makes for reading it at runtime on
+ * Node.
+ */
+const WORKER_VERSION: string = packageJson.version;
 
 const MCP_PATH = '/mcp';
 const HEALTH_PATH = '/health';
@@ -127,6 +137,11 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
       limiter: new RateLimiter({
         clock,
         maxWaitMs: config.maxWaitMs,
+        // Passed explicitly: without them the limiter falls back to the
+        // documented defaults for its reported ceiling, and a deployment that
+        // set CH_RATE_LIMIT would be told a number that was never true.
+        limit: config.rateLimit,
+        safetyMargin: config.rateSafetyMargin,
         store: new DurableObjectBudgetStore({
           namespace,
           budgetName: budgetName(config.apiKey),
@@ -220,4 +235,13 @@ export class RateLimitDurableObject extends BudgetDurableObject {
   }
 }
 
-export default { fetch: createFetchHandler() };
+/**
+ * The deployed handler.
+ *
+ * The version is inlined at build time from package.json — a Worker has no
+ * package.json at runtime to read, and `packageVersion()` is Node-only for
+ * exactly that reason. Reporting 0.0.0 to every connecting host would be
+ * misleading in the one situation where the number matters: working out which
+ * build is actually running.
+ */
+export default { fetch: createFetchHandler({ version: WORKER_VERSION }) };

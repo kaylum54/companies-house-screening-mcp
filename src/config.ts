@@ -96,6 +96,10 @@ export const configSchema = z.object({
    * any client-supplied copy, so it is trustworthy where it exists.
    */
   trustProxyHeaders: booleanish.default(false),
+  /** Open sessions retained before the least recently used is evicted. */
+  maxSessions: positiveInt('CH_MAX_SESSIONS').default(1_000),
+  /** How long a session may sit idle before it is swept. */
+  sessionIdleMs: positiveInt('CH_SESSION_IDLE_MS').default(1_800_000),
   /** How long a request will wait for budget before failing with RATE_LIMITED. */
   maxWaitMs: positiveInt('CH_MAX_WAIT_MS').default(60_000)
 });
@@ -128,6 +132,8 @@ const ENV_NAMES: Record<string, string> = {
   maxTrackedClients: 'CH_MAX_TRACKED_CLIENTS',
   allowClientKeys: 'CH_ALLOW_CLIENT_KEYS',
   trustProxyHeaders: 'CH_TRUST_PROXY_HEADERS',
+  maxSessions: 'CH_MAX_SESSIONS',
+  sessionIdleMs: 'CH_SESSION_IDLE_MS',
   maxWaitMs: 'CH_MAX_WAIT_MS'
 };
 
@@ -171,6 +177,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxTrackedClients: env['CH_MAX_TRACKED_CLIENTS'],
     allowClientKeys: env['CH_ALLOW_CLIENT_KEYS'],
     trustProxyHeaders: env['CH_TRUST_PROXY_HEADERS'],
+    maxSessions: env['CH_MAX_SESSIONS'],
+    sessionIdleMs: env['CH_SESSION_IDLE_MS'],
     maxWaitMs: env['CH_MAX_WAIT_MS']
   };
 

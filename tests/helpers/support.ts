@@ -37,6 +37,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     maxTrackedClients: 10_000,
     allowClientKeys: true,
     trustProxyHeaders: false,
+    maxSessions: 1_000,
+    sessionIdleMs: 1_800_000,
     maxWaitMs: 60_000,
     ...overrides
   };

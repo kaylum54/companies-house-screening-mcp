@@ -61,7 +61,6 @@ type Operation =
 export class BudgetDurableObject {
   readonly #state: DurableObjectState;
   #budget: SlidingWindowBudget | undefined;
-  #restored: Promise<void> | undefined;
 
   constructor(state: DurableObjectState) {
     this.#state = state;
@@ -75,16 +74,26 @@ export class BudgetDurableObject {
    * eviction by the platform would hand out a fresh allowance.
    */
   async #ready(options: BudgetDurableObjectOptions): Promise<SlidingWindowBudget> {
-    if (this.#budget === undefined) {
-      const budget = new SlidingWindowBudget(options);
-      this.#budget = budget;
-      this.#restored = this.#state.blockConcurrencyWhile(async () => {
+    const existing = this.#budget;
+    if (existing !== undefined) return existing;
+
+    const budget = new SlidingWindowBudget(options);
+    try {
+      await this.#state.blockConcurrencyWhile(async () => {
         const stored = await this.#state.storage.get<BudgetState>(STATE_KEY);
         if (stored !== undefined) budget.loadState(stored);
       });
+    } catch (error) {
+      // Storage refused. The window is then unknown rather than empty, so the
+      // budget is NOT published for reuse — the next request retries the
+      // restore instead of inheriting a half-built one. Caching a failure here
+      // would turn one bad read into a permanently broken object, and caching
+      // the empty budget would hand out a fresh allowance, which is worse.
+      throw error;
     }
-    await this.#restored;
-    return this.#budget;
+
+    this.#budget = budget;
+    return budget;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -99,7 +108,14 @@ export class BudgetDurableObject {
       return json({ error: 'operation is missing its budget options' }, 400);
     }
 
-    const budget = await this.#ready(operation.options);
+    let budget: SlidingWindowBudget;
+    try {
+      budget = await this.#ready(operation.options);
+    } catch {
+      // The store treats a non-2xx as unreachable and fails closed, which is
+      // the right answer for a window we cannot read.
+      return json({ error: 'budget storage unavailable' }, 503);
+    }
 
     switch (operation.op) {
       case 'acquire': {

@@ -152,7 +152,9 @@ Everything is environment variables. Only the first is required.
 | `CH_NEWCOMER_ALLOWANCE` | `1` | How many unseen callers to hold a reservation for |
 | `CH_MAX_TRACKED_CLIENTS` | `10000` | Bound on identities tracked for fair sharing |
 | `CH_ALLOW_CLIENT_KEYS` | `true` | Whether callers may bring their own key |
-| `CH_TRUST_PROXY_HEADERS` | `false` | Believe `X-Forwarded-For` when identifying callers. Turn on **only** behind a proxy you control |
+| `CH_TRUST_PROXY_HEADERS` | `false` | Believe `X-Forwarded-For` / `CF-Connecting-IP` when identifying callers. Turn on **only** behind a proxy you control |
+| `CH_MAX_SESSIONS` | `1000` | Open sessions kept before the least recently used is evicted |
+| `CH_SESSION_IDLE_MS` | `1800000` | How long a session may idle before being swept |
 | `CH_MAX_WAIT_MS` | `60000` | How long a request waits for budget before `RATE_LIMITED` |
 | `CH_RATE_LIMIT` | `600` | Lower it if the key is shared with something else |
 | `CH_CACHE_ENABLED` | `true` | |
@@ -204,6 +206,8 @@ A single call that cannot proceed within `CH_MAX_WAIT_MS` fails with
   identity, and shares a single reservation between them. Do *not* set it when
   the server is directly reachable: `X-Forwarded-For` is set by the caller, and
   a client that varies it per request would mint a fresh reservation each time
-  and defeat fair sharing entirely. Cloudflare's `CF-Connecting-IP` is trusted
-  unconditionally because the platform sets it and strips any client copy, so
-  the Workers deployment needs no setting.
+  and defeat fair sharing entirely. The same applies to `CF-Connecting-IP`:
+  that header is only trustworthy inside Cloudflare's runtime, where the
+  platform sets it and strips any client copy — arriving at a Node process it
+  is just another header the caller typed, so it is gated by the same setting.
+  The Workers deployment reads it from its own request and needs no setting.

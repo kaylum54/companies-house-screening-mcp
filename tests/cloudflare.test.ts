@@ -122,6 +122,48 @@ describe('BudgetDurableObject', () => {
     expect(response.status).toBe(400);
   });
 
+  it('retries the restore after a storage failure rather than latching it', async () => {
+    // A cached rejected promise would turn one bad read into an object that
+    // failed closed forever; a cached empty budget would hand out a fresh
+    // allowance, which is worse. Neither: the next request tries again.
+    let failNext = true;
+    const storage = new Map<string, unknown>();
+    const state: DurableObjectState = {
+      storage: {
+        get: async <T>(key: string): Promise<T | undefined> => {
+          if (failNext) {
+            failNext = false;
+            throw new Error('storage unavailable');
+          }
+          return storage.get(key) as T | undefined;
+        },
+        put: async <T>(key: string, value: T): Promise<void> => {
+          storage.set(key, JSON.parse(JSON.stringify(value)) as unknown);
+        }
+      },
+      blockConcurrencyWhile: async <T>(callback: () => Promise<T>): Promise<T> => callback()
+    };
+
+    const object = new BudgetDurableObject(state);
+
+    const failed = await object.fetch(
+      new Request('https://budget.invalid/', {
+        method: 'POST',
+        body: JSON.stringify({ op: 'acquire', clientId: 'a', now: 1000, options: OPTIONS })
+      })
+    );
+    expect(failed.status).toBe(503);
+
+    // Second attempt: storage is healthy again and the object works.
+    const recovered = await call(object, {
+      op: 'acquire',
+      clientId: 'a',
+      now: 1000,
+      options: OPTIONS
+    });
+    expect(recovered.granted).toBe(true);
+  });
+
   it('rejects a malformed body', async () => {
     const object = new BudgetDurableObject(fakeState());
     const response = await object.fetch(
