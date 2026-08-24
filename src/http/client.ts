@@ -19,6 +19,23 @@ import { DEFAULT_CLIENT_ID, RateLimiter } from './rate-limiter.js';
  */
 
 /**
+ * Whatever a failed `fetch` can tell us, flattened for a log line.
+ *
+ * Runtimes disagree about what they throw: Node nests the useful part in
+ * `cause`, workerd reports an opaque `internal error; reference = ...`, and
+ * either may surface only a name. Take all of it, since one line in a log is
+ * cheap and a second deploy to find out is not.
+ */
+function describeCause(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const parts = [`${error.name}: ${error.message}`];
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause instanceof Error) parts.push(`caused by ${cause.name}: ${cause.message}`);
+  else if (cause !== undefined) parts.push(`caused by ${String(cause)}`);
+  return parts.join(' | ');
+}
+
+/**
  * Base64 without `Buffer`.
  *
  * `Buffer` is a Node global. This file has to run unchanged on Workers, where
@@ -364,7 +381,18 @@ export class CompaniesHouseClient {
         });
       } catch (error) {
         lastError = this.#classifyFetchFailure(error, label);
-        this.#logger.debug('request failed', { url, attempt, code: lastError.code });
+        // The underlying reason goes in the log, not in the error payload:
+        // the caller gets a sanitised code (ADR 3), while whoever is operating
+        // the server needs to know whether "could not reach Companies House"
+        // meant DNS, TLS, a proxy, or a runtime that does not support
+        // something. Without it a NETWORK_ERROR is a dead end for the one
+        // person who could fix it.
+        this.#logger.debug('request failed', {
+          url,
+          attempt,
+          code: lastError.code,
+          reason: describeCause(error)
+        });
         if (!lastError.retryable) throw lastError;
         continue;
       }

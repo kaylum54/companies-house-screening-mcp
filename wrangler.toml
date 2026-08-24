@@ -45,6 +45,9 @@ id = "replace-with-your-kv-namespace-id"
 [vars]
 # Non-secret configuration. The API key is a secret and must NOT go here:
 #   npx wrangler secret put COMPANIES_HOUSE_API_KEY
+# Set to "debug" when diagnosing a deployment: it logs the underlying reason a
+# request failed, which `wrangler tail` will show you. Put it back to "info"
+# afterwards — debug logs every request.
 CH_LOG_LEVEL = "info"
 CH_CACHE_ENABLED = "true"
 # Callers may supply their own key to get a private budget. See docs/deployment.md.
