@@ -131,6 +131,21 @@ export function isBudgetState(value: unknown): value is BudgetState {
   const clients = candidate['clients'];
   if (typeof clients !== 'object' || clients === null || Array.isArray(clients)) return false;
 
+  // The server-hint fields are restored too, and a non-numeric one is worse
+  // than a crash: `#globalAvailable` returns NaN, which passes the `<= 0`
+  // guard and reaches `screen_companies` as `slice(0, NaN)` — every company
+  // reported unaffordable against a budget that was never spent.
+  const numberOrAbsent = (value: unknown): boolean =>
+    value === undefined || (typeof value === 'number' && Number.isFinite(value));
+
+  if (
+    !numberOrAbsent(candidate['serverRemaining']) ||
+    !numberOrAbsent(candidate['serverResetAt']) ||
+    !numberOrAbsent(candidate['serverRecordedAt'])
+  ) {
+    return false;
+  }
+
   // The values matter as much as the container: `loadState` spreads each one
   // and `#prune` calls `.shift()` on it, so a non-array here throws inside
   // `blockConcurrencyWhile` — which is the very failure this guard exists to
@@ -422,14 +437,32 @@ export class SlidingWindowBudget {
     return Math.max(Math.min(local, this.#serverRemaining), 0);
   }
 
+  /**
+   * When the caller may next expect a slot.
+   *
+   * Both constraints have to be consulted, not just whichever is convenient.
+   * A server `remain: 0` hint can block a window that still has local room, and
+   * quoting the local oldest-entry expiry then reports a time that can be
+   * minutes early — after which the caller retries, is refused again, and pays
+   * a round trip for it. `screen_companies` prints this number verbatim, so an
+   * optimistic one is a promise to the user that the register will not keep.
+   */
   #globalRetryInMs(now: number): number {
     const oldest = this.#timestamps[0];
-    if (oldest === undefined) {
-      // Nothing local is holding us back, so the block is a server hint.
-      if (this.#serverResetAt !== undefined) return Math.max(this.#serverResetAt - now, 1);
-      return this.#windowMs;
-    }
-    return Math.max(oldest + this.#windowMs - now, 1);
+    const localMs = oldest === undefined ? undefined : Math.max(oldest + this.#windowMs - now, 1);
+
+    // Only meaningful while the hint is actually the thing blocking us.
+    const serverMs =
+      this.#serverRemaining !== undefined &&
+      this.#serverRemaining <= 0 &&
+      this.#serverResetAt !== undefined
+        ? Math.max(this.#serverResetAt - now, 1)
+        : undefined;
+
+    if (localMs === undefined && serverMs === undefined) return this.#windowMs;
+    if (localMs === undefined) return serverMs as number;
+    if (serverMs === undefined) return localMs;
+    return Math.max(localMs, serverMs);
   }
 
   #clientRetryInMs(clientId: string, now: number): number {

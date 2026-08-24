@@ -208,6 +208,30 @@ All notable changes to this project are recorded here. The format follows
   getter, the four call sites, and the seed); handing the value back removes
   the shape of the bug rather than its instances.
 
+### Fixed — found by the sixth review pass
+
+- **A refused initialize orphaned a whole session.** The SDK answers 406 for an
+  `Accept` without `text/event-stream` and 415 for a non-JSON `Content-Type`,
+  after the server, transport and any private-budget reference have been built
+  and before `onsessioninitialized` fires — so none of it was ever registered,
+  swept, evicted or closed. Unauthenticated memory growth the session cap could
+  not see, and with a rotating key header it pinned private budgets in place
+  permanently.
+- **Closing a session released its private budget twice.** Both
+  `onsessionclosed` and `onclose` fire on a delete, so closing one of two
+  sessions on the same caller key took the reference count to zero while the
+  other was live — making an in-use budget an eviction candidate, which is the
+  "one key, two local windows" failure the refcount exists to prevent. Release
+  is now idempotent per session.
+- **A server-imposed block reported the local window's reset time.** A
+  `remain: 0` hint can block a window that still has local room; quoting the
+  local expiry gave a retry time that could be minutes early, and
+  `screen_companies` prints it verbatim.
+- **`isBudgetState` did not validate the restored server-hint fields.** A
+  non-numeric `serverRemaining` made the available count `NaN`, which passes a
+  `<= 0` guard and reached `screen_companies` as `slice(0, NaN)` — every
+  company reported unaffordable against a budget that was never spent.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

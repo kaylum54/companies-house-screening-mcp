@@ -228,6 +228,38 @@ describe('BudgetDurableObject', () => {
     expect(a.remaining).not.toBe(b.remaining);
   });
 
+  it('ignores persisted state whose server-hint fields are not numbers', async () => {
+    // Worse than a crash: a non-numeric `serverRemaining` makes the available
+    // count NaN, which passes the `<= 0` guard and reaches screen_companies as
+    // `slice(0, NaN)` — every company reported unaffordable against a budget
+    // that was never spent.
+    const storage = new Map<string, unknown>([
+      [
+        'budget',
+        { timestamps: [], clients: {}, blockedUntil: 0, serverRemaining: 'lots' }
+      ]
+    ]);
+    const state: DurableObjectState = {
+      storage: {
+        get: async <T>(key: string): Promise<T | undefined> => storage.get(key) as T | undefined,
+        put: async <T>(key: string, value: T): Promise<void> => {
+          storage.set(key, JSON.parse(JSON.stringify(value)) as unknown);
+        }
+      },
+      blockConcurrencyWhile: async <T>(callback: () => Promise<T>): Promise<T> => callback()
+    };
+
+    const outcome = await call(new BudgetDurableObject(state), {
+      op: 'acquire',
+      clientId: 'a',
+      now: 1000,
+      options: OPTIONS
+    });
+
+    expect(outcome.granted).toBe(true);
+    expect(Number.isFinite(outcome.remaining)).toBe(true);
+  });
+
   it('rejects a body that parses to something other than an object', async () => {
     // `JSON.parse('null')` succeeds. Reading `.options` off it throws outside
     // both try blocks, and the store reads that failure as an unreachable

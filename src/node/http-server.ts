@@ -196,8 +196,8 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     transport: StreamableHTTPServerTransport;
     session: Session;
     lastSeen: number;
-    /** Private budget this session holds a reference to, if any. */
-    budgetLabel: string | undefined;
+    /** Releases this session's private-budget reference. Safe to call twice. */
+    release: () => void;
   }
 
   /**
@@ -219,7 +219,7 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     const entry = sessions.get(id);
     if (entry === undefined) return;
     sessions.delete(id);
-    releasePrivateBudget(entry.budgetLabel);
+    entry.release();
     void entry.session.server.close().catch(() => undefined);
   }
 
@@ -388,15 +388,32 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
         ? identity.clientId
         : undefined;
 
+    /**
+     * Idempotent, because closing a session fires more than one of these.
+     *
+     * `handleDeleteRequest` calls `onsessionclosed` and then `close()`, which
+     * calls `onclose`; `drop()` releases before `server.close()` fires it
+     * again. Decrementing twice for one session takes a budget shared by two
+     * live sessions from two refs to zero, making it an eviction candidate
+     * while it is still in use — which is precisely the "one key, two local
+     * windows" failure the refcount exists to prevent.
+     */
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      releasePrivateBudget(budgetLabel);
+    };
+
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
-        sessions.set(id, { transport, session, lastSeen: clock.now(), budgetLabel });
+        sessions.set(id, { transport, session, lastSeen: clock.now(), release });
         logger.info('session opened', { sessionId: id, ...describe(identity) });
         sweep();
       },
       onsessionclosed: (id) => {
-        releasePrivateBudget(sessions.get(id)?.budgetLabel);
+        release();
         sessions.delete(id);
         logger.info('session closed', { sessionId: id });
       }
@@ -405,7 +422,7 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     transport.onclose = () => {
       const id = transport.sessionId;
       if (id !== undefined) sessions.delete(id);
-      releasePrivateBudget(budgetLabel);
+      release();
       void session.server.close().catch(() => undefined);
     };
 
@@ -417,6 +434,19 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     // here rather than relaxing a compiler setting for the whole project.
     await session.server.connect(transport as unknown as Parameters<typeof session.server.connect>[0]);
     await transport.handleRequest(req, res, parsed);
+
+    // The SDK can refuse an initialize outright — 406 for an `Accept` without
+    // `text/event-stream`, 415 for a `Content-Type` that is not JSON — in
+    // which case `onsessioninitialized` never fires. Without this the server,
+    // the transport and any private-budget reference are all built and then
+    // orphaned: never registered, so never swept, never evicted and never
+    // closed. That is unauthenticated memory growth the session cap cannot
+    // see, and with a rotating key header it pins private budgets at `refs > 0`
+    // permanently.
+    if (transport.sessionId === undefined) {
+      release();
+      await session.server.close().catch(() => undefined);
+    }
   }
 
   // Attached so the caller can shut sessions down without reaching inside.

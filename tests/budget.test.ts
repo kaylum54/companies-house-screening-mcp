@@ -214,6 +214,32 @@ describe('SlidingWindowBudget — penalties and server hints', () => {
   });
 });
 
+describe('SlidingWindowBudget — retry times', () => {
+  it('quotes the server reset when the server is what is blocking us', () => {
+    // A `remain: 0` hint can block a window that still has local room. Quoting
+    // the local oldest-entry expiry then reports a time minutes early, after
+    // which the caller retries, is refused, and pays a round trip for it —
+    // and `screen_companies` prints the number verbatim.
+    const budget = build();
+    budget.acquire('a', 1000);
+    budget.observe({ remaining: 0, resetAtMs: 1000 + WINDOW * 2, recordedAtMs: 1000 });
+
+    const outcome = budget.peek('a', 1000);
+    expect(outcome.granted).toBe(false);
+    // The local window would have said one window; the server says two.
+    expect(outcome.retryInMs).toBeGreaterThan(WINDOW);
+  });
+
+  it('ignores a server reset time that is not what is blocking us', () => {
+    const budget = build({ limit: 1 });
+    budget.acquire('a', 1000);
+    budget.observe({ remaining: 50, resetAtMs: 1000 + WINDOW * 10, recordedAtMs: 1000 });
+
+    // Local budget is spent; the server has plenty. The wait is the local one.
+    expect(budget.peek('a', 1000).retryInMs).toBeLessThanOrEqual(WINDOW);
+  });
+});
+
 describe('SlidingWindowBudget — bounded memory', () => {
   it('forgets clients that fall out of the window', () => {
     const budget = build({ clientReservation: 10 });

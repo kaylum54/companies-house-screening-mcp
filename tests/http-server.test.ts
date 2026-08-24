@@ -247,6 +247,71 @@ describe('HTTP transport — session lifetime', () => {
   });
 });
 
+describe('HTTP transport — rejected handshakes', () => {
+  it('does not leave a server behind when the SDK refuses the initialize', async () => {
+    // The SDK answers 406 for an Accept without text/event-stream. That
+    // happens after the server, transport and any private budget have been
+    // built, and before onsessioninitialized fires — so without cleanup the
+    // whole lot is orphaned: never registered, never swept, never closed.
+    // Unauthenticated growth the session cap cannot see.
+    const { url } = await start({ maxSessions: 2 });
+
+    for (let i = 0; i < 20; i += 1) {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-06-18',
+            capabilities: {},
+            clientInfo: { name: 'rejected', version: '1.0.0' }
+          }
+        })
+      });
+      expect(response.status).toBe(406);
+    }
+
+    // The server is still healthy and still serving after twenty refusals.
+    const client = await connect(url);
+    await expect(client.listTools()).resolves.toBeDefined();
+    await client.close();
+  });
+
+  it('keeps a shared private budget alive while a second session still holds it', async () => {
+    // Closing one of two sessions on the same caller key used to drop the
+    // reference count by two — one from onsessionclosed, one from onclose —
+    // leaving a budget that is still in use eligible for eviction, and the
+    // caller with a second window on one credential.
+    const { url } = await start({ rateLimit: 40, rateSafetyMargin: 1 });
+    const headers = { 'x-companies-house-api-key': 'shared-caller-key' };
+
+    const first = await connect(url, headers);
+    const second = await connect(url, headers);
+
+    const a = await first.callTool({
+      name: 'get_company',
+      arguments: { company_number: '04138203' }
+    });
+    await first.close();
+
+    const b = await second.callTool({
+      name: 'get_company',
+      arguments: { company_number: '00000006' }
+    });
+    await second.close();
+
+    const remaining = (r: typeof a): number =>
+      (r.structuredContent as { meta?: { rate_limit_remaining?: number } }).meta
+        ?.rate_limit_remaining ?? -1;
+
+    // Still the same window: the surviving session kept it referenced.
+    expect(remaining(b)).toBeLessThan(remaining(a));
+  });
+});
+
 describe('HTTP transport — hardening', () => {
   it('rejects a browser origin that was not allow-listed', async () => {
     const { url } = await start();
