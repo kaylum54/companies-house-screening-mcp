@@ -152,6 +152,7 @@ Everything is environment variables. Only the first is required.
 | `CH_NEWCOMER_ALLOWANCE` | `1` | How many unseen callers to hold a reservation for |
 | `CH_MAX_TRACKED_CLIENTS` | `10000` | Bound on identities tracked for fair sharing |
 | `CH_ALLOW_CLIENT_KEYS` | `true` | Whether callers may bring their own key |
+| `CH_TRUST_PROXY_HEADERS` | `false` | Believe `X-Forwarded-For` when identifying callers. Turn on **only** behind a proxy you control |
 | `CH_MAX_WAIT_MS` | `60000` | How long a request waits for budget before `RATE_LIMITED` |
 | `CH_RATE_LIMIT` | `600` | Lower it if the key is shared with something else |
 | `CH_CACHE_ENABLED` | `true` | |
@@ -198,3 +199,11 @@ A single call that cannot proceed within `CH_MAX_WAIT_MS` fails with
   identity. Your options are to lower the reservation, rotate the key, or
   implement the OAuth provider the `AuthProvider` seam exists for.
 - **Put TLS in front of it.** The endpoint is plain HTTP.
+- **If you put a reverse proxy in front, set `CH_TRUST_PROXY_HEADERS=true`.**
+  Otherwise every caller arrives with the proxy's address, collapses into one
+  identity, and shares a single reservation between them. Do *not* set it when
+  the server is directly reachable: `X-Forwarded-For` is set by the caller, and
+  a client that varies it per request would mint a fresh reservation each time
+  and defeat fair sharing entirely. Cloudflare's `CF-Connecting-IP` is trusted
+  unconditionally because the platform sets it and strips any client copy, so
+  the Workers deployment needs no setting.

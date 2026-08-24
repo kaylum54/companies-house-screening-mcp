@@ -85,6 +85,17 @@ export const configSchema = z.object({
   maxTrackedClients: positiveInt('CH_MAX_TRACKED_CLIENTS').default(10_000),
   /** Whether a caller may supply their own Companies House key. */
   allowClientKeys: booleanish.default(true),
+  /**
+   * Whether to believe `X-Forwarded-For` when identifying a caller.
+   *
+   * Off by default, because the header is set by the caller and a client that
+   * varies it per request mints a fresh identity each time — and with it a
+   * fresh fair-share reservation, which is the whole mechanism defeated. Turn
+   * it on only when a proxy you control is in front and overwrites the header.
+   * Cloudflare's `CF-Connecting-IP` is exempt: the platform sets it and strips
+   * any client-supplied copy, so it is trustworthy where it exists.
+   */
+  trustProxyHeaders: booleanish.default(false),
   /** How long a request will wait for budget before failing with RATE_LIMITED. */
   maxWaitMs: positiveInt('CH_MAX_WAIT_MS').default(60_000)
 });
@@ -116,6 +127,7 @@ const ENV_NAMES: Record<string, string> = {
   newcomerAllowance: 'CH_NEWCOMER_ALLOWANCE',
   maxTrackedClients: 'CH_MAX_TRACKED_CLIENTS',
   allowClientKeys: 'CH_ALLOW_CLIENT_KEYS',
+  trustProxyHeaders: 'CH_TRUST_PROXY_HEADERS',
   maxWaitMs: 'CH_MAX_WAIT_MS'
 };
 
@@ -158,6 +170,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     newcomerAllowance: env['CH_NEWCOMER_ALLOWANCE'],
     maxTrackedClients: env['CH_MAX_TRACKED_CLIENTS'],
     allowClientKeys: env['CH_ALLOW_CLIENT_KEYS'],
+    trustProxyHeaders: env['CH_TRUST_PROXY_HEADERS'],
     maxWaitMs: env['CH_MAX_WAIT_MS']
   };
 

@@ -194,7 +194,7 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     // headers at all does, since they set them on every request.
     const auth = await authProvider.authenticate({
       header: (name) => headerValue(req, name) ?? null,
-      remoteAddress: remoteAddress(req)
+      remoteAddress: remoteAddress(req, config.trustProxyHeaders)
     });
 
     if (!auth.ok) {
@@ -274,19 +274,31 @@ function headerValue(req: IncomingMessage, name: string): string | undefined {
 }
 
 /**
- * Peer address, preferring what a proxy reports.
+ * Peer address, used only to partition fair-share budgets — never to
+ * authorise. There is no per-caller data on this server to reach.
  *
- * Only consulted for fair-share partitioning, never for authorisation, which
- * matters because `X-Forwarded-For` is caller-controlled and trivially spoofed.
- * The worst a forged value achieves is a reservation of its own — the same
- * thing opening a second connection would achieve — and it can never read data
- * belonging to somebody else, because there is no per-caller data here.
+ * `X-Forwarded-For` is set by the caller and is only consulted when the
+ * operator says a trusted proxy is in front. That default matters: a client
+ * that varies the header per request would mint a fresh identity each time,
+ * and with it a fresh reservation, which defeats fair sharing entirely. Behind
+ * a real proxy the socket address is the proxy's and every caller collapses
+ * into one identity, so the setting has to exist — it just has to be a
+ * decision rather than a default.
+ *
+ * `CF-Connecting-IP` is always trusted: Cloudflare sets it and strips any
+ * client-supplied copy, so it cannot be forged by the caller.
  */
-function remoteAddress(req: IncomingMessage): string | undefined {
-  const forwarded = headerValue(req, 'cf-connecting-ip') ?? headerValue(req, 'x-forwarded-for');
-  if (forwarded !== undefined && forwarded.trim() !== '') {
-    return forwarded.split(',')[0]?.trim();
+function remoteAddress(req: IncomingMessage, trustProxyHeaders: boolean): string | undefined {
+  const platform = headerValue(req, 'cf-connecting-ip');
+  if (platform !== undefined && platform.trim() !== '') return platform.trim();
+
+  if (trustProxyHeaders) {
+    const forwarded = headerValue(req, 'x-forwarded-for');
+    if (forwarded !== undefined && forwarded.trim() !== '') {
+      return forwarded.split(',')[0]?.trim();
+    }
   }
+
   return req.socket.remoteAddress ?? undefined;
 }
 

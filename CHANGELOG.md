@@ -67,6 +67,19 @@ All notable changes to this project are recorded here. The format follows
   optional, because only a runtime with a filesystem has anywhere to point it.
   ([ADR 14](docs/adr/0014-runtime-portable-core.md))
 
+### Security
+
+- **`X-Forwarded-For` is no longer trusted by default.** It is set by the
+  caller, so a client varying it per request would have minted a fresh
+  fair-share reservation each time and defeated the limiter entirely. It is now
+  consulted only when `CH_TRUST_PROXY_HEADERS=true` says a trusted proxy is in
+  front. Cloudflare's `CF-Connecting-IP` remains trusted because the platform
+  sets it and strips any client-supplied copy.
+- **The Worker no longer returns configuration validation detail to callers.**
+  A misconfigured deployment answered an unauthenticated request with the list
+  of environment variables that failed validation. The detail now goes to the
+  operator's logs and the caller gets "The server is misconfigured."
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

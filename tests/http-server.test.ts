@@ -239,6 +239,48 @@ describe('HTTP transport — hardening', () => {
   });
 });
 
+describe('HTTP transport — caller-supplied identity', () => {
+  /**
+   * Reads the identity a request was given, by opening a session and looking
+   * at what the fair-share budget attributes to it. Two requests landing on
+   * the same identity share a reservation; two identities do not.
+   */
+  async function budgetAfter(url: string, headers: Record<string, string>): Promise<number> {
+    const client = await connect(url, headers);
+    await client.callTool({ name: 'get_company', arguments: { company_number: '04138203' } });
+    const second = await connect(url, headers);
+    const result = await second.callTool({
+      name: 'get_company',
+      arguments: { company_number: '04138204' }
+    });
+    await client.close();
+    await second.close();
+    const structured = result.structuredContent as { meta?: { rate_limit_remaining?: number } };
+    return structured.meta?.rate_limit_remaining ?? -1;
+  }
+
+  it('ignores X-Forwarded-For by default, so a caller cannot mint fresh reservations', async () => {
+    // The header is set by the caller. If it were believed, varying it per
+    // request would hand out a new fair-share reservation every time and the
+    // limiter would be decorative.
+    const { url } = await start({ rateLimit: 100, rateSafetyMargin: 1, clientReservation: 2 });
+
+    const withSpoofA = await budgetAfter(url, { 'x-forwarded-for': '203.0.113.1' });
+    const withSpoofB = await budgetAfter(url, { 'x-forwarded-for': '198.51.100.9' });
+
+    // Both resolve to the same real socket address, so the second caller sees
+    // the first caller's spending rather than a fresh budget.
+    expect(withSpoofB).toBeLessThan(withSpoofA);
+  });
+
+  it('believes X-Forwarded-For when the operator says a proxy is in front', async () => {
+    const { url } = await start({ trustProxyHeaders: true });
+    const client = await connect(url, { 'x-forwarded-for': '203.0.113.1' });
+    await expect(client.listTools()).resolves.toBeDefined();
+    await client.close();
+  });
+});
+
 describe('HTTP transport — bring your own key', () => {
   it('spends the caller’s key upstream when they supply one', async () => {
     const { url, calls } = await start();

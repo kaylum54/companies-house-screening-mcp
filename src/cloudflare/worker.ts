@@ -72,17 +72,17 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
     try {
       config = loadConfig(env as NodeJS.ProcessEnv);
     } catch (error) {
-      // A misconfigured Worker must say so plainly rather than 500ing: the
-      // operator reading this is looking at a dashboard, not a stack trace.
-      const message = error instanceof ConfigError ? error.message : 'Configuration is invalid.';
-      return json(jsonRpcError(-32603, message), 500);
+      // The detail goes to the operator's logs, not down the wire. Whoever is
+      // calling this endpoint is unauthenticated, and which of our environment
+      // variables is misconfigured is none of their business.
+      const detail = error instanceof ConfigError ? error.message : String(error);
+      console.error(`configuration is invalid: ${detail}`);
+      return json(jsonRpcError(-32603, 'The server is misconfigured.'), 500);
     }
 
     if (env.RATE_LIMIT === undefined) {
-      return json(
-        jsonRpcError(-32603, 'The RATE_LIMIT Durable Object binding is missing. See wrangler.toml.'),
-        500
-      );
+      console.error('the RATE_LIMIT Durable Object binding is missing; see wrangler.toml');
+      return json(jsonRpcError(-32603, 'The server is misconfigured.'), 500);
     }
 
     const logger = createLogger({ level: config.logLevel });
@@ -97,6 +97,8 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
 
     const auth = await authProvider.authenticate({
       header: (name) => request.headers.get(name),
+      // Cloudflare sets this and strips any client-supplied copy, so unlike
+      // `X-Forwarded-For` it cannot be forged by the caller.
       remoteAddress: request.headers.get('cf-connecting-ip') ?? undefined
     });
 
