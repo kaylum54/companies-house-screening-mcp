@@ -161,7 +161,13 @@ export class CompaniesHouseClient {
     this.#logger = options.logger ?? silentLogger;
     this.#clock = options.clock ?? systemClock;
     this.#random = options.random ?? Math.random;
-    this.#fetch = options.fetchImpl ?? globalThis.fetch;
+    // Bound, not merely referenced. Node tolerates a detached `fetch`;
+    // workerd requires `globalThis` as the receiver and throws
+    // `TypeError: Illegal invocation` otherwise — so storing the bare global
+    // here made every upstream request fail on Cloudflare while every test
+    // under Node passed. The injected implementation is used as given, since a
+    // test double has no such requirement.
+    this.#fetch = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
 
     this.#cache =
       options.cache ??

@@ -412,3 +412,46 @@ describe('CompaniesHouseClient — in-flight coalescing', () => {
     ).resolves.toBeDefined();
   });
 });
+
+describe('CompaniesHouseClient — the default fetch is bound', () => {
+  it('calls the global fetch with globalThis as its receiver', async () => {
+    // Reproduces workerd's rule inside Node. Cloudflare throws
+    // `TypeError: Illegal invocation` when `fetch` is called detached from
+    // `globalThis`; Node does not care, which is exactly why storing the bare
+    // global passed every test here and failed every request on a deployed
+    // Worker. The stand-in below is strict in the same way workerd is.
+    const original = globalThis.fetch;
+    const seen: unknown[] = [];
+
+    const strict = function (this: unknown, _input: unknown, _init?: unknown): Promise<Response> {
+      seen.push(this);
+      if (this !== globalThis && this !== undefined) {
+        throw new TypeError('Illegal invocation: function called with incorrect `this` reference.');
+      }
+      if (this === undefined) {
+        throw new TypeError('Illegal invocation: function called with incorrect `this` reference.');
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify(PROFILE), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        })
+      );
+    };
+
+    globalThis.fetch = strict as unknown as typeof fetch;
+    try {
+      // Deliberately no fetchImpl: this exercises the default path, which is
+      // the only one a real deployment uses.
+      const config = testConfig({ cacheEnabled: false });
+      const client = new CompaniesHouseClient({ config, clock: new FakeClock(0) });
+
+      const response = await client.get({ path: '/company/04138203', label: 'company' });
+      expect(response.data).toBeDefined();
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toBe(globalThis);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});

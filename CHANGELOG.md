@@ -305,6 +305,19 @@ All notable changes to this project are recorded here. The format follows
   registered at that point, so nothing else would ever release it, and a pinned
   entry is permanently non-evictable.
 
+### Fixed — found by the first real deployment
+
+- **Every upstream request failed on Cloudflare with `Illegal invocation`.**
+  The client stored `globalThis.fetch` in a field and called it detached. Node
+  tolerates that; workerd requires `globalThis` as the receiver and throws.
+  The result was the worst shape a bug can take — every test passing under
+  Node, every request failing on the deployed Worker. `fetch` is now bound, and
+  a regression test reproduces workerd's receiver rule inside Node so the
+  suite can actually see it.
+- The portability guard now also catches runtime globals stored without
+  binding, not just `node:` imports. The original rule could never have found
+  this.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

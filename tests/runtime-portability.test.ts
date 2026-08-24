@@ -85,6 +85,25 @@ describe('runtime portability', () => {
     expect(server).not.toMatch(/Transport/);
   });
 
+  it('never stores a runtime global detached from its receiver', async () => {
+    // `globalThis.fetch` assigned to a field and called as `this.#fetch(...)`
+    // works under Node and throws `TypeError: Illegal invocation` on workerd,
+    // which requires `globalThis` as the receiver. That combination — passes
+    // every test, fails every deployed request — is the worst shape a bug can
+    // take, and it is invisible to the `node:` import sweep above.
+    const files = await tsFiles(SRC);
+    const offenders: string[] = [];
+
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      for (const match of source.matchAll(/globalThis\.(fetch|btoa|atob|setTimeout|queueMicrotask)\b(?!\s*\.bind)(?!\s*\()/g)) {
+        offenders.push(`${relative(SRC, file)} stores globalThis.${match[1]} without binding it`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
   it('keeps the Worker free of Node built-ins beyond the audited exception', async () => {
     // Covered by the sweep above, asserted separately so a future decision to
     // exempt `src/cloudflare/` has to argue with a test named after the reason.
