@@ -77,8 +77,23 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-  await new Promise<void>((resolve) => {
-    server.listen(config.httpPort, config.httpHost, resolve);
+  // `listen` reports failure by emitting, not by throwing. Without this
+  // listener an occupied port becomes an uncaught exception on a promise that
+  // never settles, which is a stack trace instead of the sentence below.
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(config.httpPort, config.httpHost, () => {
+      server.removeListener('error', reject);
+      resolve();
+    });
+  }).catch((error: unknown) => {
+    const reason = (error as NodeJS.ErrnoException | undefined)?.code === 'EADDRINUSE'
+      ? `port ${config.httpPort} is already in use`
+      : String(error);
+    process.stderr.write(
+      `companies-house-screening-mcp could not listen on ${config.httpHost}:${config.httpPort}: ${reason}.\n`
+    );
+    process.exit(EXIT_CONFIG);
   });
 
   logger.info('companies-house-screening-mcp ready over http', {

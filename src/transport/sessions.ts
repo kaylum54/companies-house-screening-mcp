@@ -64,11 +64,18 @@ export interface Session {
 }
 
 export function createSession(options: SessionFactoryOptions, identity: ClientIdentity): Session {
-  const client =
-    identity.apiKey === undefined
-      ? // Pooled key: same cache, same window, its own share of it.
-        options.pooledClient.withClientId(identity.clientId)
-      : buildPrivateClient(options, identity.apiKey, identity.clientId);
+  // A caller who supplies the deployment's *own* key is not bringing a second
+  // credential, and must not be handed a second window on the first one:
+  // Companies House meters the key, so two windows on one key would let this
+  // server spend roughly twice the allowance it actually has. They go in the
+  // pool, which is where that key's traffic already is.
+  const bringsOwnKey =
+    identity.apiKey !== undefined && identity.apiKey !== options.config.apiKey;
+
+  const client = bringsOwnKey
+    ? buildPrivateClient(options, identity.apiKey as string, identity.clientId)
+    : // Pooled key: same cache, same window, its own share of it.
+      options.pooledClient.withClientId(identity.clientId);
 
   const server = createServer(
     { client, logger: options.logger, now: () => options.clock.now() },

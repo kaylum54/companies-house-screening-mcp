@@ -108,6 +108,27 @@ All notable changes to this project are recorded here. The format follows
   `0.0.0`, and its pooled limiter now honours `CH_RATE_LIMIT` instead of
   falling back to the documented default when reporting its ceiling.
 
+### Fixed — found by the second review pass
+
+- **Response metadata reported another caller's budget.** The first fix changed
+  only the `rateLimit` getter; the four `meta.rateLimit` sites inside `get()`
+  still read the shared limiter, so a cache-served response could report a
+  stranger's remaining count.
+- **A caller supplying the deployment's own key got a second window on it.**
+  Companies House meters the key, so two windows on one credential would let
+  the server spend roughly twice the allowance it has. That caller now joins
+  the pool, which is where the key's traffic already is.
+- **Exhausting the limiter's retry bound reported `INTERNAL_ERROR`.** The bound
+  guards against a frozen clock but is reachable with a healthy one under
+  contention, and callers were told their request was a server bug and not
+  retryable. It is now `RATE_LIMITED` with a retry time.
+- **Private budgets are bounded**, like sessions. The map was keyed by
+  caller-supplied key fingerprint on an authless endpoint, so rotating
+  fabricated keys grew it without limit.
+- **A failed `listen` no longer crashes with an uncaught exception.** An
+  occupied port bypassed the entry point's error handling entirely; it now
+  reports the port and exits with the config code.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

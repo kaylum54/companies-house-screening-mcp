@@ -100,6 +100,40 @@ describe('HTTP transport — the handshake', () => {
     await client.close();
   });
 
+  it('reports this session’s budget in meta, not whichever caller went last', async () => {
+    // The limiter is shared across every pooled session, so its cached figure
+    // belongs to whoever acquired most recently. A response served from cache
+    // never acquires at all, and must not inherit a stranger's number.
+    const { url } = await start({ cacheEnabled: true, rateLimit: 100, rateSafetyMargin: 1 });
+
+    const a = await connect(url);
+    const warm = await a.callTool({
+      name: 'get_company',
+      arguments: { company_number: '04138203' }
+    });
+
+    const b = await connect(url);
+    for (let i = 0; i < 5; i += 1) {
+      await b.callTool({ name: 'get_company', arguments: { company_number: `0413820${i}` } });
+    }
+
+    // Session A repeats its first call: served from the shared cache, so it
+    // spends nothing and its own figure must be unchanged.
+    const cached = await a.callTool({
+      name: 'get_company',
+      arguments: { company_number: '04138203' }
+    });
+
+    const remaining = (r: typeof warm): number =>
+      (r.structuredContent as { meta?: { rate_limit_remaining?: number } }).meta
+        ?.rate_limit_remaining ?? -1;
+
+    expect(remaining(cached)).toBe(remaining(warm));
+
+    await a.close();
+    await b.close();
+  });
+
   it('serves a real tool call end to end', async () => {
     const { url } = await start();
     const client = await connect(url);
@@ -397,6 +431,35 @@ describe('HTTP transport — bring your own key', () => {
         ?.rate_limit_remaining ?? -1;
 
     expect(remaining(b)).toBe(remaining(a));
+  });
+
+  it('does not hand out a second window for the deployment’s own key', async () => {
+    // Companies House meters the key. A caller supplying the key this server
+    // already uses is not bringing a second credential, and giving them a
+    // private window on it would let the deployment spend roughly twice the
+    // allowance it actually has.
+    const { url } = await start({ rateLimit: 20, rateSafetyMargin: 1 });
+
+    const pooled = await connect(url);
+    const a = await pooled.callTool({
+      name: 'get_company',
+      arguments: { company_number: '04138203' }
+    });
+    await pooled.close();
+
+    const sameKey = await connect(url, { 'x-companies-house-api-key': 'test-key' });
+    const b = await sameKey.callTool({
+      name: 'get_company',
+      arguments: { company_number: '00000006' }
+    });
+    await sameKey.close();
+
+    const remaining = (r: typeof a): number =>
+      (r.structuredContent as { meta?: { rate_limit_remaining?: number } }).meta
+        ?.rate_limit_remaining ?? -1;
+
+    // Same window: the second caller sees the first caller's spending.
+    expect(remaining(b)).toBeLessThan(remaining(a));
   });
 
   it('never puts a caller key into a tool response', async () => {

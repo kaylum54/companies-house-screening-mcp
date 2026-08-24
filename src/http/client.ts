@@ -226,7 +226,7 @@ export class CompaniesHouseClient {
           attempts: 0,
           durationMs: this.#clock.now() - startedAt,
           ageMs: this.#clock.now() - lookup.entry.storedAt,
-          rateLimit: this.#limiter.lastKnown
+          rateLimit: this.#lastRateLimit
         }
       };
     }
@@ -264,7 +264,7 @@ export class CompaniesHouseClient {
             attempts: this.#config.maxRetries + 1,
             durationMs: this.#clock.now() - startedAt,
             ageMs: this.#clock.now() - staleEntry.storedAt,
-            rateLimit: this.#limiter.lastKnown
+            rateLimit: this.#lastRateLimit
           }
         };
       }
@@ -322,7 +322,7 @@ export class CompaniesHouseClient {
             stale: false,
             attempts: attempt + 1,
             durationMs: this.#clock.now() - startedAt,
-            rateLimit: this.#limiter.lastKnown
+            rateLimit: this.#lastRateLimit
           }
         };
       }
@@ -344,7 +344,7 @@ export class CompaniesHouseClient {
             stale: false,
             attempts: attempt + 1,
             durationMs: this.#clock.now() - startedAt,
-            rateLimit: this.#limiter.lastKnown
+            rateLimit: this.#lastRateLimit
           }
         };
       }

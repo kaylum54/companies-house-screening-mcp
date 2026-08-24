@@ -110,19 +110,29 @@ export class RateLimiter {
    * ask `snapshot` first — that is what `screen_companies` does.
    */
   async acquire(clientId: string = DEFAULT_CLIENT_ID): Promise<void> {
-    const deadline = this.#clock.now() + this.#maxWaitMs;
+    const startedAt = this.#clock.now();
+    const deadline = startedAt + this.#maxWaitMs;
+    let last: BudgetOutcome | undefined;
 
     // Bounded so that a pathological clock cannot spin here forever.
     for (let attempt = 0; attempt < 64; attempt += 1) {
       const outcome = await this.#store.acquire(clientId, this.#clock.now());
       this.#remember(outcome);
       if (outcome.granted) return;
+      last = outcome;
 
       const now = this.#clock.now();
       if (now + outcome.retryInMs > deadline) throw rateLimited(outcome);
 
       await this.#clock.sleep(Math.max(outcome.retryInMs, 1) + this.#jitter());
     }
+
+    // The bound is reachable with a perfectly healthy clock: a caller held to
+    // its reservation while its own dense burst ages out can be refused many
+    // times inside the wait window. That is congestion, and reporting it as an
+    // internal error would tell the caller their request is a server bug and
+    // not retryable, when it is neither.
+    if (last !== undefined && this.#clock.now() > startedAt) throw rateLimited(last);
 
     throw new Error('RateLimiter.acquire exceeded its retry bound; the injected clock is not advancing.');
   }

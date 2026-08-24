@@ -89,7 +89,29 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
    * is the caller's identity fingerprint, matching how Cloudflare names the
    * Durable Object for the same caller so the two runtimes agree.
    */
-  const privateBudgets = new Map<string, MemoryBudgetStore>();
+  const privateBudgets = new Map<string, { store: MemoryBudgetStore; lastSeen: number }>();
+
+  /**
+   * Bounded for the same reason `sessions` is: the key is caller-supplied, the
+   * endpoint is authless, and rotating fabricated keys would otherwise grow
+   * this map for the life of the process. Evicting an entry costs that caller
+   * a fresh window, which is the mild failure — the pooled budget, which is
+   * the one worth protecting, is untouched by any of this.
+   */
+  function rememberPrivateBudget(label: string, store: MemoryBudgetStore): void {
+    privateBudgets.set(label, { store, lastSeen: clock.now() });
+    if (privateBudgets.size <= config.maxSessions) return;
+
+    let oldestLabel: string | undefined;
+    let oldest = Number.POSITIVE_INFINITY;
+    for (const [key, entry] of privateBudgets) {
+      if (entry.lastSeen < oldest) {
+        oldest = entry.lastSeen;
+        oldestLabel = key;
+      }
+    }
+    if (oldestLabel !== undefined) privateBudgets.delete(oldestLabel);
+  }
 
   const sessionFactory = {
     config,
@@ -100,13 +122,16 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     pooledClient,
     createBudgetStore: (label: string) => {
       const existing = privateBudgets.get(label);
-      if (existing !== undefined) return existing;
+      if (existing !== undefined) {
+        existing.lastSeen = clock.now();
+        return existing.store;
+      }
       const created = new MemoryBudgetStore({
         limit: config.rateLimit,
         windowMs: config.rateWindowMs,
         safetyMargin: config.rateSafetyMargin
       });
-      privateBudgets.set(label, created);
+      rememberPrivateBudget(label, created);
       return created;
     },
     fetchImpl: options.fetchImpl

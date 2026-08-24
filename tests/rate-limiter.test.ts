@@ -156,3 +156,37 @@ describe('RateLimiter', () => {
     await expect(limiter.acquire()).rejects.toThrow();
   });
 });
+
+describe('RateLimiter — exhausting the retry bound', () => {
+  it('reports congestion as RATE_LIMITED rather than as a server bug', async () => {
+    // The 64-attempt bound guards against a frozen clock, but it is reachable
+    // with a healthy one: a caller held to its reservation while its own burst
+    // ages out can be refused many times inside the wait window. Reporting
+    // that as INTERNAL_ERROR would tell the caller their request is a bug in
+    // the server and not retryable, when it is neither.
+    const clock = new FakeClock(0);
+    const limiter = new RateLimiter({
+      clock,
+      jitterMs: 0,
+      random: () => 0,
+      maxWaitMs: Number.MAX_SAFE_INTEGER,
+      store: {
+        acquire: async () => ({
+          granted: false,
+          remaining: 0,
+          retryInMs: 1,
+          limit: 10,
+          boundBy: 'client' as const
+        }),
+        peek: async () => ({ granted: false, remaining: 0, retryInMs: 1, limit: 10 }),
+        penalise: async () => undefined,
+        observe: async () => undefined
+      }
+    });
+
+    await expect(limiter.acquire('busy')).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+      retryable: true
+    });
+  });
+});
