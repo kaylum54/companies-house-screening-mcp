@@ -356,6 +356,50 @@ describe('HTTP transport — caller-supplied identity', () => {
     expect(second).toBeLessThan(first);
   });
 
+  it('reports each session its own budget under concurrent load', async () => {
+    // Two distinct callers sharing the pooled limiter, interleaved. The figure
+    // a response carries is taken from the acquisition that response made, not
+    // read back off shared state afterwards — otherwise the other session's
+    // continuation, running between the await and the read, is what gets
+    // reported.
+    const { url } = await start({
+      trustProxyHeaders: true,
+      rateLimit: 200,
+      rateSafetyMargin: 1,
+      clientReservation: 100
+    });
+
+    const heavy = await connect(url, { 'x-forwarded-for': '203.0.113.1' });
+    const light = await connect(url, { 'x-forwarded-for': '198.51.100.9' });
+
+    const remaining = (r: unknown): number =>
+      (r as { structuredContent?: { meta?: { rate_limit_remaining?: number } } }).structuredContent
+        ?.meta?.rate_limit_remaining ?? -1;
+
+    // The heavy caller spends; the light one makes a single call alongside it.
+    const [, lightResult] = await Promise.all([
+      (async () => {
+        for (let i = 0; i < 10; i += 1) {
+          await heavy.callTool({ name: 'get_company', arguments: { company_number: `1000000${i}` } });
+        }
+      })(),
+      light.callTool({ name: 'get_company', arguments: { company_number: '04138203' } })
+    ]);
+
+    const heavyResult = await heavy.callTool({
+      name: 'get_company',
+      arguments: { company_number: '00000006' }
+    });
+
+    // The light caller has spent one request of its own share; the heavy one
+    // has spent eleven. Their reported budgets must differ accordingly rather
+    // than both echoing whichever acquisition happened to land last.
+    expect(remaining(lightResult)).toBeGreaterThan(remaining(heavyResult));
+
+    await heavy.close();
+    await light.close();
+  });
+
   it('believes X-Forwarded-For when the operator says a proxy is in front', async () => {
     const { url } = await start({ trustProxyHeaders: true });
     const client = await connect(url, { 'x-forwarded-for': '203.0.113.1' });

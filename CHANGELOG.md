@@ -198,6 +198,16 @@ All notable changes to this project are recorded here. The format follows
   `await import('node:fs')` would have slipped past. It was the form `cache.ts`
   itself used to contain.
 
+### Changed — closing the cross-session leak by construction
+
+- **`RateLimiter.acquire` now returns the budget for that acquisition.**
+  Callers previously read `lastKnown` back off the limiter afterwards, and one
+  limiter is shared by every pooled session — so another session's continuation
+  running between the `await` resolving and the read would be reported as this
+  session's. Three separate variants of that leak were fixed during review (the
+  getter, the four call sites, and the seed); handing the value back removes
+  the shape of the bug rather than its instances.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

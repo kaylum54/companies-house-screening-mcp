@@ -298,10 +298,10 @@ export class CompaniesHouseClient {
         await this.#clock.sleep(this.#backoffMs(attempt, lastError));
       }
 
-      await this.#limiter.acquire(this.#clientId);
-      // Captured immediately after acquiring, while the limiter's cached value
-      // is still this session's.
-      this.#lastRateLimit = this.#limiter.lastKnown;
+      // Taken from the return value, not read back off the shared limiter:
+      // another session's continuation can run between the await resolving and
+      // a read of shared state, and would then be reported as this session's.
+      this.#lastRateLimit = await this.#limiter.acquire(this.#clientId);
 
       let response: Response;
       try {

@@ -119,11 +119,18 @@ export class RateLimiter {
   /**
    * Resolves when the caller may make a request, waiting if necessary.
    *
+   * Returns the budget as it stood for *this* acquisition, rather than leaving
+   * the caller to read `lastKnown` afterwards. That is not a convenience: one
+   * limiter is shared by every pooled session, so between an `await acquire()`
+   * resolving and the caller reading shared state, another session's
+   * continuation can run and overwrite it. Handing the value back closes that
+   * window by construction.
+   *
    * @throws {CompaniesHouseError} RATE_LIMITED when the wait would exceed
    * `maxWaitMs`. Callers that would rather resize their work than wait should
    * ask `snapshot` first — that is what `screen_companies` does.
    */
-  async acquire(clientId: string = DEFAULT_CLIENT_ID): Promise<void> {
+  async acquire(clientId: string = DEFAULT_CLIENT_ID): Promise<RateLimitSnapshot> {
     const startedAt = this.#clock.now();
     const deadline = startedAt + this.#maxWaitMs;
     let last: BudgetOutcome | undefined;
@@ -131,8 +138,8 @@ export class RateLimiter {
     // Bounded so that a pathological clock cannot spin here forever.
     for (let attempt = 0; attempt < 64; attempt += 1) {
       const outcome = await this.#store.acquire(clientId, this.#clock.now());
-      this.#remember(outcome);
-      if (outcome.granted) return;
+      const snapshot = this.#remember(outcome);
+      if (outcome.granted) return snapshot;
       last = outcome;
 
       // A window that cannot be consulted will not become consultable by being
