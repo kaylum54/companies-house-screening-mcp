@@ -169,11 +169,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     rateWindowMs: env['CH_RATE_WINDOW_MS'],
     rateSafetyMargin: env['CH_RATE_SAFETY_MARGIN'],
     cacheEnabled: env['CH_CACHE_ENABLED'],
-    // Blank means "not set", not "use the empty string". Trimming used to
-    // happen inside `defaultCacheDir`; losing it here turned `CH_CACHE_DIR=`
-    // into a fatal config error and `CH_CACHE_DIR='   '` into a directory
-    // literally named three spaces.
-    cacheDir: blankToUndefined(env['CH_CACHE_DIR']),
+    cacheDir: env['CH_CACHE_DIR'],
     timeoutMs: env['CH_TIMEOUT_MS'],
     maxRetries: env['CH_MAX_RETRIES'],
     retryBaseMs: env['CH_RETRY_BASE_MS'],
@@ -193,9 +189,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxWaitMs: env['CH_MAX_WAIT_MS']
   };
 
-  // Strip undefined so that zod applies defaults rather than failing on them.
+  // Blank means "not set", not "use the empty string", for every variable
+  // rather than the one that happened to get reported. Compose files, shell
+  // exports and Kubernetes manifests all produce empty values by accident, and
+  // `CH_HTTP_HOST=` should not be the difference between a server that starts
+  // and exit code 78.
+  //
+  // Stripping undefined afterwards is what lets zod apply its defaults instead
+  // of failing on them.
   const cleaned = Object.fromEntries(
-    Object.entries(candidate).filter(([, value]) => value !== undefined)
+    Object.entries(candidate)
+      .map(([key, value]) => [key, typeof value === 'string' ? blankToUndefined(value) : value])
+      .filter(([, value]) => value !== undefined)
   );
 
   const result = configSchema.safeParse(cleaned);

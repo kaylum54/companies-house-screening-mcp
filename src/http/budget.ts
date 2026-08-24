@@ -450,8 +450,17 @@ export class SlidingWindowBudget {
    * optimistic one is a promise to the user that the register will not keep.
    */
   #globalRetryInMs(now: number): number {
+    // Each constraint is quoted only while it is actually the one blocking.
+    // The local window's oldest entry expiring says nothing about when a slot
+    // frees up if there are hundreds of local slots already free — the block
+    // is then entirely the server's, and folding the local expiry in reported
+    // a whole window for what might be a five-second hold.
+    const localExhausted = this.#effectiveLimit - this.#timestamps.length <= 0;
     const oldest = this.#timestamps[0];
-    const localMs = oldest === undefined ? undefined : Math.max(oldest + this.#windowMs - now, 1);
+    const localMs =
+      localExhausted && oldest !== undefined
+        ? Math.max(oldest + this.#windowMs - now, 1)
+        : undefined;
 
     // Only meaningful while the hint is actually the thing blocking us. When
     // it carries no reset time the block still ends — one window after it was

@@ -150,6 +150,25 @@ describe('loadEnvFile', () => {
   });
 });
 
+describe('loadConfig — blank environment variables', () => {
+  it.each([
+    ['CH_HTTP_HOST', 'httpHost', '127.0.0.1'],
+    ['CH_HTTP_PORT', 'httpPort', 8787],
+    ['CH_MAX_SESSIONS', 'maxSessions', 1000],
+    ['CH_USER_AGENT', 'userAgent', 'companies-house-screening-mcp'],
+    ['CH_LOG_LEVEL', 'logLevel', 'info']
+  ])('treats an empty %s as unset rather than exiting 78', (variable, field, expected) => {
+    // Compose files, shell exports and Kubernetes manifests all produce empty
+    // values by accident. An empty variable should not be the difference
+    // between a server that starts and one that refuses to.
+    const config = loadConfig({ COMPANIES_HOUSE_API_KEY: 'k', [variable]: '' }) as Record<
+      string,
+      unknown
+    >;
+    expect(config[field]).toBe(expected);
+  });
+});
+
 describe('loadConfig — CH_CACHE_DIR', () => {
   it('treats an empty value as unset rather than as a fatal error', () => {
     // Trimming used to happen inside `defaultCacheDir`. Losing it turned an

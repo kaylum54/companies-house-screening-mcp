@@ -259,6 +259,20 @@ describe('SlidingWindowBudget — retry times', () => {
     expect(budget.peek('a', 2000).remaining).toBe(100);
   });
 
+  it('does not pad a short server hold with the local window', () => {
+    // A five-second hold from the server, with hundreds of local slots free.
+    // Folding in the local oldest-entry expiry reported a whole window, so the
+    // limiter gave up against its wait deadline instead of waiting five
+    // seconds, and screen_companies printed the wrong number.
+    const budget = build();
+    for (let i = 0; i < 40; i += 1) budget.acquire('a', 1000);
+    budget.observe({ remaining: 0, resetAtMs: 6000, recordedAtMs: 1000 });
+
+    const outcome = budget.peek('a', 1000);
+    expect(outcome.granted).toBe(false);
+    expect(outcome.retryInMs).toBe(5000);
+  });
+
   it('ignores a server reset time that is not what is blocking us', () => {
     const budget = build({ limit: 1 });
     budget.acquire('a', 1000);

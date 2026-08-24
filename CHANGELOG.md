@@ -252,6 +252,21 @@ All notable changes to this project are recorded here. The format follows
   Object wiring each time. Non-POST is now refused with 405 before anything is
   built, as the Node entry point already did.
 
+### Fixed — found by the eighth review pass
+
+- **A short server hold was padded out to a whole window.** The retry time
+  folded in the local oldest-entry expiry even with hundreds of local slots
+  free, so a five-second hold was reported as five minutes — long enough that
+  the limiter gave up against its wait deadline instead of simply waiting. Each
+  constraint is now quoted only while it is the one actually blocking.
+- **Every environment variable now treats blank as unset**, not just
+  `CH_CACHE_DIR`. `CH_HTTP_HOST=`, `CH_HTTP_PORT=` and friends each exited 78 —
+  the same footgun, in the deployment surface this release introduces, where
+  compose files and Kubernetes manifests produce empty values by accident.
+- **The Worker relays `WWW-Authenticate` on a failed authentication.** Latent
+  while the default provider admits everyone, but a 401 without it leaves an
+  MCP client nothing to discover, which is the OAuth path the seam exists for.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

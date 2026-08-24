@@ -128,7 +128,19 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
     });
 
     if (!auth.ok) {
-      return json(jsonRpcError(-32001, auth.message), auth.status);
+      // Relayed, not dropped: a 401 without it leaves an MCP client with
+      // nothing to discover. `NoAuthProvider` never fails, so this is latent
+      // today — but the injected provider is the whole point of the seam in
+      // ADR 15, and the Node entry point already does this.
+      return new Response(JSON.stringify(jsonRpcError(-32001, auth.message)), {
+        status: auth.status,
+        headers: {
+          'content-type': 'application/json',
+          ...(auth.wwwAuthenticate === undefined
+            ? {}
+            : { 'www-authenticate': auth.wwwAuthenticate })
+        }
+      });
     }
 
     // KV is optional: without it the cache is memory-only, which for a Worker
