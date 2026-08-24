@@ -29,6 +29,14 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     retryBaseMs: 100,
     userAgent: 'companies-house-screening-mcp-tests',
     logLevel: 'error',
+    httpPort: 8787,
+    httpHost: '127.0.0.1',
+    allowedOrigins: [],
+    maxRequestBytes: 1_048_576,
+    newcomerAllowance: 1,
+    maxTrackedClients: 10_000,
+    allowClientKeys: true,
+    maxWaitMs: 60_000,
     ...overrides
   };
 }

@@ -46,7 +46,47 @@ export const configSchema = z.object({
   retryBaseMs: positiveInt('CH_RETRY_BASE_MS').default(500),
 
   userAgent: z.string().min(1).default('companies-house-screening-mcp'),
-  logLevel: z.enum(LOG_LEVELS).default('info')
+  logLevel: z.enum(LOG_LEVELS).default('info'),
+
+  // ---- Hosted deployment. Ignored entirely by the stdio entry point. ----
+
+  httpPort: positiveInt('CH_HTTP_PORT').default(8787),
+  /**
+   * Loopback by default. A server that binds every interface the moment it
+   * starts is one `npm start` away from being on the office network, and this
+   * one holds an API key. Deployments that mean to be reachable say so.
+   */
+  httpHost: z.string().min(1).default('127.0.0.1'),
+  /**
+   * Origins permitted to reach the endpoint from a browser. Empty means none,
+   * which is correct: MCP clients are not browsers and send no Origin, so an
+   * empty list blocks browser-driven requests without affecting real callers.
+   */
+  allowedOrigins: z
+    .union([z.string(), z.array(z.string())])
+    .transform((value) =>
+      (typeof value === 'string' ? value.split(',') : value)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry !== '')
+    )
+    .default([]),
+  /** Largest request body accepted, in bytes. */
+  maxRequestBytes: positiveInt('CH_MAX_REQUEST_BYTES').default(1_048_576),
+
+  /**
+   * Requests each caller is guaranteed within a window. Unset disables fair
+   * sharing, which is right for stdio and wrong for anything shared; the HTTP
+   * entry points derive a default from the effective limit when it is unset.
+   */
+  clientReservation: positiveInt('CH_CLIENT_RESERVATION').optional(),
+  /** How many not-yet-seen callers to hold a reservation free for. */
+  newcomerAllowance: z.coerce.number().int().min(0).max(100).default(1),
+  /** Upper bound on distinct callers tracked for fair sharing. */
+  maxTrackedClients: positiveInt('CH_MAX_TRACKED_CLIENTS').default(10_000),
+  /** Whether a caller may supply their own Companies House key. */
+  allowClientKeys: booleanish.default(true),
+  /** How long a request will wait for budget before failing with RATE_LIMITED. */
+  maxWaitMs: positiveInt('CH_MAX_WAIT_MS').default(60_000)
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -67,7 +107,16 @@ const ENV_NAMES: Record<string, string> = {
   maxRetries: 'CH_MAX_RETRIES',
   retryBaseMs: 'CH_RETRY_BASE_MS',
   userAgent: 'CH_USER_AGENT',
-  logLevel: 'CH_LOG_LEVEL'
+  logLevel: 'CH_LOG_LEVEL',
+  httpPort: 'CH_HTTP_PORT',
+  httpHost: 'CH_HTTP_HOST',
+  allowedOrigins: 'CH_ALLOWED_ORIGINS',
+  maxRequestBytes: 'CH_MAX_REQUEST_BYTES',
+  clientReservation: 'CH_CLIENT_RESERVATION',
+  newcomerAllowance: 'CH_NEWCOMER_ALLOWANCE',
+  maxTrackedClients: 'CH_MAX_TRACKED_CLIENTS',
+  allowClientKeys: 'CH_ALLOW_CLIENT_KEYS',
+  maxWaitMs: 'CH_MAX_WAIT_MS'
 };
 
 export class ConfigError extends Error {
@@ -100,7 +149,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     maxRetries: env['CH_MAX_RETRIES'],
     retryBaseMs: env['CH_RETRY_BASE_MS'],
     userAgent: env['CH_USER_AGENT'],
-    logLevel: env['CH_LOG_LEVEL']
+    logLevel: env['CH_LOG_LEVEL'],
+    httpPort: env['CH_HTTP_PORT'],
+    httpHost: env['CH_HTTP_HOST'],
+    allowedOrigins: env['CH_ALLOWED_ORIGINS'],
+    maxRequestBytes: env['CH_MAX_REQUEST_BYTES'],
+    clientReservation: env['CH_CLIENT_RESERVATION'],
+    newcomerAllowance: env['CH_NEWCOMER_ALLOWANCE'],
+    maxTrackedClients: env['CH_MAX_TRACKED_CLIENTS'],
+    allowClientKeys: env['CH_ALLOW_CLIENT_KEYS'],
+    maxWaitMs: env['CH_MAX_WAIT_MS']
   };
 
   // Strip undefined so that zod applies defaults rather than failing on them.

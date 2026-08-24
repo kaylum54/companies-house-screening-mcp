@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { SlidingWindowBudgetOptions } from '../src/http/budget.js';
 import { SlidingWindowBudget } from '../src/http/budget.js';
 import { MemoryBudgetStore } from '../src/http/budget-store.js';
 
@@ -16,7 +17,7 @@ import { MemoryBudgetStore } from '../src/http/budget-store.js';
 const WINDOW = 300_000;
 
 /** limit 100, margin 1.0 → effective 100. Round numbers make the maths readable. */
-const build = (over: Partial<Parameters<typeof SlidingWindowBudget.prototype.constructor>[0]> = {}) =>
+const build = (over: SlidingWindowBudgetOptions = {}) =>
   new SlidingWindowBudget({
     limit: 100,
     windowMs: WINDOW,
