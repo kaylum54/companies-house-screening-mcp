@@ -346,3 +346,69 @@ describe('CompaniesHouseClient — failure handling', () => {
     expect(clock.now() - before).toBeGreaterThanOrEqual(30_000);
   });
 });
+
+describe('CompaniesHouseClient — in-flight coalescing', () => {
+  it('makes one upstream call when the same URL is asked for concurrently', async () => {
+    // The cache only helps once an answer exists. A screen_companies fan-out
+    // issues its requests together, so several callers wanting the same
+    // company all miss at once and would each spend a slot of the budget the
+    // shared cache exists to conserve.
+    const fake = fakeFetchAlways({ body: PROFILE });
+    const { client } = build({ fetchImpl: fake.fetch });
+
+    const responses = await Promise.all(
+      Array.from({ length: 10 }, () => client.get({ path: '/company/04138203', label: 'company' }))
+    );
+
+    expect(fake.calls).toHaveLength(1);
+    // Every follower got the leader's answer, and each is marked as having
+    // made no upstream call — which is exactly what happened to it.
+    expect(responses.filter((response) => response.meta.cached)).toHaveLength(9);
+    for (const response of responses) {
+      expect(response.data).toEqual(responses[0]?.data);
+    }
+  });
+
+  it('spends one slot of budget for a coalesced burst, not ten', async () => {
+    const fake = fakeFetchAlways({ body: PROFILE });
+    const { client } = build({ fetchImpl: fake.fetch });
+    const before = (await client.budget()).remaining;
+
+    await Promise.all(
+      Array.from({ length: 10 }, () => client.get({ path: '/company/04138203', label: 'company' }))
+    );
+
+    expect((await client.budget()).remaining).toBe(before - 1);
+  });
+
+  it('does not coalesce requests for different URLs', async () => {
+    const fake = fakeFetchAlways({ body: PROFILE });
+    const { client } = build({ fetchImpl: fake.fetch });
+
+    await Promise.all([
+      client.get({ path: '/company/04138203', label: 'company' }),
+      client.get({ path: '/company/00000006', label: 'company' })
+    ]);
+
+    expect(fake.calls).toHaveLength(2);
+  });
+
+  it('does not leave a failed request behind for later callers to adopt', async () => {
+    // A rejected promise left in the map would be inherited by every
+    // subsequent caller, turning one upstream blip into a permanent outage
+    // for that URL.
+    const fake = fakeFetchSequence([
+      { throws: timeoutError() },
+      { throws: timeoutError() },
+      { throws: timeoutError() },
+      { throws: timeoutError() },
+      { body: PROFILE }
+    ]);
+    const { client } = build({ fetchImpl: fake.fetch, maxRetries: 3 });
+
+    await expect(client.get({ path: '/company/04138203', label: 'company' })).rejects.toBeDefined();
+    await expect(
+      client.get({ path: '/company/04138203', label: 'company' })
+    ).resolves.toBeDefined();
+  });
+});

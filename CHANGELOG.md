@@ -281,6 +281,29 @@ All notable changes to this project are recorded here. The format follows
   needs many. It is now derived from the admission rule: whichever of "enough
   of mine age out" or "the window reopens for bursting" happens first.
 
+### Added — concurrent requests for the same URL are coalesced
+
+- **Ten sessions asking for the same company at once now make one call.** The
+  cache only helps once an answer exists, and `screen_companies` fans out
+  concurrently by design — so simultaneous misses on the same supplier each
+  spent a slot of the budget the shared cache exists to conserve. Followers
+  wait for the leader and are reported as cached, which is what happened to
+  them: they contacted nobody. A failed request is cleared rather than left for
+  later callers to inherit.
+
+### Fixed — found by the tenth review pass
+
+- **The `session opened` log claimed a private budget that did not exist.** A
+  caller supplying the deployment's own key is routed into the pool, but the
+  log reported the header rather than the outcome.
+- **`isBudgetState` accepted non-finite numbers.** Durable Object storage
+  round-trips `NaN` and `Infinity`, and a non-finite `blockedUntil` latches
+  permanently through `Math.max` — silently disabling 429 penalties for that
+  credential.
+- **A throw during the handshake pinned a private-budget refcount.** Nothing is
+  registered at that point, so nothing else would ever release it, and a pinned
+  entry is permanently non-evictable.
+
 ### Added — guardrails
 
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside

@@ -409,7 +409,13 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
       sessionIdGenerator: () => randomUUID(),
       onsessioninitialized: (id) => {
         sessions.set(id, { transport, session, lastSeen: clock.now(), release });
-        logger.info('session opened', { sessionId: id, ...describe(identity) });
+        // `session.ownsBudget`, not the identity's: a caller who supplied the
+        // deployment's own key is in the pool, whatever their header claimed.
+        logger.info('session opened', {
+          sessionId: id,
+          ...describe(identity),
+          ownsBudget: session.ownsBudget
+        });
         sweep();
       },
       onsessionclosed: (id) => {
@@ -432,8 +438,20 @@ export function createMcpHttpServer(options: HttpServerOptions): Server {
     // The mismatch is in the SDK's own types, not in this usage — the in-memory
     // transport the test harness uses connects the same way — so it is cast
     // here rather than relaxing a compiler setting for the whole project.
-    await session.server.connect(transport as unknown as Parameters<typeof session.server.connect>[0]);
-    await transport.handleRequest(req, res, parsed);
+    try {
+      await session.server.connect(
+        transport as unknown as Parameters<typeof session.server.connect>[0]
+      );
+      await transport.handleRequest(req, res, parsed);
+    } catch (error) {
+      // A throw here leaves nothing registered, so nothing else will ever
+      // clean it up — and a pinned private-budget reference is permanently
+      // non-evictable. Narrow, since the SDK catches its own handler errors,
+      // but the cost of being wrong about that is unbounded.
+      release();
+      await session.server.close().catch(() => undefined);
+      throw error;
+    }
 
     // The SDK can refuse an initialize outright — 406 for an `Accept` without
     // `text/event-stream`, 415 for a `Content-Type` that is not JSON — in

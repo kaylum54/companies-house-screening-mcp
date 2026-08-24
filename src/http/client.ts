@@ -113,6 +113,21 @@ export class CompaniesHouseClient {
   readonly #authorization: string;
   readonly #clientId: string;
   /**
+   * Requests currently in flight, by cache key.
+   *
+   * The cache only helps once an answer exists. Ten sessions screening the
+   * same supplier list start together and all miss, so without this they make
+   * ten identical calls and spend ten slots of a budget the whole point was to
+   * conserve — `screen_companies` fans out concurrently by design, so this is
+   * the common case rather than a race. Followers wait for the leader's answer
+   * and are reported as cached, which is exactly what happened to them: they
+   * were served without contacting Companies House.
+   *
+   * Keyed per client instance and therefore per session; the cache underneath
+   * is what carries a result between sessions.
+   */
+  readonly #inFlight = new Map<string, Promise<ClientResponse<unknown>>>();
+  /**
    * Budget last seen *by this client*.
    *
    * Not read off the limiter: `withClientId` shares one limiter across every
@@ -243,8 +258,30 @@ export class CompaniesHouseClient {
 
     const staleEntry = lookup.state === 'stale' ? lookup.entry : undefined;
 
+    // Somebody is already asking for exactly this. Wait for their answer
+    // rather than making the same call and spending a second slot: a
+    // `screen_companies` fan-out issues its requests concurrently, so
+    // duplicates within a batch are the design rather than a coincidence.
+    // A caller that asked to bypass the cache is asking for a fresh read and
+    // gets one.
+    const existing = options.bypassCache === true ? undefined : this.#inFlight.get(key);
+    if (existing !== undefined) {
+      const shared = (await existing) as ClientResponse<T>;
+      return {
+        data: shared.data,
+        meta: {
+          ...shared.meta,
+          // True in the sense the field means: served without contacting
+          // Companies House. This request made no call and spent no budget.
+          cached: true,
+          durationMs: this.#clock.now() - startedAt,
+          rateLimit: this.#lastRateLimit
+        }
+      };
+    }
+
     try {
-      return await this.#fetchWithRetries<T>({
+      const pending = this.#fetchWithRetries<T>({
         url,
         key,
         ttlMs,
@@ -255,6 +292,18 @@ export class CompaniesHouseClient {
         identifier: options.identifier,
         signal: options.signal
       });
+
+      if (options.bypassCache !== true) {
+        this.#inFlight.set(key, pending as Promise<ClientResponse<unknown>>);
+      }
+
+      try {
+        return await pending;
+      } finally {
+        // Cleared whether it resolved or threw: a failed request must not
+        // leave a rejected promise that every later caller adopts.
+        this.#inFlight.delete(key);
+      }
     } catch (error) {
       // Upstream is unhappy and we hold an expired copy. An hour-old answer
       // labelled as an hour old beats no answer, so long as the caller can

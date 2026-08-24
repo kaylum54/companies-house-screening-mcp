@@ -61,6 +61,15 @@ export interface SessionFactoryOptions {
 export interface Session {
   server: McpServer;
   client: CompaniesHouseClient;
+  /**
+   * Whether this session ended up with a window of its own.
+   *
+   * Not the same as `identity.ownsBudget`, which only records that a key
+   * header was present: a caller supplying the deployment's *own* key is
+   * routed into the pool, so the identity claims a private budget the session
+   * does not have. This is the answer after that decision.
+   */
+  ownsBudget: boolean;
 }
 
 export function createSession(options: SessionFactoryOptions, identity: ClientIdentity): Session {
@@ -82,7 +91,7 @@ export function createSession(options: SessionFactoryOptions, identity: ClientId
     options.version
   );
 
-  return { server, client };
+  return { server, client, ownsBudget: bringsOwnKey };
 }
 
 /**

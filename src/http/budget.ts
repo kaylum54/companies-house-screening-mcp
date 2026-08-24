@@ -124,9 +124,15 @@ export interface BudgetState {
 export function isBudgetState(value: unknown): value is BudgetState {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
+  // Finite, not merely numeric. A non-finite `blockedUntil` latches forever
+  // through `Math.max` and silently disables 429 penalties for that
+  // credential, and non-finite timestamps never prune.
+  const isFinite = (value: unknown): boolean =>
+    typeof value === 'number' && Number.isFinite(value);
+
   if (!Array.isArray(candidate['timestamps'])) return false;
-  if (!candidate['timestamps'].every((entry) => typeof entry === 'number')) return false;
-  if (typeof candidate['blockedUntil'] !== 'number') return false;
+  if (!candidate['timestamps'].every(isFinite)) return false;
+  if (!isFinite(candidate['blockedUntil'])) return false;
 
   const clients = candidate['clients'];
   if (typeof clients !== 'object' || clients === null || Array.isArray(clients)) return false;
@@ -135,8 +141,7 @@ export function isBudgetState(value: unknown): value is BudgetState {
   // than a crash: `#globalAvailable` returns NaN, which passes the `<= 0`
   // guard and reaches `screen_companies` as `slice(0, NaN)` — every company
   // reported unaffordable against a budget that was never spent.
-  const numberOrAbsent = (value: unknown): boolean =>
-    value === undefined || (typeof value === 'number' && Number.isFinite(value));
+  const numberOrAbsent = (value: unknown): boolean => value === undefined || isFinite(value);
 
   if (
     !numberOrAbsent(candidate['serverRemaining']) ||
@@ -151,7 +156,7 @@ export function isBudgetState(value: unknown): value is BudgetState {
   // `blockConcurrencyWhile` — which is the very failure this guard exists to
   // stop, arriving one level deeper than the first version checked.
   return Object.values(clients as Record<string, unknown>).every(
-    (stamps) => Array.isArray(stamps) && stamps.every((entry) => typeof entry === 'number')
+    (stamps) => Array.isArray(stamps) && stamps.every(isFinite)
   );
 }
 
