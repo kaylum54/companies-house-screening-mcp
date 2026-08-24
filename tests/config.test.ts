@@ -3,8 +3,9 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { ConfigError, defaultCacheDir, loadConfig, redactConfig } from '../src/config.js';
-import { loadEnvFile } from '../src/env-file.js';
+import { ConfigError, loadConfig, redactConfig } from '../src/config.js';
+import { defaultCacheDir } from '../src/node/cache-dir.js';
+import { loadEnvFile } from '../src/node/env-file.js';
 import { withTempDir } from './helpers/support.js';
 
 const base = { COMPANIES_HOUSE_API_KEY: 'abc123' } satisfies NodeJS.ProcessEnv;

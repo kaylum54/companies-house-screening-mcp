@@ -5,6 +5,7 @@ import { CompaniesHouseError } from '../src/errors.js';
 import { ResponseCache } from '../src/http/cache.js';
 import { CompaniesHouseClient } from '../src/http/client.js';
 import { RateLimiter } from '../src/http/rate-limiter.js';
+import { FileCacheStore } from '../src/node/file-cache-store.js';
 import { fakeFetchAlways, fakeFetchSequence, timeoutError } from './helpers/fake-fetch.js';
 import { fixedRandom, loadFixture, testConfig, withTempDir } from './helpers/support.js';
 
@@ -27,7 +28,7 @@ function build(options: BuildOptions) {
   });
 
   const cache = new ResponseCache({
-    dir: config.cacheDir,
+    store: new FileCacheStore({ dir: config.cacheDir ?? '/tmp/unused' }),
     enabled: config.cacheEnabled,
     clock
   });

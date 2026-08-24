@@ -53,7 +53,7 @@ async function build(
     clock,
     fetchImpl,
     random: fixedRandom(0),
-    cache: new ResponseCache({ dir: config.cacheDir, enabled: false, clock }),
+    cache: new ResponseCache({ enabled: false, clock }),
     limiter: new RateLimiter({
       limit: config.rateLimit,
       windowMs: config.rateWindowMs,

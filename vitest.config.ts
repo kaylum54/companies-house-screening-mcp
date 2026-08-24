@@ -2,7 +2,7 @@ import { join } from 'node:path';
 
 import { defineConfig } from 'vitest/config';
 
-import { loadEnvFile } from './src/env-file.js';
+import { loadEnvFile } from './src/node/env-file.js';
 
 // Loads the repository's own .env from a known path, so `npm test` picks up a
 // key without one having to be exported in every new terminal. Variables

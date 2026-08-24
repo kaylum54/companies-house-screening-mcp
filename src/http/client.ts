@@ -4,7 +4,7 @@ import type { Config } from '../config.js';
 import { CompaniesHouseError, fromHttpStatus, malformedResponse, networkError, timeout } from '../errors.js';
 import type { Logger } from '../telemetry/logger.js';
 import { silentLogger } from '../telemetry/logger.js';
-import type { CacheEntry, ResourceKind } from './cache.js';
+import type { CacheEntry, CacheStore, ResourceKind } from './cache.js';
 import { DEFAULT_TTLS, ResponseCache } from './cache.js';
 import type { RateLimitSnapshot } from './rate-limiter.js';
 import { RateLimiter } from './rate-limiter.js';
@@ -17,6 +17,22 @@ import { RateLimiter } from './rate-limiter.js';
  * blank password, a five-minute request budget, 404s that mean two different
  * things, and occasional HTML error pages served with a JSON content type.
  */
+
+/**
+ * Base64 without `Buffer`.
+ *
+ * `Buffer` is a Node global. This file has to run unchanged on Workers, where
+ * it exists only behind a compatibility flag, so the encoding goes through the
+ * Web standard instead. Routed via `TextEncoder` rather than calling `btoa`
+ * directly because `btoa` throws on anything outside Latin-1, and an API key
+ * with an unexpected character should not become a cryptic DOMException.
+ */
+function toBase64(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
 
 export interface QueryParams {
   [key: string]: string | number | boolean | undefined;
@@ -63,6 +79,12 @@ export interface CompaniesHouseClientOptions {
   logger?: Logger;
   clock?: Clock;
   cache?: ResponseCache;
+  /**
+   * Durable tier for the default cache. Ignored when `cache` is supplied.
+   * Entry points pass this rather than a path, because the portable core has
+   * no filesystem to point a path at.
+   */
+  cacheStore?: CacheStore | undefined;
   limiter?: RateLimiter;
   /** Injectable for tests. Defaults to global fetch. */
   fetchImpl?: typeof fetch;
@@ -93,7 +115,7 @@ export class CompaniesHouseClient {
     this.#cache =
       options.cache ??
       new ResponseCache({
-        dir: config.cacheDir,
+        store: options.cacheStore,
         enabled: config.cacheEnabled,
         clock: this.#clock,
         logger: this.#logger
@@ -111,7 +133,7 @@ export class CompaniesHouseClient {
 
     // Companies House uses HTTP basic auth with the API key as the username
     // and an ignored, empty password. The trailing colon is required.
-    this.#authorization = `Basic ${Buffer.from(`${config.apiKey}:`).toString('base64')}`;
+    this.#authorization = `Basic ${toBase64(`${config.apiKey}:`)}`;
   }
 
   get rateLimit(): RateLimitSnapshot {

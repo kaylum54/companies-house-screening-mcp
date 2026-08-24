@@ -18,7 +18,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { loadEnvFile } from '../src/env-file.js';
+import { loadEnvFile } from '../src/node/env-file.js';
 import { harnessRoutes } from '../tests/helpers/harness.js';
 import type { EvalCase } from './cases.js';
 import { CASES } from './cases.js';

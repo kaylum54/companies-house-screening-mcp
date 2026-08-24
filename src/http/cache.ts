@@ -1,11 +1,13 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
 
 import type { Clock } from '../clock.js';
 import { systemClock } from '../clock.js';
 import type { Logger } from '../telemetry/logger.js';
 import { silentLogger } from '../telemetry/logger.js';
+import type { CacheEntry, CacheStore } from './cache-store.js';
+
+export type { CacheEntry, CacheStore } from './cache-store.js';
+export { isCacheEntry, MemoryCacheStore } from './cache-store.js';
 
 /**
  * Response cache.
@@ -16,9 +18,22 @@ import { silentLogger } from '../telemetry/logger.js';
  * afternoon starts hitting 429s. Company data also barely moves — a profile
  * changes when something is filed, which for most companies is twice a year.
  *
- * Two layers: an in-memory map for the current process, and a disk layer so
- * that restarting the server (which happens every time a host reconnects)
- * does not throw the day's work away.
+ * Two layers: an in-memory LRU for the current process, and a `CacheStore` for
+ * anything durable, so that a restart (which happens every time a host
+ * reconnects a stdio server) does not throw the day's work away.
+ *
+ * The durable layer is an interface rather than the filesystem because the
+ * filesystem is not available everywhere this now runs. `FileCacheStore` is
+ * the Node implementation; a Worker supplies a KV-backed one. Passing no store
+ * at all gives a memory-only cache, which is what the tests want.
+ *
+ * A note on sharing, since this cache is now reachable by more than one user
+ * at a time: the Companies House register is public, and a profile fetched
+ * with one API key is byte-for-byte the profile fetched with another. So the
+ * cache is deliberately NOT partitioned by credential — partitioning it would
+ * multiply upstream cost for no privacy gain, because there is no private data
+ * in it to leak. Rate limit budgets *are* partitioned by credential, because
+ * those genuinely do belong to whoever owns the key. See ADR 13.
  *
  * On revalidation: entries store an HTTP `ETag` when the API supplies one, and
  * a stale entry is revalidated with `If-None-Match`. Note that this is *not*
@@ -60,20 +75,14 @@ export const DEFAULT_TTLS: Record<ResourceKind, number> = {
   other: 60 * 60 * 1000
 };
 
-export interface CacheEntry {
-  body: unknown;
-  etag?: string | undefined;
-  storedAt: number;
-  ttlMs: number;
-}
-
 export type CacheLookup =
   | { state: 'fresh'; entry: CacheEntry }
   | { state: 'stale'; entry: CacheEntry }
   | { state: 'miss' };
 
 export interface ResponseCacheOptions {
-  dir: string;
+  /** Durable tier. Omit for a memory-only cache. */
+  store?: CacheStore | undefined;
   enabled?: boolean;
   clock?: Clock;
   logger?: Logger;
@@ -82,15 +91,15 @@ export interface ResponseCacheOptions {
 }
 
 export class ResponseCache {
-  readonly #dir: string;
+  readonly #store: CacheStore | undefined;
   readonly #enabled: boolean;
   readonly #clock: Clock;
   readonly #logger: Logger;
   readonly #memoryMax: number;
   readonly #memory = new Map<string, CacheEntry>();
 
-  constructor(options: ResponseCacheOptions) {
-    this.#dir = options.dir;
+  constructor(options: ResponseCacheOptions = {}) {
+    this.#store = options.store;
     this.#enabled = options.enabled ?? true;
     this.#clock = options.clock ?? systemClock;
     this.#logger = options.logger ?? silentLogger;
@@ -107,7 +116,7 @@ export class ResponseCache {
     const fromMemory = this.#memory.get(key);
     if (fromMemory !== undefined) return this.#classify(fromMemory);
 
-    const entry = await this.#readDisk(key);
+    const entry = await this.#read(key);
     if (entry === undefined) return { state: 'miss' };
 
     this.#rememberInMemory(key, entry);
@@ -117,7 +126,7 @@ export class ResponseCache {
   async set(key: string, entry: CacheEntry): Promise<void> {
     if (!this.#enabled) return;
     this.#rememberInMemory(key, entry);
-    await this.#writeDisk(key, entry);
+    await this.#write(key, entry);
   }
 
   /** Marks an entry fresh again after a 304, without rewriting the body. */
@@ -127,7 +136,12 @@ export class ResponseCache {
 
   async clear(): Promise<void> {
     this.#memory.clear();
-    await rm(this.#dir, { recursive: true, force: true });
+    if (this.#store === undefined) return;
+    try {
+      await this.#store.clear();
+    } catch (error) {
+      this.#logger.debug('cache clear failed', { error });
+    }
   }
 
   get size(): number {
@@ -150,52 +164,28 @@ export class ResponseCache {
     }
   }
 
-  /** Two-character shard, so a large cache does not put 50k files in one directory. */
-  #path(key: string): string {
-    return join(this.#dir, key.slice(0, 2), `${key}.json`);
-  }
-
-  async #readDisk(key: string): Promise<CacheEntry | undefined> {
+  /**
+   * A store that throws must not fail the request that touched it. Stores are
+   * contractually failure-tolerant, but this server talks to a store it did
+   * not write (KV, someone's filesystem), so the guarantee is enforced here
+   * too rather than assumed.
+   */
+  async #read(key: string): Promise<CacheEntry | undefined> {
+    if (this.#store === undefined) return undefined;
     try {
-      const raw = await readFile(this.#path(key), 'utf8');
-      const parsed: unknown = JSON.parse(raw);
-      if (!isCacheEntry(parsed)) {
-        this.#logger.debug('cache entry ignored: unexpected shape', { key });
-        return undefined;
-      }
-      return parsed;
+      return await this.#store.read(key);
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException | undefined)?.code;
-      if (code !== 'ENOENT') {
-        // A corrupt or unreadable cache file must never fail a request.
-        this.#logger.debug('cache read failed', { key, code });
-      }
+      this.#logger.debug('cache store read failed', { key, error });
       return undefined;
     }
   }
 
-  async #writeDisk(key: string, entry: CacheEntry): Promise<void> {
-    const path = this.#path(key);
+  async #write(key: string, entry: CacheEntry): Promise<void> {
+    if (this.#store === undefined) return;
     try {
-      await mkdir(dirname(path), { recursive: true });
-      // Write-then-rename so a crash mid-write cannot leave a truncated file
-      // that later parses as valid JSON.
-      const temp = `${path}.${process.pid}.tmp`;
-      await writeFile(temp, JSON.stringify(entry), 'utf8');
-      const { rename } = await import('node:fs/promises');
-      await rename(temp, path);
+      await this.#store.write(key, entry);
     } catch (error) {
-      this.#logger.debug('cache write failed', { key, error });
+      this.#logger.debug('cache store write failed', { key, error });
     }
   }
-}
-
-function isCacheEntry(value: unknown): value is CacheEntry {
-  if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate['storedAt'] === 'number' &&
-    typeof candidate['ttlMs'] === 'number' &&
-    'body' in candidate
-  );
 }

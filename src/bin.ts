@@ -2,11 +2,13 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { ConfigError, loadConfig, redactConfig } from './config.js';
-import { loadEnvFile } from './env-file.js';
+import { loadEnvFile } from './node/env-file.js';
 import { CompaniesHouseClient } from './http/client.js';
+import { defaultCacheDir } from './node/cache-dir.js';
+import { FileCacheStore } from './node/file-cache-store.js';
 import { createServer } from './server.js';
 import { createLogger } from './telemetry/logger.js';
-import { packageVersion } from './version.js';
+import { packageVersion } from './node/version.js';
 
 /**
  * stdio entry point.
@@ -46,7 +48,15 @@ async function main(): Promise<void> {
 
   const version = packageVersion();
   const logger = createLogger({ level: config.logLevel });
-  const client = new CompaniesHouseClient({ config, logger });
+  // The cache directory is resolved here rather than in `loadConfig`, because
+  // only an entry point that has a filesystem should be deciding where on the
+  // filesystem things go. See ADR 14.
+  const cacheDir = config.cacheDir ?? defaultCacheDir(process.env);
+  const client = new CompaniesHouseClient({
+    config,
+    logger,
+    cacheStore: new FileCacheStore({ dir: cacheDir, logger })
+  });
   const server = createServer({ client, logger, now: () => Date.now() }, version);
 
   let closing = false;

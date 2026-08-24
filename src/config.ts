@@ -1,6 +1,3 @@
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-
 import { z } from 'zod';
 
 import { LOG_LEVELS } from './telemetry/logger.js';
@@ -37,7 +34,12 @@ export const configSchema = z.object({
   rateSafetyMargin: z.coerce.number().gt(0).lte(1).default(0.95),
 
   cacheEnabled: booleanish.default(true),
-  cacheDir: z.string().min(1),
+  /**
+   * Optional: only a runtime with a filesystem has anywhere to put this. The
+   * Node entry points resolve a platform default via `defaultCacheDir`; a
+   * Worker leaves it unset and supplies a KV-backed store instead.
+   */
+  cacheDir: z.string().min(1).optional(),
 
   timeoutMs: positiveInt('CH_TIMEOUT_MS').default(10_000),
   maxRetries: z.coerce.number().int().min(0).max(10).default(3),
@@ -48,28 +50,6 @@ export const configSchema = z.object({
 });
 
 export type Config = z.infer<typeof configSchema>;
-
-/**
- * Picks a cache directory that respects platform convention, so the server
- * does not scatter files into the working directory of whatever host launched
- * it.
- */
-export function defaultCacheDir(env: NodeJS.ProcessEnv = process.env): string {
-  const explicit = env['CH_CACHE_DIR'];
-  if (explicit !== undefined && explicit.trim() !== '') return explicit;
-
-  const xdg = env['XDG_CACHE_HOME'];
-  if (xdg !== undefined && xdg.trim() !== '') return join(xdg, 'companies-house-screening-mcp');
-
-  if (process.platform === 'win32') {
-    const localAppData = env['LOCALAPPDATA'];
-    if (localAppData !== undefined && localAppData.trim() !== '') {
-      return join(localAppData, 'companies-house-screening-mcp', 'cache');
-    }
-  }
-
-  return join(homedir(), '.cache', 'companies-house-screening-mcp');
-}
 
 /**
  * Config field back to the environment variable that sets it. Error messages
@@ -115,7 +95,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     rateWindowMs: env['CH_RATE_WINDOW_MS'],
     rateSafetyMargin: env['CH_RATE_SAFETY_MARGIN'],
     cacheEnabled: env['CH_CACHE_ENABLED'],
-    cacheDir: defaultCacheDir(env),
+    cacheDir: env['CH_CACHE_DIR'],
     timeoutMs: env['CH_TIMEOUT_MS'],
     maxRetries: env['CH_MAX_RETRIES'],
     retryBaseMs: env['CH_RETRY_BASE_MS'],

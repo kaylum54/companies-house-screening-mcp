@@ -2,7 +2,7 @@ import { join } from 'node:path';
 
 import { defineConfig } from 'vitest/config';
 
-import { loadEnvFile } from './src/env-file.js';
+import { loadEnvFile } from './src/node/env-file.js';
 
 /**
  * Config for the live smoke test only.
