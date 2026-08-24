@@ -58,6 +58,7 @@ function budgetName(apiKey: string): string {
 export interface WorkerDependencies {
   authProvider?: AuthProvider;
   fetchImpl?: typeof fetch;
+  /** Defaults to the package version, inlined at build time. */
   version?: string;
 }
 
@@ -68,7 +69,7 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
     _ctx: ExecutionContext
   ): Promise<Response> {
     const url = new URL(request.url);
-    const version = deps.version ?? '0.0.0';
+    const version = deps.version ?? WORKER_VERSION;
 
     if (url.pathname === HEALTH_PATH) {
       return json({ status: 'ok', version });
@@ -238,10 +239,7 @@ export class RateLimitDurableObject extends BudgetDurableObject {
 /**
  * The deployed handler.
  *
- * The version is inlined at build time from package.json — a Worker has no
- * package.json at runtime to read, and `packageVersion()` is Node-only for
- * exactly that reason. Reporting 0.0.0 to every connecting host would be
- * misleading in the one situation where the number matters: working out which
- * build is actually running.
+ * The version defaults inside `createFetchHandler` rather than being passed
+ * here, so that every caller gets it right rather than only this one.
  */
-export default { fetch: createFetchHandler({ version: WORKER_VERSION }) };
+export default { fetch: createFetchHandler() };

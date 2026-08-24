@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { readFileSync } from 'node:fs';
+
 import { BudgetDurableObject } from '../src/cloudflare/budget-do.js';
+import { createFetchHandler } from '../src/cloudflare/worker.js';
 import { DurableObjectBudgetStore } from '../src/cloudflare/do-budget-store.js';
 import { KvCacheStore } from '../src/cloudflare/kv-cache-store.js';
 import type {
@@ -10,6 +13,7 @@ import type {
   KVNamespace
 } from '../src/cloudflare/types.js';
 import type { BudgetOutcome } from '../src/http/budget.js';
+import type { WorkerEnv, ExecutionContext } from '../src/cloudflare/types.js';
 
 /**
  * The Cloudflare adapters, tested against stand-ins for the platform.
@@ -329,5 +333,123 @@ describe('KvCacheStore', () => {
     });
 
     expect(seen).toBeGreaterThanOrEqual(60);
+  });
+});
+
+describe('the Worker fetch handler', () => {
+  const ctx: ExecutionContext = { waitUntil: () => undefined };
+
+  function env(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
+    const objects = new Map<string, BudgetDurableObject>();
+    return {
+      COMPANIES_HOUSE_API_KEY: 'pooled-test-key',
+      CH_CACHE_ENABLED: 'false',
+      RATE_LIMIT: {
+        idFromName: (name: string) => ({ toString: () => name }),
+        get: (id) => ({
+          fetch: async (_input, init) => {
+            const name = id.toString();
+            let object = objects.get(name);
+            if (object === undefined) {
+              object = new BudgetDurableObject(fakeState());
+              objects.set(name, object);
+            }
+            return object.fetch(
+              new Request('https://budget.invalid/', { method: 'POST', body: init?.body ?? '{}' })
+            );
+          }
+        })
+      },
+      ...overrides
+    };
+  }
+
+  it('reports the real package version rather than a placeholder', async () => {
+    // The version is inlined at build time because a Worker has no
+    // package.json to read. Reporting 0.0.0 to every connecting host is
+    // misleading in the one situation where the number matters: working out
+    // which build is actually running.
+    const expected = (JSON.parse(readFileSync('package.json', 'utf8')) as { version: string })
+      .version;
+
+    const response = await createFetchHandler()(
+      new Request('https://worker.test/health'),
+      env(),
+      ctx
+    );
+
+    expect(await response.json()).toEqual({ status: 'ok', version: expected });
+  });
+
+  it('does not tell an unauthenticated caller which variables are misconfigured', async () => {
+    // Whoever is calling an authless endpoint is unauthenticated, and the
+    // state of the operator's environment is none of their business.
+    const response = await createFetchHandler()(
+      new Request('https://worker.test/mcp', { method: 'POST', body: '{}' }),
+      { CH_CACHE_ENABLED: 'false' } as WorkerEnv,
+      ctx
+    );
+
+    expect(response.status).toBe(500);
+    const body = JSON.stringify(await response.json());
+    expect(body).toContain('misconfigured');
+    expect(body).not.toContain('COMPANIES_HOUSE_API_KEY');
+  });
+
+  it('says so plainly when the Durable Object binding is missing', async () => {
+    const response = await createFetchHandler()(
+      new Request('https://worker.test/mcp', { method: 'POST', body: '{}' }),
+      { COMPANIES_HOUSE_API_KEY: 'k' } as WorkerEnv,
+      ctx
+    );
+
+    expect(response.status).toBe(500);
+  });
+
+  it('404s a path that is not the MCP endpoint', async () => {
+    const response = await createFetchHandler()(
+      new Request('https://worker.test/'),
+      env(),
+      ctx
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it('rejects a browser origin that was not allow-listed', async () => {
+    const response = await createFetchHandler()(
+      new Request('https://worker.test/mcp', {
+        method: 'POST',
+        headers: { origin: 'https://evil.example' },
+        body: '{}'
+      }),
+      env(),
+      ctx
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it('completes an initialize handshake', async () => {
+    const response = await createFetchHandler()(
+      new Request('https://worker.test/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-06-18',
+            capabilities: {},
+            clientInfo: { name: 'test', version: '1.0.0' }
+          }
+        })
+      }),
+      env(),
+      ctx
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result?: { serverInfo?: { name?: string } } };
+    expect(body.result?.serverInfo?.name).toBe('companies-house');
   });
 });
