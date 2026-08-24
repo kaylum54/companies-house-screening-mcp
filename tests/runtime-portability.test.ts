@@ -18,8 +18,12 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = new URL('../src/', import.meta.url).pathname;
 
-/** Directories whose whole job is to be runtime-specific. */
-const RUNTIME_SPECIFIC = ['node/', 'cloudflare/'];
+/**
+ * Only `src/node/` may reach for Node built-ins. `src/cloudflare/` is held to
+ * the same rule as the portable core, because a Worker cannot use them either
+ * — exempting it would defeat the point of having the rule.
+ */
+const RUNTIME_SPECIFIC = ['node/'];
 
 /**
  * `node:crypto`'s `createHash` is the one exception, used for cache keys.
@@ -72,5 +76,19 @@ describe('runtime portability', () => {
     const server = await readFile(join(SRC, 'server.ts'), 'utf8');
     expect(server).not.toMatch(/from '\.\/(node|cloudflare)\//);
     expect(server).not.toMatch(/Transport/);
+  });
+
+  it('keeps the Worker free of Node built-ins beyond the audited exception', async () => {
+    // Covered by the sweep above, asserted separately so a future decision to
+    // exempt `src/cloudflare/` has to argue with a test named after the reason.
+    const files = await tsFiles(join(SRC, 'cloudflare'));
+    expect(files.length).toBeGreaterThan(0);
+
+    for (const file of files) {
+      const source = await readFile(file, 'utf8');
+      for (const match of source.matchAll(/^\s*import\s[^;]*?from\s+'(node:[^']+)'/gm)) {
+        expect(ALLOWED_CORE_IMPORTS).toContain(match[1]);
+      }
+    }
   });
 });

@@ -1,0 +1,291 @@
+import { describe, expect, it } from 'vitest';
+
+import { BudgetDurableObject } from '../src/cloudflare/budget-do.js';
+import { DurableObjectBudgetStore } from '../src/cloudflare/do-budget-store.js';
+import { KvCacheStore } from '../src/cloudflare/kv-cache-store.js';
+import type {
+  DurableObjectNamespace,
+  DurableObjectState,
+  DurableObjectStub,
+  KVNamespace
+} from '../src/cloudflare/types.js';
+import type { BudgetOutcome } from '../src/http/budget.js';
+
+/**
+ * The Cloudflare adapters, tested against stand-ins for the platform.
+ *
+ * Miniflare would exercise the real runtime and would also mean a second test
+ * runner and a much slower suite for what is, in the end, three small classes
+ * whose logic is entirely ours — the window arithmetic they wrap is already
+ * covered in budget.test.ts. What these need proving is the wiring: that state
+ * survives eviction, that the two kinds of window stay separate, and that an
+ * unreachable limiter fails closed.
+ */
+
+function fakeState(): DurableObjectState & { dump: () => Record<string, unknown> } {
+  const storage = new Map<string, unknown>();
+  return {
+    storage: {
+      get: async <T>(key: string): Promise<T | undefined> => storage.get(key) as T | undefined,
+      put: async <T>(key: string, value: T): Promise<void> => {
+        // Round-tripped through JSON, as the platform would.
+        storage.set(key, JSON.parse(JSON.stringify(value)) as unknown);
+      }
+    },
+    blockConcurrencyWhile: async <T>(callback: () => Promise<T>): Promise<T> => callback(),
+    dump: () => Object.fromEntries(storage)
+  };
+}
+
+const OPTIONS = { limit: 10, windowMs: 300_000, safetyMargin: 1 };
+
+async function call(
+  object: BudgetDurableObject,
+  body: Record<string, unknown>
+): Promise<BudgetOutcome> {
+  const response = await object.fetch(
+    new Request('https://budget.invalid/', { method: 'POST', body: JSON.stringify(body) })
+  );
+  return (await response.json()) as BudgetOutcome;
+}
+
+describe('BudgetDurableObject', () => {
+  it('enforces the window across separate requests', async () => {
+    const object = new BudgetDurableObject(fakeState());
+
+    for (let i = 0; i < 10; i += 1) {
+      const outcome = await call(object, { op: 'acquire', clientId: 'a', now: 1000, options: OPTIONS });
+      expect(outcome.granted).toBe(true);
+    }
+
+    const refused = await call(object, { op: 'acquire', clientId: 'a', now: 1000, options: OPTIONS });
+    expect(refused.granted).toBe(false);
+  });
+
+  it('restores its window after eviction rather than handing out a fresh one', async () => {
+    // The failure this prevents: the platform reclaims the object, a new one
+    // starts empty, and every caller gets a brand-new allowance.
+    const state = fakeState();
+    const first = new BudgetDurableObject(state);
+    for (let i = 0; i < 10; i += 1) {
+      await call(first, { op: 'acquire', clientId: 'a', now: 1000, options: OPTIONS });
+    }
+
+    const afterEviction = new BudgetDurableObject(state);
+    const outcome = await call(afterEviction, {
+      op: 'acquire',
+      clientId: 'a',
+      now: 1000,
+      options: OPTIONS
+    });
+
+    expect(outcome.granted).toBe(false);
+  });
+
+  it('applies fair shares only when the window it is given asks for them', async () => {
+    // One class backs both the pooled window and every private one. A private
+    // window must not lose a slice to shares nobody else can reach.
+    const shared = new BudgetDurableObject(fakeState());
+    const sharedOptions = { ...OPTIONS, clientReservation: 2, newcomerAllowance: 1 };
+    let sharedGranted = 0;
+    for (let i = 0; i < 10; i += 1) {
+      const outcome = await call(shared, { op: 'acquire', clientId: 'a', now: 1000, options: sharedOptions });
+      if (outcome.granted) sharedGranted += 1;
+    }
+
+    const private_ = new BudgetDurableObject(fakeState());
+    let privateGranted = 0;
+    for (let i = 0; i < 10; i += 1) {
+      const outcome = await call(private_, { op: 'acquire', clientId: 'a', now: 1000, options: OPTIONS });
+      if (outcome.granted) privateGranted += 1;
+    }
+
+    expect(privateGranted).toBe(10);
+    expect(sharedGranted).toBeLessThan(10);
+  });
+
+  it('persists nothing for a refused request', async () => {
+    const state = fakeState();
+    const object = new BudgetDurableObject(state);
+    await call(object, { op: 'peek', clientId: 'a', now: 1000, options: OPTIONS });
+    expect(state.dump()).toEqual({});
+  });
+
+  it('rejects an operation with no window shape rather than inventing one', async () => {
+    const object = new BudgetDurableObject(fakeState());
+    const response = await object.fetch(
+      new Request('https://budget.invalid/', {
+        method: 'POST',
+        body: JSON.stringify({ op: 'acquire', clientId: 'a', now: 1000 })
+      })
+    );
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects a malformed body', async () => {
+    const object = new BudgetDurableObject(fakeState());
+    const response = await object.fetch(
+      new Request('https://budget.invalid/', { method: 'POST', body: '{ not json' })
+    );
+    expect(response.status).toBe(400);
+  });
+});
+
+describe('DurableObjectBudgetStore', () => {
+  function namespaceFor(objects: Map<string, BudgetDurableObject>): DurableObjectNamespace {
+    return {
+      idFromName: (name: string) => ({ toString: () => name }),
+      get: (id): DurableObjectStub => ({
+        fetch: async (_input, init) => {
+          const name = id.toString();
+          let object = objects.get(name);
+          if (object === undefined) {
+            object = new BudgetDurableObject(fakeState());
+            objects.set(name, object);
+          }
+          return object.fetch(
+            new Request('https://budget.invalid/', { method: 'POST', body: init?.body ?? '{}' })
+          );
+        }
+      })
+    };
+  }
+
+  it('routes two credentials to two separate windows', async () => {
+    const objects = new Map<string, BudgetDurableObject>();
+    const namespace = namespaceFor(objects);
+
+    const pooled = new DurableObjectBudgetStore({
+      namespace,
+      budgetName: 'key-pooled',
+      budgetOptions: OPTIONS
+    });
+    const private_ = new DurableObjectBudgetStore({
+      namespace,
+      budgetName: 'client-private',
+      budgetOptions: OPTIONS
+    });
+
+    for (let i = 0; i < 10; i += 1) await pooled.acquire('a', 1000);
+
+    expect((await pooled.acquire('a', 1000)).granted).toBe(false);
+    expect((await private_.acquire('a', 1000)).granted).toBe(true);
+  });
+
+  it('fails closed when the window cannot be reached', async () => {
+    // Failing open would let every isolate decide independently that it had a
+    // full allowance — the exact failure this design removed, arriving during
+    // the incident that made the limiter unreachable.
+    const store = new DurableObjectBudgetStore({
+      namespace: {
+        idFromName: (name) => ({ toString: () => name }),
+        get: () => ({
+          fetch: async () => {
+            throw new Error('durable object unreachable');
+          }
+        })
+      },
+      budgetName: 'key-pooled',
+      budgetOptions: OPTIONS
+    });
+
+    const outcome = await store.acquire('a', 1000);
+    expect(outcome.granted).toBe(false);
+    expect(outcome.retryInMs).toBeGreaterThan(0);
+  });
+
+  it('can be told to fail open, for an operator who would rather risk the key', async () => {
+    const store = new DurableObjectBudgetStore({
+      namespace: {
+        idFromName: (name) => ({ toString: () => name }),
+        get: () => ({
+          fetch: async () => new Response('nope', { status: 500 })
+        })
+      },
+      budgetName: 'key-pooled',
+      budgetOptions: OPTIONS,
+      failOpen: true
+    });
+
+    expect((await store.acquire('a', 1000)).granted).toBe(true);
+  });
+});
+
+describe('KvCacheStore', () => {
+  function fakeKv(): KVNamespace & { store: Map<string, string> } {
+    const store = new Map<string, string>();
+    return {
+      store,
+      get: async (key) => store.get(key) ?? null,
+      put: async (key, value) => {
+        store.set(key, value);
+      },
+      delete: async (key) => {
+        store.delete(key);
+      }
+    };
+  }
+
+  it('round-trips an entry', async () => {
+    const kv = fakeKv();
+    const cache = new KvCacheStore({ namespace: kv });
+    const entry = { body: { hello: 'world' }, storedAt: 1000, ttlMs: 5000 };
+
+    await cache.write('k', entry);
+    expect(await cache.read('k')).toEqual(entry);
+  });
+
+  it('reports a miss for an unknown key', async () => {
+    const cache = new KvCacheStore({ namespace: fakeKv() });
+    expect(await cache.read('nope')).toBeUndefined();
+  });
+
+  it('ignores an entry written by an older shape of this code', async () => {
+    // A KV namespace outlives any single deploy, so this is a normal event.
+    const kv = fakeKv();
+    kv.store.set('k', JSON.stringify({ unexpected: true }));
+    expect(await new KvCacheStore({ namespace: kv }).read('k')).toBeUndefined();
+  });
+
+  it('ignores an entry that is not JSON at all', async () => {
+    const kv = fakeKv();
+    kv.store.set('k', '{ not json');
+    expect(await new KvCacheStore({ namespace: kv }).read('k')).toBeUndefined();
+  });
+
+  it('never fails a request because the cache is broken', async () => {
+    const broken: KVNamespace = {
+      get: async () => {
+        throw new Error('kv is down');
+      },
+      put: async () => {
+        throw new Error('kv is down');
+      },
+      delete: async () => undefined
+    };
+    const cache = new KvCacheStore({ namespace: broken });
+
+    await expect(cache.read('k')).resolves.toBeUndefined();
+    await expect(cache.write('k', { body: {}, storedAt: 0, ttlMs: 1 })).resolves.toBeUndefined();
+  });
+
+  it('respects the minimum expiry KV will accept', async () => {
+    const kv = fakeKv();
+    let seen: number | undefined;
+    const spy: KVNamespace = {
+      ...kv,
+      put: async (key, value, options) => {
+        seen = options?.expirationTtl;
+        await kv.put(key, value);
+      }
+    };
+
+    await new KvCacheStore({ namespace: spy, expirationTtlSeconds: 5 }).write('k', {
+      body: {},
+      storedAt: 0,
+      ttlMs: 1
+    });
+
+    expect(seen).toBeGreaterThanOrEqual(60);
+  });
+});
