@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -21,7 +21,8 @@ import { COMPOSITE_TOOL_NAMES } from '../src/tools/composite.js';
  * be left stale, because leaving it stale breaks the build.
  */
 
-const DOCS = join(import.meta.dirname, '..', 'docs');
+const ROOT_DIR = join(import.meta.dirname, '..');
+const DOCS = join(ROOT_DIR, 'docs');
 
 describe('generated documentation', () => {
   it('matches what is committed', async () => {
@@ -82,5 +83,141 @@ describe('generated documentation', () => {
     const index = (await readFile(join(DOCS, 'tools', 'README.md'), 'utf8')).replace(/\s+/g, ' ');
     expect(index).toContain('no score, grade or traffic light');
     expect(index).toContain('adr/0007-signals-not-scores.md');
+  });
+});
+
+/**
+ * Every relative link in the hand-written documentation points at something.
+ *
+ * The generated pages are already safe: they are rendered from the running
+ * server, so a link in one is as correct as the schema behind it. The
+ * hand-written pages are not, and they are the ones that cross-reference each
+ * other — README to the deployment guide to the rate-limit page to the ADRs.
+ * A rename breaks those silently, and a broken link in the page somebody
+ * reaches for while their deployment is failing is worse than no page.
+ *
+ * In-page anchors are checked too, because a heading rewrite is exactly as
+ * silent as a rename and rather more common.
+ */
+describe('documentation links', () => {
+  const ROOT = ROOT_DIR;
+  const LINK = /\[[^\]]*\]\(([^)\s]+)\)/g;
+
+  /** GitHub's slug rule, near enough: lowercase, drop punctuation, spaces to dashes. */
+  const slug = (heading: string): string =>
+    heading
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '')
+      // Each space becomes a dash, not each *run* of them — which is why a
+      // heading like "Local — stdio" anchors as `local--stdio` once the em
+      // dash between the spaces has been stripped.
+      .replace(/\s/g, '-');
+
+  async function handWritten(): Promise<string[]> {
+    const pages = ['README.md', 'CHANGELOG.md', 'docs/deployment.md', 'docs/rate-limits.md', 'docs/mcp-surface.md'];
+    const adrs = (await readdir(join(DOCS, 'adr')))
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => join('docs', 'adr', name));
+    return [...pages, ...adrs];
+  }
+
+  it('resolves every relative link to a file that exists', async () => {
+    const broken: string[] = [];
+
+    for (const page of await handWritten()) {
+      const body = await readFile(join(ROOT, page), 'utf8');
+      const dir = join(ROOT, page, '..');
+
+      for (const [, target] of body.matchAll(LINK)) {
+        if (target === undefined) continue;
+        // External links and bare anchors are somebody else's problem and the
+        // next assertion's, respectively.
+        if (/^(https?:|mailto:|#)/.test(target)) continue;
+
+        const [path] = target.split('#');
+        if (path === undefined || path === '') continue;
+
+        // `stat`, not `readFile`: a link to a directory is legitimate — GitHub
+        // renders the folder listing — and README links to `docs/adr` that way.
+        const resolved = join(dir, decodeURIComponent(path));
+        const exists = await stat(resolved).then(
+          () => true,
+          () => false
+        );
+        if (!exists) broken.push(`${page} → ${target}`);
+      }
+    }
+
+    expect(broken).toEqual([]);
+  });
+
+  it('resolves every in-page anchor to a heading that exists', async () => {
+    const broken: string[] = [];
+
+    for (const page of await handWritten()) {
+      const body = await readFile(join(ROOT, page), 'utf8');
+      const dir = join(ROOT, page, '..');
+
+      for (const [, target] of body.matchAll(LINK)) {
+        if (target === undefined || /^(https?:|mailto:)/.test(target)) continue;
+        if (!target.includes('#')) continue;
+
+        const [path, anchor] = target.split('#');
+        if (anchor === undefined || anchor === '') continue;
+
+        const source =
+          path === undefined || path === ''
+            ? body
+            : await readFile(join(dir, decodeURIComponent(path)), 'utf8').catch(() => undefined);
+        // A missing file is the previous test's failure, not this one's.
+        if (source === undefined) continue;
+
+        const headings = [...source.matchAll(/^#{1,6}\s+(.+)$/gm)].map(([, text]) =>
+          slug(text ?? '')
+        );
+        if (!headings.includes(anchor)) broken.push(`${page} → ${target}`);
+      }
+    }
+
+    expect(broken).toEqual([]);
+  });
+});
+
+/**
+ * The README's test count cannot silently rot.
+ *
+ * It already did once: the number sat at 284 while the suite passed 400. A
+ * figure like that is a credibility claim on the front page of the repository,
+ * and a stale one is worse than none.
+ *
+ * The check is a lower bound rather than an equality, because it has to be:
+ * a test generated inside a `for` loop is one call site and several tests, so
+ * the static count always *understates* what runs. That is the safe direction
+ * — it cannot fail spuriously when someone adds a loop, and it does fail the
+ * moment the README falls behind the suite, which is the failure that happened.
+ */
+describe('the README test count', () => {
+  it('is not lower than the number of tests actually written', async () => {
+    const readme = await readFile(join(ROOT_DIR, 'README.md'), 'utf8');
+    const claim = /(\d+) tests under Node and (\d+) inside/.exec(readme);
+    expect(claim, 'README no longer states a test count in the expected shape').not.toBeNull();
+
+    const claimed = Number(claim?.[1]) + Number(claim?.[2]);
+
+    const dirs = [join(ROOT_DIR, 'tests'), join(ROOT_DIR, 'tests', 'workers')];
+    let callSites = 0;
+    for (const dir of dirs) {
+      for (const name of await readdir(dir)) {
+        if (!name.endsWith('.test.ts')) continue;
+        const body = await readFile(join(dir, name), 'utf8');
+        callSites += [...body.matchAll(/^\s*(?:it|test)(?:\.\w+)?\(/gm)].length;
+      }
+    }
+
+    expect(
+      claimed,
+      `README claims ${claimed} tests; there are at least ${callSites} written. Run the suite and update the number.`
+    ).toBeGreaterThanOrEqual(callSites);
   });
 });

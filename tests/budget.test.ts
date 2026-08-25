@@ -357,3 +357,129 @@ describe('MemoryBudgetStore', () => {
     expect(outcomes.filter((o) => o.granted)).toHaveLength(10);
   });
 });
+
+/**
+ * The figures published in docs/rate-limits.md.
+ *
+ * That page tells operators how to size a deployment and tells callers what
+ * they will get, so its table is a promise. Asserting it here is what stops
+ * the promise and the algorithm drifting apart: change the sharing rule and
+ * this fails with the documented numbers in the diff, rather than the page
+ * quietly becoming fiction.
+ *
+ * Defaults throughout: 600 per five minutes, 0.95 margin, reservation an
+ * eighth of the result, one newcomer held for.
+ */
+describe('the fair-share table in docs/rate-limits.md', () => {
+  const EFFECTIVE = 570; // floor(600 * 0.95)
+  const RESERVATION = 71; // floor(570 / 8)
+
+  const production = () =>
+    new SlidingWindowBudget({
+      limit: 600,
+      windowMs: WINDOW,
+      safetyMargin: 0.95,
+      clientReservation: RESERVATION,
+      newcomerAllowance: 1
+    });
+
+  it('derives the documented effective window and reservation from the defaults', () => {
+    expect(Math.floor(600 * 0.95)).toBe(EFFECTIVE);
+    expect(Math.floor(EFFECTIVE / 8)).toBe(RESERVATION);
+    expect(production().effectiveLimit).toBe(EFFECTIVE);
+  });
+
+  // "A caller may burst until the window is down to one reservation for every
+  // other active caller, plus one for a newcomer." Each row is that rule at a
+  // different crowd size — the third column of the published table.
+  const CEILINGS: [callers: number, ceiling: number][] = [
+    [1, 499],
+    [2, 428],
+    [3, 357],
+    [4, 286],
+    [5, 215],
+    [6, 144]
+  ];
+
+  for (const [callers, ceiling] of CEILINGS) {
+    it(`stops one caller at ${ceiling} of ${EFFECTIVE} while ${callers} are active`, () => {
+      const budget = production();
+      const now = 1_000;
+
+      // A caller is "active" precisely when it has a request inside the
+      // window — #prune drops any client whose timestamps have all aged out —
+      // so one request each is what makes them count.
+      for (let other = 1; other < callers; other += 1) {
+        expect(budget.acquire(`other-${other}`, now).granted).toBe(true);
+      }
+
+      let spent = 0;
+      while (budget.acquire('mine', now).granted) spent += 1;
+
+      // The ceiling is on the window, not on the caller: the others have
+      // already taken one apiece out of it.
+      expect(spent + (callers - 1)).toBe(ceiling);
+      // And it is the sharing rule that stopped it, not the global window.
+      expect(ceiling).toBeLessThan(EFFECTIVE);
+    });
+  }
+
+  // The bottom row of the published table. The burst ceiling keeps falling —
+  // 73 at seven callers, 71 at eight — but from seven on it is at or below the
+  // reservation, so the floor is what a caller actually gets. Publishing the
+  // raw ceiling for those rows would be a number nobody ever sees.
+  for (const callers of [7, 8, 12]) {
+    it(`gives a caller exactly its ${RESERVATION} when ${callers} are active`, () => {
+      const budget = production();
+      const now = 1_000;
+
+      for (let other = 1; other < callers; other += 1) {
+        expect(budget.acquire(`other-${other}`, now).granted).toBe(true);
+      }
+
+      let spent = 0;
+      while (budget.acquire('mine', now).granted) spent += 1;
+      expect(spent).toBe(RESERVATION);
+    });
+  }
+
+  it('gives all eight their guaranteed share, and divides the window exactly', () => {
+    // At eight callers the burst ceiling has fallen to the reservation itself,
+    // so everyone is at their floor and nobody was ever refused something the
+    // window could have afforded.
+    const budget = production();
+    const now = 1_000;
+    const spent = new Map<string, number>();
+
+    // Round-robin, so no one caller gets to bank a burst before the rest
+    // arrive — the contended case, which is the one the floor exists for.
+    let granted = true;
+    while (granted) {
+      granted = false;
+      for (let caller = 0; caller < 8; caller += 1) {
+        const id = `caller-${caller}`;
+        if (budget.acquire(id, now).granted) {
+          spent.set(id, (spent.get(id) ?? 0) + 1);
+          granted = true;
+        }
+      }
+    }
+
+    for (const [, count] of spent) expect(count).toBeGreaterThanOrEqual(RESERVATION);
+    expect([...spent.values()].reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(EFFECTIVE);
+  });
+
+  it('leaves a newcomer its full share even after a heavy caller has run', () => {
+    // The reason one reservation is held back at all.
+    const budget = production();
+    const now = 1_000;
+
+    while (budget.acquire('heavy', now).granted) {
+      /* drain */
+    }
+
+    let newcomer = 0;
+    while (budget.acquire('newcomer', now).granted) newcomer += 1;
+    expect(newcomer).toBe(RESERVATION);
+  });
+});

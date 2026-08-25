@@ -3,6 +3,11 @@
 - **Status:** accepted
 - **Date:** 2026-08-24
 
+> This ADR records *why*. For how the result behaves — the per-caller figures,
+> reading `meta`, what a caller sees when the budget runs out, and the
+> bring-your-own-key path end to end — see
+> [docs/rate-limits.md](../rate-limits.md).
+
 ## Context
 
 The hosted deployment holds the operator's Companies House API key so that

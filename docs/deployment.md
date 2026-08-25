@@ -142,6 +142,11 @@ Point it at the `/mcp` URL with the Streamable HTTP transport.
 
 ## Bring your own key
 
+> Callers should be pointed at [rate-limits.md](rate-limits.md), which covers
+> this from their side: getting a key, sending it, checking it took effect,
+> and what the shared budget gives them if they do not. The summary below is
+> what an operator needs.
+
 The shared budget is 600 requests per five minutes for *everyone using your
 server combined*. A caller who finds that tight can supply their own key and
 get a private window:
@@ -198,6 +203,9 @@ every transport alike.
 | `CH_LOG_LEVEL` | `info` | |
 
 ### Tuning fair shares
+
+Full table of what each caller gets at every crowd size, with the arithmetic:
+[rate-limits.md](rate-limits.md#fair-shares).
 
 The default reservation is an eighth of the effective window — 71 of 570.
 Roughly: one `company_snapshot` costs 4, and 23 companies of a
@@ -278,9 +286,16 @@ the misconfiguration detail goes.
 
 ## Before you make it public
 
-- **Check the Companies House developer terms.** Pooling one personal API key
-  to serve arbitrary third parties may not be permitted. It is your account
-  and your key at risk. See [ADR 15](adr/0015-authless-now-oauth-ready.md).
+- **The Companies House terms do not address this — checked, August 2026.**
+  Pooling one registered API key behind a service that serves third parties is
+  neither prohibited nor explicitly permitted: there is no published usage
+  policy specific to the public data API that speaks to it either way. The
+  terms do prohibit other things by name, so the reasonable reading of a
+  silence in that company is that pooling is not disallowed — but *unaddressed
+  is not the same as approved*, and it is your account and your key at risk.
+  If you want certainty rather than a reading, ask Companies House support
+  before you publish, and re-check when they publish usage guidance. See
+  [ADR 15](adr/0015-authless-now-oauth-ready.md).
 - **Anyone with the URL can spend your budget.** That is the deal with an
   authless server. Fair sharing bounds what any one caller takes; it does not
   stop a determined one.
