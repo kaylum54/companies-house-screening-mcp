@@ -142,6 +142,11 @@ Point it at the `/mcp` URL with the Streamable HTTP transport.
 
 ## Bring your own key
 
+> Callers should be pointed at [rate-limits.md](rate-limits.md), which covers
+> this from their side: getting a key, sending it, checking it took effect,
+> and what the shared budget gives them if they do not. The summary below is
+> what an operator needs.
+
 The shared budget is 600 requests per five minutes for *everyone using your
 server combined*. A caller who finds that tight can supply their own key and
 get a private window:
@@ -198,6 +203,9 @@ every transport alike.
 | `CH_LOG_LEVEL` | `info` | |
 
 ### Tuning fair shares
+
+Full table of what each caller gets at every crowd size, with the arithmetic:
+[rate-limits.md](rate-limits.md#fair-shares).
 
 The default reservation is an eighth of the effective window — 71 of 570.
 Roughly: one `company_snapshot` costs 4, and 23 companies of a

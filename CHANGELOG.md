@@ -4,6 +4,40 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added — documentation
+
+- **[docs/rate-limits.md](docs/rate-limits.md)**, the missing page. The shared
+  budget and the bring-your-own-key path were described in ADR 13 (a decision
+  record, written for whoever maintains this) and in fragments of the
+  deployment guide (written for whoever runs it). Nothing was written for the
+  person *using* a hosted deployment. This is that page: what the budget is,
+  what every call costs, exactly how much of the window one caller can take at
+  each crowd size, how to read `meta.rate_limit_remaining`, the three distinct
+  things that happen when the budget runs out, and how to get and send your own
+  key.
+- **The published fair-share table is asserted by `tests/budget.test.ts`.** The
+  figures a page like that carries are a promise to operators sizing a
+  deployment, so 499 / 428 / 357 / 286 / 215 / 144 and the reservation floor
+  now fail the build if the sharing rule changes underneath them.
+- **A link checker over the hand-written documentation.** Every relative link
+  and in-page anchor in the README, the CHANGELOG, the guides and the ADRs is
+  resolved. Generated pages are already safe; hand-written ones cross-reference
+  each other and a rename breaks them silently, which is worst in the page
+  somebody reaches for while a deployment is failing.
+
+### Fixed — documentation
+
+- The README claimed 284 tests. It is 438 under Node plus 12 inside `workerd`.
+- Corrected against the code while writing the page above: the rate-limit
+  error field is `retry_after_ms`, not `retry_in_ms`; an unreachable limiter
+  reports `UPSTREAM_UNAVAILABLE` rather than `RATE_LIMITED`, deliberately, so a
+  caller is not told they exceeded something they did not; and the
+  `not_screened` reason ends "or pass a shorter list".
+
+---
+
 ## [0.2.0] — 2026-08-25
 
 ### Added — the server is reachable without a laptop

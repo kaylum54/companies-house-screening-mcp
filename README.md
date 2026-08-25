@@ -76,6 +76,11 @@ five minutes across everyone using it. Each caller is guaranteed a share, so a
 finds that tight can send `X-Companies-House-Api-Key` and get a private budget
 of their own — in Claude Code, `--header "X-Companies-House-Api-Key: ..."`.
 
+[**docs/rate-limits.md**](docs/rate-limits.md) is the full account: what the
+budget is, exactly how much of it any one caller can take, how to read
+`meta.rate_limit_remaining`, what happens when it runs out, and how to bring
+your own key.
+
 Before you make a deployment public, read the
 [**what to expect**](docs/deployment.md#before-you-make-it-public) section: an
 authless URL means anyone holding it spends your budget, and whether you may
@@ -255,7 +260,7 @@ takes `verbose` to return the untouched payload alongside the shaped one.
 | `CompaniesHouseError` | Every failure carries a stable code, a plain sentence and a next step. |
 | Projections | Upstream read defensively field by field; output validated strictly against the published schema. |
 
-284 tests, no network, no API key required to run them.
+438 tests under Node and 12 inside `workerd`, no network and no API key required to run any of them.
 
 ## Configuration
 
