@@ -320,6 +320,18 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added — guardrails
 
+- **The suite now runs the Worker inside `workerd`.**
+  `tests/workers/worker.test.ts`, on `@cloudflare/vitest-pool-workers`,
+  exercises the deployed handler in the runtime Cloudflare actually runs,
+  against the bindings `wrangler.toml` declares, with only Companies House
+  replaced at the platform's egress. It covers the handshake, a real
+  `tools/call` through `globalThis.fetch`, the KV cache surviving between
+  invocations, the Durable Object window carrying between them, and a
+  bring-your-own-key caller getting a window of their own. `npm run
+  test:workers`; CI runs it as its own job. This is the check that was missing:
+  the `Illegal invocation` above passed 400-odd Node tests, and the
+  hand-written stand-ins in `tests/cloudflare.test.ts` could only ever assert
+  what we believed the platform did — which was the thing that was wrong.
 - `tests/runtime-portability.test.ts` fails on any `node:` import outside
   `src/node/`, with `node:crypto` as a single audited exception. It found
   `version.ts` importing `node:module` on its first run — a violation that

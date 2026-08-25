@@ -51,6 +51,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:live": "vitest run --config vitest.live.config.ts",
+    "test:workers": "vitest run --config vitest.workers.config.ts",
     "record-fixtures": "tsx scripts/record-fixtures.ts",
     "prepublishOnly": "npm run release:check",
     "docs:generate": "tsx scripts/generate-tool-docs.ts && tsx scripts/generate-recipes.ts",
@@ -68,6 +69,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^4.1.11",
     "tsx": "^4.23.12",

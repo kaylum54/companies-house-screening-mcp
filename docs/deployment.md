@@ -97,6 +97,28 @@ and `cpu_ms`.
 **Do not put the API key in `[vars]`.** Vars are plain text in the dashboard
 and in your repository. Use `wrangler secret put`.
 
+### Before you deploy a change
+
+```bash
+npm test            # the logic, under Node
+npm run test:workers  # the deployed handler, under workerd
+```
+
+Both, not either. The two runtimes disagree in ways that only show up in the
+second: a `globalThis.fetch` stored detached works under Node and throws
+`TypeError: Illegal invocation` on workerd, which once meant 400-odd passing
+tests and a deployed Worker where every tool call failed. `npm run
+test:workers` runs the real handler inside workerd against the bindings this
+file's `wrangler.toml` declares, with only Companies House replaced. It needs
+no key, no network and no Cloudflare account.
+
+It is not a substitute for `npx wrangler dev`, and neither is a substitute for
+the health check below. The suite supplies `COMPANIES_HOUSE_API_KEY` itself and
+Miniflare invents local KV and Durable Object storage whatever ids are in
+`wrangler.toml` — so a secret you never ran `wrangler secret put` for, and a
+namespace id you never replaced, both still go green here and fail on
+Cloudflare.
+
 ---
 
 ## Connecting a client
@@ -248,6 +270,7 @@ What a healthy response looks like differs by transport, and both are correct:
 | `403` | An `Origin` header was sent and is not in `CH_ALLOWED_ORIGINS`. Browsers send one; curl and MCP clients do not |
 | `500` "The server is misconfigured" | A binding or variable is missing. The detail is deliberately not returned — read it in `wrangler tail` or your process logs |
 | `405` on `GET /mcp` (Workers) | Expected. The Worker is stateless, so there is no stream to open |
+| `/health` and `initialize` fine, but every tool call returns `NETWORK_ERROR` | The Worker cannot reach Companies House. Set `CH_LOG_LEVEL=debug`, redeploy, and read the underlying reason in `npx wrangler tail`. Note that a wrong or unset key gives `AUTH_INVALID`, not this — so the key is not the explanation |
 | Everything 503s | The Durable Object cannot be reached. The limiter fails closed rather than spending the key blind |
 
 `npx wrangler tail` streams live logs from a deployed Worker, which is where

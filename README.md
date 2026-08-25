@@ -280,6 +280,7 @@ Only one variable is required.
 ```bash
 npm install
 npm test
+npm run test:workers
 npm run typecheck
 npm run build
 npm run docs:generate
@@ -296,6 +297,15 @@ The suite runs offline against fixtures recorded from the live Companies House
 API, so a fresh clone works with nothing configured. `npm run record-fixtures`
 re-records them — see [tests/fixtures/README.md](tests/fixtures/README.md) for
 which companies they come from and why those were chosen.
+
+**`npm test` runs under Node; `npm run test:workers` runs under `workerd`.**
+The second is not a duplicate of the first. Node and workerd disagree — a
+`globalThis.fetch` stored detached works on one and throws `Illegal
+invocation` on the other — and that disagreement once passed every Node test
+while breaking every request on the deployed Worker. `tests/workers/` runs the
+real handler in the real runtime against the bindings `wrangler.toml`
+declares, with only Companies House replaced. CI runs both, and neither is
+optional before a deploy.
 
 Once you hold a key, copy `.env.example` to `.env` and fill it in:
 

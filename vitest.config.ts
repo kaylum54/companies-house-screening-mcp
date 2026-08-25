@@ -14,7 +14,12 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     // The live smoke test hits the real API and has its own config
     // (vitest.live.config.ts), so it never runs as part of `npm test`.
-    exclude: ['tests/live.smoke.test.ts'],
+    //
+    // tests/workers/ needs a Worker isolate, not Node: it imports
+    // `cloudflare:test`, which only exists inside the workerd pool. It has its
+    // own config too (vitest.workers.config.ts) and runs as `npm run
+    // test:workers`. CI runs both.
+    exclude: ['tests/live.smoke.test.ts', 'tests/workers/**'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

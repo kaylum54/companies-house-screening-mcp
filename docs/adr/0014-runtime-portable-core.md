@@ -46,6 +46,15 @@ entry point that has one. `loadConfig` stays portable.
 sweeps `src/`, and fails on any `node:` import outside `src/node/` that is not
 the audited exception.
 
+**And the enforcement is checked against the real runtime.** A static rule can
+only catch the differences someone thought to write down, and the one that
+actually broke the deployment was not among them: `globalThis.fetch` stored
+detached is portable-looking code that Node accepts and workerd rejects.
+`tests/workers/` runs the Worker inside workerd, so the claim that the core is
+portable is now tested rather than argued. The static guard was extended to
+catch unbound globals as well, but that fix came second — the runtime found it
+first, and will find the next one.
+
 ## Consequences
 
 The guard found `version.ts` importing `node:module` on its first run. That is
