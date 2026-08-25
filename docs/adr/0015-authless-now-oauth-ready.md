@@ -70,9 +70,16 @@ identity to ban. The available responses are to lower the reservation, to
 rotate the key, or to implement the OAuth provider this seam exists for. An
 operator running this publicly should expect to want the third eventually.
 
-Pooling one personal API key to serve arbitrary third parties may not be
-permitted by the Companies House developer terms. That is a question about the
-operator's own account, it could not be verified from this environment, and it
-should be checked before a deployment is made public. If pooling turns out to
-be disallowed, nothing here is wasted: the bring-your-own-key and self-hosted
-stdio paths become the primary ones and the same code serves them.
+Pooling one registered API key to serve arbitrary third parties is not
+addressed by the Companies House developer terms. Checked in August 2026:
+there is no published usage policy specific to the public data API, and
+nothing in the terms prohibits it. Since those terms do prohibit other things
+explicitly, the reading taken here is that pooling is permitted by omission —
+but that is a reading, not a permission, and it is the operator's own account
+and key that carry the consequence. Anyone deploying this should satisfy
+themselves, and re-check if Companies House publishes usage guidance.
+
+Nothing here depends on that answer holding. If pooling is ever disallowed,
+the bring-your-own-key and self-hosted stdio paths become the primary ones and
+the same code serves them unchanged — which is most of why the credential is
+the unit of partition rather than the session.

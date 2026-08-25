@@ -27,6 +27,19 @@ All notable changes to this project are recorded here. The format follows
   each other and a rename breaks them silently, which is worst in the page
   somebody reaches for while a deployment is failing.
 
+### Changed — documentation
+
+- **The Companies House terms question is settled, and recorded as what it
+  actually is.** Three pages said pooling one registered key behind a shared
+  service "may not be permitted" and was unverified. Checked in August 2026:
+  the terms do not address it. There is no published usage policy specific to
+  the public data API, nothing prohibits pooling, and since those terms do
+  prohibit other things by name the reading taken is that pooling is permitted
+  by omission. That reading is now stated as a reading rather than as a
+  permission, dated, and paired with the note that it is the operator's own
+  account at risk — in the README, the deployment guide, ADR 15 and
+  [rate-limits.md](docs/rate-limits.md).
+
 ### Fixed — documentation
 
 - The README claimed 284 tests. It is 438 under Node plus 12 inside `workerd`.

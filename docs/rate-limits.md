@@ -380,6 +380,21 @@ This is the reason the Workers deployment exists, and it is covered by tests
 that run inside `workerd` rather than against a stand-in. See
 [docs/deployment.md](deployment.md).
 
+### Is pooling one key even allowed?
+
+Checked in August 2026: the Companies House developer terms **do not address
+it**. There is no published usage policy specific to the public data API that
+says pooling one registered key behind a shared service is permitted, and
+nothing that says it is prohibited. Those terms do prohibit other things by
+name, so the reading taken here is that a silence in that company is not a
+prohibition — but unaddressed is not approved, and it is your account and your
+key that carry the consequence. Ask Companies House support if you want
+certainty rather than a reading.
+
+If it ever turns out to be disallowed, nothing about this design is wasted:
+set `CH_ALLOW_CLIENT_KEYS=true` (the default) and require the header, and
+every caller is on their own credential with the same code path.
+
 ### The ceiling is real
 
 No amount of engineering raises 600 per five minutes. Only more keys do. If

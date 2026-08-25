@@ -82,10 +82,12 @@ budget is, exactly how much of it any one caller can take, how to read
 your own key.
 
 Before you make a deployment public, read the
-[**what to expect**](docs/deployment.md#before-you-make-it-public) section: an
-authless URL means anyone holding it spends your budget, and whether you may
-pool one personal API key for third parties is a question for the Companies
-House developer terms.
+[**what to expect**](docs/deployment.md#before-you-make-it-public) section. The
+short version: an authless URL means anyone holding it spends your budget, and
+the Companies House terms neither prohibit nor explicitly permit pooling one
+registered key behind a shared service — there is no published usage policy for
+the public data API that addresses it. Checked August 2026; your account, your
+key, your call.
 
 ### Local — stdio
 

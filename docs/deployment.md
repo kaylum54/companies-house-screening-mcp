@@ -286,9 +286,16 @@ the misconfiguration detail goes.
 
 ## Before you make it public
 
-- **Check the Companies House developer terms.** Pooling one personal API key
-  to serve arbitrary third parties may not be permitted. It is your account
-  and your key at risk. See [ADR 15](adr/0015-authless-now-oauth-ready.md).
+- **The Companies House terms do not address this — checked, August 2026.**
+  Pooling one registered API key behind a service that serves third parties is
+  neither prohibited nor explicitly permitted: there is no published usage
+  policy specific to the public data API that speaks to it either way. The
+  terms do prohibit other things by name, so the reasonable reading of a
+  silence in that company is that pooling is not disallowed — but *unaddressed
+  is not the same as approved*, and it is your account and your key at risk.
+  If you want certainty rather than a reading, ask Companies House support
+  before you publish, and re-check when they publish usage guidance. See
+  [ADR 15](adr/0015-authless-now-oauth-ready.md).
 - **Anyone with the URL can spend your budget.** That is the deal with an
   authless server. Fair sharing bounds what any one caller takes; it does not
   stop a determined one.
