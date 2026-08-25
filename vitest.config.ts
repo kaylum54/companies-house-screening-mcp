@@ -2,7 +2,7 @@ import { join } from 'node:path';
 
 import { defineConfig } from 'vitest/config';
 
-import { loadEnvFile } from './src/env-file.js';
+import { loadEnvFile } from './src/node/env-file.js';
 
 // Loads the repository's own .env from a known path, so `npm test` picks up a
 // key without one having to be exported in every new terminal. Variables
@@ -14,7 +14,12 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     // The live smoke test hits the real API and has its own config
     // (vitest.live.config.ts), so it never runs as part of `npm test`.
-    exclude: ['tests/live.smoke.test.ts'],
+    //
+    // tests/workers/ needs a Worker isolate, not Node: it imports
+    // `cloudflare:test`, which only exists inside the workerd pool. It has its
+    // own config too (vitest.workers.config.ts) and runs as `npm run
+    // test:workers`. CI runs both.
+    exclude: ['tests/live.smoke.test.ts', 'tests/workers/**'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

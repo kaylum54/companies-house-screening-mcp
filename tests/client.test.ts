@@ -5,6 +5,7 @@ import { CompaniesHouseError } from '../src/errors.js';
 import { ResponseCache } from '../src/http/cache.js';
 import { CompaniesHouseClient } from '../src/http/client.js';
 import { RateLimiter } from '../src/http/rate-limiter.js';
+import { FileCacheStore } from '../src/node/file-cache-store.js';
 import { fakeFetchAlways, fakeFetchSequence, timeoutError } from './helpers/fake-fetch.js';
 import { fixedRandom, loadFixture, testConfig, withTempDir } from './helpers/support.js';
 
@@ -27,7 +28,7 @@ function build(options: BuildOptions) {
   });
 
   const cache = new ResponseCache({
-    dir: config.cacheDir,
+    store: new FileCacheStore({ dir: config.cacheDir ?? '/tmp/unused' }),
     enabled: config.cacheEnabled,
     clock
   });
@@ -343,5 +344,114 @@ describe('CompaniesHouseClient — failure handling', () => {
     const before = clock.now();
     await client.get({ path: '/company/00000006' });
     expect(clock.now() - before).toBeGreaterThanOrEqual(30_000);
+  });
+});
+
+describe('CompaniesHouseClient — in-flight coalescing', () => {
+  it('makes one upstream call when the same URL is asked for concurrently', async () => {
+    // The cache only helps once an answer exists. A screen_companies fan-out
+    // issues its requests together, so several callers wanting the same
+    // company all miss at once and would each spend a slot of the budget the
+    // shared cache exists to conserve.
+    const fake = fakeFetchAlways({ body: PROFILE });
+    const { client } = build({ fetchImpl: fake.fetch });
+
+    const responses = await Promise.all(
+      Array.from({ length: 10 }, () => client.get({ path: '/company/04138203', label: 'company' }))
+    );
+
+    expect(fake.calls).toHaveLength(1);
+    // Every follower got the leader's answer, and each is marked as having
+    // made no upstream call — which is exactly what happened to it.
+    expect(responses.filter((response) => response.meta.cached)).toHaveLength(9);
+    for (const response of responses) {
+      expect(response.data).toEqual(responses[0]?.data);
+    }
+  });
+
+  it('spends one slot of budget for a coalesced burst, not ten', async () => {
+    const fake = fakeFetchAlways({ body: PROFILE });
+    const { client } = build({ fetchImpl: fake.fetch });
+    const before = (await client.budget()).remaining;
+
+    await Promise.all(
+      Array.from({ length: 10 }, () => client.get({ path: '/company/04138203', label: 'company' }))
+    );
+
+    expect((await client.budget()).remaining).toBe(before - 1);
+  });
+
+  it('does not coalesce requests for different URLs', async () => {
+    const fake = fakeFetchAlways({ body: PROFILE });
+    const { client } = build({ fetchImpl: fake.fetch });
+
+    await Promise.all([
+      client.get({ path: '/company/04138203', label: 'company' }),
+      client.get({ path: '/company/00000006', label: 'company' })
+    ]);
+
+    expect(fake.calls).toHaveLength(2);
+  });
+
+  it('does not leave a failed request behind for later callers to adopt', async () => {
+    // A rejected promise left in the map would be inherited by every
+    // subsequent caller, turning one upstream blip into a permanent outage
+    // for that URL.
+    const fake = fakeFetchSequence([
+      { throws: timeoutError() },
+      { throws: timeoutError() },
+      { throws: timeoutError() },
+      { throws: timeoutError() },
+      { body: PROFILE }
+    ]);
+    const { client } = build({ fetchImpl: fake.fetch, maxRetries: 3 });
+
+    await expect(client.get({ path: '/company/04138203', label: 'company' })).rejects.toBeDefined();
+    await expect(
+      client.get({ path: '/company/04138203', label: 'company' })
+    ).resolves.toBeDefined();
+  });
+});
+
+describe('CompaniesHouseClient — the default fetch is bound', () => {
+  it('calls the global fetch with globalThis as its receiver', async () => {
+    // Reproduces workerd's rule inside Node. Cloudflare throws
+    // `TypeError: Illegal invocation` when `fetch` is called detached from
+    // `globalThis`; Node does not care, which is exactly why storing the bare
+    // global passed every test here and failed every request on a deployed
+    // Worker. The stand-in below is strict in the same way workerd is.
+    const original = globalThis.fetch;
+    const seen: unknown[] = [];
+
+    const strict = function (this: unknown, _input: unknown, _init?: unknown): Promise<Response> {
+      seen.push(this);
+      if (this !== globalThis && this !== undefined) {
+        throw new TypeError('Illegal invocation: function called with incorrect `this` reference.');
+      }
+      if (this === undefined) {
+        throw new TypeError('Illegal invocation: function called with incorrect `this` reference.');
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify(PROFILE), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        })
+      );
+    };
+
+    globalThis.fetch = strict as unknown as typeof fetch;
+    try {
+      // Deliberately no fetchImpl: this exercises the default path, which is
+      // the only one a real deployment uses.
+      const config = testConfig({ cacheEnabled: false });
+      const client = new CompaniesHouseClient({ config, clock: new FakeClock(0) });
+
+      const response = await client.get({ path: '/company/04138203', label: 'company' });
+      expect(response.data).toBeDefined();
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toBe(globalThis);
+    } finally {
+      globalThis.fetch = original;
+    }
   });
 });

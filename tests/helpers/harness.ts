@@ -4,6 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { FakeClock } from '../../src/clock.js';
 import { ResponseCache } from '../../src/http/cache.js';
 import { CompaniesHouseClient } from '../../src/http/client.js';
+import type { BudgetStore } from '../../src/http/budget-store.js';
 import { RateLimiter } from '../../src/http/rate-limiter.js';
 import { createServer } from '../../src/server.js';
 import { silentLogger } from '../../src/telemetry/logger.js';
@@ -35,6 +36,12 @@ export interface Harness {
 export interface HarnessOptions {
   /** Lowered in tests that need the budget to run out. */
   rateLimit?: number;
+  /**
+   * Replaces the budget entirely. For testing what tools do when the limiter
+   * itself misbehaves — an unreachable window reports `remaining: 0` just as
+   * an exhausted one does, and the two must not be described the same way.
+   */
+  budgetStore?: BudgetStore;
 }
 
 async function build(
@@ -53,14 +60,15 @@ async function build(
     clock,
     fetchImpl,
     random: fixedRandom(0),
-    cache: new ResponseCache({ dir: config.cacheDir, enabled: false, clock }),
+    cache: new ResponseCache({ enabled: false, clock }),
     limiter: new RateLimiter({
       limit: config.rateLimit,
       windowMs: config.rateWindowMs,
       safetyMargin: config.rateSafetyMargin,
       clock,
       jitterMs: 0,
-      random: fixedRandom(0)
+      random: fixedRandom(0),
+      ...(options.budgetStore === undefined ? {} : { store: options.budgetStore })
     })
   });
 
@@ -104,6 +112,15 @@ export async function harnessRoutes(
 ): Promise<Harness> {
   const fake = fakeFetchRouter(routes);
   return build(fake.fetch, fake.calls, options);
+}
+
+/** Runs the server against a budget that behaves however the test needs. */
+export async function harnessWithBudget(
+  budgetStore: BudgetStore,
+  routes: [RegExp, FakeResponseSpec][] = []
+): Promise<Harness> {
+  const fake = fakeFetchRouter(routes);
+  return build(fake.fetch, fake.calls, { budgetStore });
 }
 
 /** Reads the structured result of a tool call, asserting it was not an error. */

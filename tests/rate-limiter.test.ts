@@ -30,7 +30,7 @@ describe('RateLimiter', () => {
     const { clock, limiter } = build();
     for (let i = 0; i < 10; i += 1) await limiter.acquire();
     expect(clock.sleeps).toHaveLength(0);
-    expect(limiter.snapshot().remaining).toBe(0);
+    expect((await limiter.snapshot()).remaining).toBe(0);
   });
 
   it('waits for the oldest request to leave the window once full', async () => {
@@ -45,10 +45,10 @@ describe('RateLimiter', () => {
   it('recovers budget as the window slides', async () => {
     const { clock, limiter } = build();
     for (let i = 0; i < 10; i += 1) await limiter.acquire();
-    expect(limiter.snapshot().remaining).toBe(0);
+    expect((await limiter.snapshot()).remaining).toBe(0);
 
     clock.advance(60_001);
-    expect(limiter.snapshot().remaining).toBe(10);
+    expect((await limiter.snapshot()).remaining).toBe(10);
   });
 
   it('serialises concurrent acquisitions so the budget cannot be oversold', async () => {
@@ -65,55 +65,55 @@ describe('RateLimiter', () => {
     );
 
     expect(order).toHaveLength(3);
-    expect(limiter.snapshot().remaining).toBe(0);
+    expect((await limiter.snapshot()).remaining).toBe(0);
   });
 
   it('tightens the local budget when the server says it is lower', async () => {
     const { limiter } = build();
     await limiter.acquire();
-    expect(limiter.snapshot().remaining).toBe(9);
+    expect((await limiter.snapshot()).remaining).toBe(9);
 
-    limiter.applyServerHeaders(new Headers({ 'x-ratelimit-remain': '2' }));
-    expect(limiter.snapshot().remaining).toBe(2);
+    await limiter.applyServerHeaders(new Headers({ 'x-ratelimit-remain': '2' }));
+    expect((await limiter.snapshot()).remaining).toBe(2);
   });
 
-  it('reads the conventional header spelling too', () => {
+  it('reads the conventional header spelling too', async () => {
     const { limiter } = build();
-    limiter.applyServerHeaders(new Headers({ 'x-ratelimit-remaining': '4' }));
-    expect(limiter.snapshot().remaining).toBe(4);
+    await limiter.applyServerHeaders(new Headers({ 'x-ratelimit-remaining': '4' }));
+    expect((await limiter.snapshot()).remaining).toBe(4);
   });
 
   it('ignores a server hint once its reset time has passed', async () => {
     const { clock, limiter } = build();
-    limiter.applyServerHeaders(
+    await limiter.applyServerHeaders(
       new Headers({
         'x-ratelimit-remain': '0',
         'x-ratelimit-reset': String(Math.floor((clock.now() + 30_000) / 1000))
       })
     );
-    expect(limiter.snapshot().remaining).toBe(0);
+    expect((await limiter.snapshot()).remaining).toBe(0);
 
     clock.advance(31_000);
-    expect(limiter.snapshot().remaining).toBe(10);
+    expect((await limiter.snapshot()).remaining).toBe(10);
   });
 
   it('expires a server hint that arrived without a reset time', async () => {
     // Otherwise `remain: 0` with no `reset` header deadlocks the process on
     // the strength of a field that is not even documented.
     const { clock, limiter } = build();
-    limiter.applyServerHeaders(new Headers({ 'x-ratelimit-remain': '0' }));
-    expect(limiter.snapshot().remaining).toBe(0);
+    await limiter.applyServerHeaders(new Headers({ 'x-ratelimit-remain': '0' }));
+    expect((await limiter.snapshot()).remaining).toBe(0);
 
     clock.advance(60_001);
-    expect(limiter.snapshot().remaining).toBe(10);
+    expect((await limiter.snapshot()).remaining).toBe(10);
   });
 
   it('holds all traffic until a penalty expires', async () => {
     const { clock, limiter } = build();
     const resetAt = clock.now() + 45_000;
-    limiter.penalise(resetAt);
+    await limiter.penalise(resetAt);
 
-    expect(limiter.snapshot().resetInMs).toBe(45_000);
+    expect((await limiter.snapshot()).resetInMs).toBe(45_000);
     await limiter.acquire();
     expect(clock.now()).toBeGreaterThanOrEqual(resetAt);
   });
@@ -121,7 +121,7 @@ describe('RateLimiter', () => {
   it('reports zero reset time while budget remains', async () => {
     const { limiter } = build();
     await limiter.acquire();
-    expect(limiter.snapshot().resetInMs).toBe(0);
+    expect((await limiter.snapshot()).resetInMs).toBe(0);
   });
 
   it('throws rather than spinning if the injected clock never advances', async () => {
@@ -154,5 +154,79 @@ describe('RateLimiter', () => {
     await limiter.acquire();
     await expect(limiter.acquire()).rejects.toThrow();
     await expect(limiter.acquire()).rejects.toThrow();
+  });
+});
+
+describe('RateLimiter — exhausting the retry bound', () => {
+  it('reports congestion as RATE_LIMITED rather than as a server bug', async () => {
+    // The 64-attempt bound guards against a frozen clock, but it is reachable
+    // with a healthy one: a caller held to its reservation while its own burst
+    // ages out can be refused many times inside the wait window. Reporting
+    // that as INTERNAL_ERROR would tell the caller their request is a bug in
+    // the server and not retryable, when it is neither.
+    const clock = new FakeClock(0);
+    const limiter = new RateLimiter({
+      clock,
+      jitterMs: 0,
+      random: () => 0,
+      maxWaitMs: Number.MAX_SAFE_INTEGER,
+      store: {
+        acquire: async () => ({
+          granted: false,
+          remaining: 0,
+          retryInMs: 1,
+          limit: 10,
+          boundBy: 'client' as const
+        }),
+        peek: async () => ({ granted: false, remaining: 0, retryInMs: 1, limit: 10 }),
+        penalise: async () => undefined,
+        observe: async () => undefined
+      }
+    });
+
+    await expect(limiter.acquire('busy')).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+      retryable: true
+    });
+  });
+});
+
+describe('RateLimiter — the wait ceiling', () => {
+  it('waits for the window by default, as the stdio server always has', async () => {
+    // Adding a ceiling for the hosted server must not have silently changed
+    // what a local install does. stdio has one caller, no connection to hold
+    // open, and waiting out the window is the behaviour that shipped.
+    const clock = new FakeClock(0);
+    const limiter = new RateLimiter({
+      limit: 1,
+      windowMs: 300_000,
+      safetyMargin: 1,
+      clock,
+      jitterMs: 0,
+      random: () => 0
+    });
+
+    await limiter.acquire();
+
+    // The second acquisition waits rather than throwing at t=0.
+    const pending = limiter.acquire();
+    await expect(pending).resolves.toBeDefined();
+    expect(clock.now()).toBeGreaterThanOrEqual(300_000);
+  });
+
+  it('gives up once a ceiling is set, so a server does not hang a connection', async () => {
+    const clock = new FakeClock(0);
+    const limiter = new RateLimiter({
+      limit: 1,
+      windowMs: 300_000,
+      safetyMargin: 1,
+      clock,
+      jitterMs: 0,
+      random: () => 0,
+      maxWaitMs: 1_000
+    });
+
+    await limiter.acquire();
+    await expect(limiter.acquire()).rejects.toMatchObject({ code: 'RATE_LIMITED' });
   });
 });

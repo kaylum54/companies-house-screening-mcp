@@ -4,7 +4,343 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — 2026-08-25
+
+### Added — the server is reachable without a laptop
+
+- **Streamable HTTP transport**, alongside stdio rather than replacing it. This
+  makes the server usable from claude.ai on web and mobile, hosted agent
+  platforms, and anything else that cannot spawn a local process. stdio is
+  unchanged and remains the right answer for a single user on one machine.
+  New binary: `companies-house-screening-mcp-http`.
+  ([ADR 12](docs/adr/0012-remote-transport-alongside-stdio.md))
+- **Cloudflare Workers deployment**, with the rate-limit window in a Durable
+  Object. A Durable Object is single-threaded and globally unique per key, so
+  the budget stays correct under scale-out by construction rather than by being
+  told to run one instance. Requires the Workers Paid plan, because a single
+  `screen_companies` run makes ~150 external subrequests in one invocation and
+  the free plan allows 50. See `wrangler.toml` and
+  [docs/deployment.md](docs/deployment.md).
+- **Bring your own key**, via `X-Companies-House-Api-Key`. A caller supplying
+  one gets a private rate-limit window while still sharing the response cache.
+  The key is never logged, cached, returned in a tool result, or exposed to the
+  model; a malformed value is treated as absent rather than passed into an auth
+  header.
+- **An authless-now, OAuth-ready identity seam.** `AuthProvider` resolves a
+  request to a `ClientIdentity` that everything downstream consumes without
+  knowing how it was established, so adding OAuth later means writing one
+  provider rather than reworking the limiter and every entry point.
+  ([ADR 15](docs/adr/0015-authless-now-oauth-ready.md))
+
+### Fixed — the rate limiter is now authoritative
+
+- **The budget is shared, not guessed.** It counted requests per process while
+  Companies House meters per key, so several sessions on one key each believed
+  they owned the whole window. The arithmetic moved into a pure
+  `SlidingWindowBudget` behind a `BudgetStore`, letting identical code run in
+  one process or in a Durable Object.
+  ([ADR 13](docs/adr/0013-one-key-shared-budget-fair-shares.md))
+- **Fair shares, so one caller cannot starve another.** Each caller is
+  guaranteed a reservation and may exceed it only while the window has room.
+  The headroom held back scales with the callers actually active, so a lone
+  caller on a quiet server keeps 499 of the 570-request effective window — all
+  of it bar one held-back reservation — while a newcomer is still guaranteed a
+  share on arrival.
+- **`peek` no longer promises more than `acquire` grants.** It approximated the
+  admission rule instead of deriving from it. `screen_companies` sizes its
+  batch against `peek`, so the bug was a table promising rows the limiter would
+  then refuse — the exact silent shortfall
+  [ADR 8](docs/adr/0008-partial-results-and-budget-honesty.md) exists to
+  prevent.
+- **`screen_companies` asks the budget rather than reading a cached figure.**
+  On a shared deployment the cached snapshot can be a whole window out of date.
+
+### Changed — breaking, at 0.x
+
+- `RateLimiter.snapshot()` is now **async**, and returns the caller's view of
+  the budget. `RateLimiter.lastKnown` is the synchronous cached value, for
+  response metadata only. `penalise` and `applyServerHeaders` are async too.
+- `ResponseCache` takes a **`store`** rather than a `dir`. Node callers pass
+  `new FileCacheStore({ dir })`; a Worker passes `KvCacheStore`; omitting it
+  gives a memory-only cache.
+- `defaultCacheDir`, `packageVersion` and `loadEnvFile` moved to `src/node/`.
+  They are still exported from the package root. `config.cacheDir` is now
+  optional, because only a runtime with a filesystem has anywhere to point it.
+  ([ADR 14](docs/adr/0014-runtime-portable-core.md))
+
+### Security
+
+- **`X-Forwarded-For` is no longer trusted by default.** It is set by the
+  caller, so a client varying it per request would have minted a fresh
+  fair-share reservation each time and defeated the limiter entirely. It is now
+  consulted only when `CH_TRUST_PROXY_HEADERS=true` says a trusted proxy is in
+  front. Cloudflare's `CF-Connecting-IP` remains trusted because the platform
+  sets it and strips any client-supplied copy.
+- **The Worker no longer returns configuration validation detail to callers.**
+  A misconfigured deployment answered an unauthenticated request with the list
+  of environment variables that failed validation. The detail now goes to the
+  operator's logs and the caller gets "The server is misconfigured."
+
+### Fixed — found by the code-review pass
+
+- **A private budget is now one per key, not one per session.** Creating a
+  store per session meant a caller reconnecting between calls received a fresh
+  full window each time, so a client that reconnected per request was never
+  rate-limited at all. It also disagreed with the Cloudflare path, which
+  already keyed by caller.
+- **`CF-Connecting-IP` is gated like `X-Forwarded-For`.** It is only
+  trustworthy inside Cloudflare's runtime; arriving at a Node process it is a
+  header the caller typed, and trusting it reopened the bypass the previous fix
+  had just closed.
+- **The session registry is bounded.** Idle sessions are swept and the least
+  recently used is evicted at `CH_MAX_SESSIONS`; previously every `initialize`
+  retained a server and transport for the life of the process.
+- **Response metadata no longer reports another caller's budget.** `rateLimit`
+  read the shared limiter's cached value, so a request served entirely from
+  cache could report whatever the last caller saw — including `remaining: 0`.
+  Each session now tracks its own.
+- **No more "Retry in 0 seconds."** When budget remained but not a whole
+  company's worth, `not_screened` quoted a reset time of zero. Fair sharing
+  makes that state common; the message now says what to do instead.
+- **A failed Durable Object restore no longer latches.** One rejected storage
+  read left a permanently rejected promise that failed every later request
+  closed. The next request now retries.
+- **The Worker reports its real version** — inlined at build time — rather than
+  `0.0.0`, and its pooled limiter now honours `CH_RATE_LIMIT` instead of
+  falling back to the documented default when reporting its ceiling.
+
+### Fixed — found by the second review pass
+
+- **Response metadata reported another caller's budget.** The first fix changed
+  only the `rateLimit` getter; the four `meta.rateLimit` sites inside `get()`
+  still read the shared limiter, so a cache-served response could report a
+  stranger's remaining count.
+- **A caller supplying the deployment's own key got a second window on it.**
+  Companies House meters the key, so two windows on one credential would let
+  the server spend roughly twice the allowance it has. That caller now joins
+  the pool, which is where the key's traffic already is.
+- **Exhausting the limiter's retry bound reported `INTERNAL_ERROR`.** The bound
+  guards against a frozen clock but is reachable with a healthy one under
+  contention, and callers were told their request was a server bug and not
+  retryable. It is now `RATE_LIMITED` with a retry time.
+- **Private budgets are bounded**, like sessions. The map was keyed by
+  caller-supplied key fingerprint on an authless endpoint, so rotating
+  fabricated keys grew it without limit.
+- **A failed `listen` no longer crashes with an uncaught exception.** An
+  occupied port bypassed the entry point's error handling entirely; it now
+  reports the port and exits with the config code.
+
+### Fixed — found by the third review pass
+
+- **A Durable Object hiccup could fail a request the upstream had already
+  answered.** `observe` runs after every Companies House response and was
+  unguarded, so a coordinator blip turned a successful 200 into a thrown error.
+  Both `observe` and `penalise` are best-effort corrections and now stay that
+  way.
+- **An unreachable limiter reported "you hit the rate limit."** It now reports
+  `UPSTREAM_UNAVAILABLE` and fails immediately, instead of spending the full
+  wait window retrying something that is down and then blaming the caller's
+  budget.
+- **Idle sessions were never actually swept.** The sweep ran only when a new
+  client initialized, so `CH_SESSION_IDLE_MS` reclaimed sessions when the
+  server was busy and never when it was quiet. It now runs on any request,
+  throttled.
+- **`CH_CACHE_DIR=` became a fatal config error**, and `CH_CACHE_DIR='   '` a
+  directory named three spaces. Trimming used to happen inside
+  `defaultCacheDir` and was lost when it moved; blank now means unset again.
+- **Persisted Durable Object state is validated before loading.** It outlives
+  any deploy, exactly as a KV namespace does, and an unreadable value threw
+  inside `blockConcurrencyWhile` — permanently refusing that credential's
+  window, because the bad value stayed in storage.
+- **A new session's first cache-hit response reported the previous caller's
+  budget.** The per-session figure was seeded from the shared limiter.
+
+### Fixed — found by the fourth review pass
+
+- **`screen_companies` described a limiter outage as an exhausted budget.**
+  `RateLimitSnapshot` dropped the reason a budget was zero, so an unreachable
+  coordinator produced a table where every row blamed a spent five-minute
+  window. The single-lookup path had been fixed for exactly this and the two
+  tools contradicted each other during the same outage. The reason is now
+  carried through, and the batch tool reports the outage.
+- **`isBudgetState` checked the container but not its contents.** A stored
+  `clients` entry that was not an array passed the guard and threw inside
+  `blockConcurrencyWhile` — the failure the guard exists to prevent, one level
+  deeper than it was looking.
+- **Two concurrent first requests to a Durable Object could each build a
+  window.** The later assignment won and the slot granted against the discarded
+  one vanished from the persisted count. The in-flight restore is now memoized.
+- **An actively-used private budget aged as though idle.** Its timestamp was
+  only set when a session was created, so a busy window could be evicted and
+  the caller's next reconnect would build a second one on the same credential —
+  metering one Companies House key against two local windows.
+
+### Fixed — found by the fifth review pass
+
+- **A stale reset time expired a fresh rate-limit hint.** Companies House sends
+  `X-Ratelimit-*` inconsistently; a response carrying only a reset, followed by
+  one carrying only a count, left the old reset in place, which discarded the
+  new count the instant it was read — throwing away the server's warning and
+  running the limiter into 429s, the one thing these headers exist to avoid.
+- **An in-use private budget could be evicted by the size cap.** The live
+  session kept the orphaned store, so the caller's next reconnect built a
+  second full window on the same credential. Budgets held by a live session are
+  now excluded from eviction, and the map stays bounded because sessions are.
+- **The Durable Object wrote its whole window on every upstream response.**
+  `observe` persisted a correction the code itself calls "never the source of
+  truth", roughly doubling storage traffic on the request path. Penalties still
+  persist, because a 429 must survive an eviction.
+- **A non-object request body crashed the Durable Object into a fail-closed
+  outcome** instead of returning 400, because `JSON.parse` accepts `null`.
+- **The startup log dropped `clientReservation`** — the derived value was
+  overwritten by the config spread that followed it — in exactly the case where
+  someone would want to read it.
+- **The portability guard only matched static imports**, so a future
+  `await import('node:fs')` would have slipped past. It was the form `cache.ts`
+  itself used to contain.
+
+### Changed — closing the cross-session leak by construction
+
+- **`RateLimiter.acquire` now returns the budget for that acquisition.**
+  Callers previously read `lastKnown` back off the limiter afterwards, and one
+  limiter is shared by every pooled session — so another session's continuation
+  running between the `await` resolving and the read would be reported as this
+  session's. Three separate variants of that leak were fixed during review (the
+  getter, the four call sites, and the seed); handing the value back removes
+  the shape of the bug rather than its instances.
+
+### Fixed — found by the sixth review pass
+
+- **A refused initialize orphaned a whole session.** The SDK answers 406 for an
+  `Accept` without `text/event-stream` and 415 for a non-JSON `Content-Type`,
+  after the server, transport and any private-budget reference have been built
+  and before `onsessioninitialized` fires — so none of it was ever registered,
+  swept, evicted or closed. Unauthenticated memory growth the session cap could
+  not see, and with a rotating key header it pinned private budgets in place
+  permanently.
+- **Closing a session released its private budget twice.** Both
+  `onsessionclosed` and `onclose` fire on a delete, so closing one of two
+  sessions on the same caller key took the reference count to zero while the
+  other was live — making an in-use budget an eviction candidate, which is the
+  "one key, two local windows" failure the refcount exists to prevent. Release
+  is now idempotent per session.
+- **A server-imposed block reported the local window's reset time.** A
+  `remain: 0` hint can block a window that still has local room; quoting the
+  local expiry gave a retry time that could be minutes early, and
+  `screen_companies` prints it verbatim.
+- **`isBudgetState` did not validate the restored server-hint fields.** A
+  non-numeric `serverRemaining` made the available count `NaN`, which passes a
+  `<= 0` guard and reached `screen_companies` as `slice(0, NaN)` — every
+  company reported unaffordable against a budget that was never spent.
+
+### Fixed — found by the seventh review pass
+
+- **A hint-imposed block reported seconds for a wait lasting minutes.** A
+  `remain: 0` header with no `reset` blocks for a full window from when it was
+  recorded, but the retry time came from the local oldest timestamp — so the
+  limiter retried into a guaranteed refusal and `screen_companies` printed the
+  wrong number verbatim.
+- **A server hint is now the server's whole view, not a patch onto the last
+  one.** The two headers arrive independently, and pairing a new one with a
+  leftover old one is wrong in both directions: a fresh count with a stale
+  reset is expired the moment it is read, and a fresh reset with a stale
+  `remaining: 0` extended a block that should have ended by an entire window.
+  Only the first direction was handled.
+- **The Worker answered `GET /mcp` by opening a stream it then destroyed.** The
+  deployment is stateless, so it built a session, opened an SSE stream and tore
+  it down in the same request — leaving a client that opens the notification
+  stream reconnecting in a loop, paying a full config parse, auth and Durable
+  Object wiring each time. Non-POST is now refused with 405 before anything is
+  built, as the Node entry point already did.
+
+### Fixed — found by the eighth review pass
+
+- **A short server hold was padded out to a whole window.** The retry time
+  folded in the local oldest-entry expiry even with hundreds of local slots
+  free, so a five-second hold was reported as five minutes — long enough that
+  the limiter gave up against its wait deadline instead of simply waiting. Each
+  constraint is now quoted only while it is the one actually blocking.
+- **Every environment variable now treats blank as unset**, not just
+  `CH_CACHE_DIR`. `CH_HTTP_HOST=`, `CH_HTTP_PORT=` and friends each exited 78 —
+  the same footgun, in the deployment surface this release introduces, where
+  compose files and Kubernetes manifests produce empty values by accident.
+- **The Worker relays `WWW-Authenticate` on a failed authentication.** Latent
+  while the default provider admits everyone, but a 401 without it leaves an
+  MCP client nothing to discover, which is the OAuth path the seam exists for.
+
+### Fixed — found by the ninth review pass
+
+- **stdio no longer inherits the hosted server's give-up deadline.** Adding a
+  wait ceiling for HTTP silently applied it to the local server too, so an
+  over-budget call now failed immediately where it used to wait for the window.
+  The ceiling belongs to a server — where a hung request holds a connection and
+  the client times out anyway — and the entry points now supply it. `stdio`
+  waits, as it always has, and `CH_MAX_WAIT_MS` overrides either.
+- **A client refused by its own share was told to come back far too early.**
+  The retry time quoted the client's oldest request expiring, which frees one
+  slot, while a client that burst past its reservation before the window filled
+  needs many. It is now derived from the admission rule: whichever of "enough
+  of mine age out" or "the window reopens for bursting" happens first.
+
+### Added — concurrent requests for the same URL are coalesced
+
+- **Ten sessions asking for the same company at once now make one call.** The
+  cache only helps once an answer exists, and `screen_companies` fans out
+  concurrently by design — so simultaneous misses on the same supplier each
+  spent a slot of the budget the shared cache exists to conserve. Followers
+  wait for the leader and are reported as cached, which is what happened to
+  them: they contacted nobody. A failed request is cleared rather than left for
+  later callers to inherit.
+
+### Fixed — found by the tenth review pass
+
+- **The `session opened` log claimed a private budget that did not exist.** A
+  caller supplying the deployment's own key is routed into the pool, but the
+  log reported the header rather than the outcome.
+- **`isBudgetState` accepted non-finite numbers.** Durable Object storage
+  round-trips `NaN` and `Infinity`, and a non-finite `blockedUntil` latches
+  permanently through `Math.max` — silently disabling 429 penalties for that
+  credential.
+- **A throw during the handshake pinned a private-budget refcount.** Nothing is
+  registered at that point, so nothing else would ever release it, and a pinned
+  entry is permanently non-evictable.
+
+### Fixed — found by the first real deployment
+
+- **Every upstream request failed on Cloudflare with `Illegal invocation`.**
+  The client stored `globalThis.fetch` in a field and called it detached. Node
+  tolerates that; workerd requires `globalThis` as the receiver and throws.
+  The result was the worst shape a bug can take — every test passing under
+  Node, every request failing on the deployed Worker. `fetch` is now bound, and
+  a regression test reproduces workerd's receiver rule inside Node so the
+  suite can actually see it.
+- The portability guard now also catches runtime globals stored without
+  binding, not just `node:` imports. The original rule could never have found
+  this.
+
+### Added — guardrails
+
+- **The suite now runs the Worker inside `workerd`.**
+  `tests/workers/worker.test.ts`, on `@cloudflare/vitest-pool-workers`,
+  exercises the deployed handler in the runtime Cloudflare actually runs,
+  against the bindings `wrangler.toml` declares, with only Companies House
+  replaced at the platform's egress. It covers the handshake, a real
+  `tools/call` through `globalThis.fetch`, the KV cache surviving between
+  invocations, the Durable Object window carrying between them, and a
+  bring-your-own-key caller getting a window of their own. `npm run
+  test:workers`; CI runs it as its own job. This is the check that was missing:
+  the `Illegal invocation` above passed 400-odd Node tests, and the
+  hand-written stand-ins in `tests/cloudflare.test.ts` could only ever assert
+  what we believed the platform did — which was the thing that was wrong.
+- `tests/runtime-portability.test.ts` fails on any `node:` import outside
+  `src/node/`, with `node:crypto` as a single audited exception. It found
+  `version.ts` importing `node:module` on its first run — a violation that
+  would have broken the Worker at deploy time and that no test running under
+  Node would have noticed.
+- 74 new tests covering fair sharing and starvation, `peek`/`acquire`
+  agreement, the HTTP handshake and tool parity with stdio, session and budget
+  isolation, key handling, Durable Object eviction and restore, and fail-closed
+  behaviour when the limiter is unreachable.
 
 ### Changed
 
@@ -14,6 +350,14 @@ All notable changes to this project are recorded here. The format follows
   rotate. It replaced a granular token, which npm rejected anyway: publishing
   from CI requires a token flagged to bypass 2FA, and npm is removing those for
   direct publishing in January 2027.
+
+---
+
+## [0.1.1] and earlier
+
+Everything below shipped in 0.1.0 and 0.1.1. It is kept as one block because
+the changelog was not sectioned by release until 0.2.0, and inventing a split
+after the fact would be a guess presented as a record.
 
 ### Changed — tool descriptions, driven by the expanded eval
 

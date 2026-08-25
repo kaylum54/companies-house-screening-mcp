@@ -4,10 +4,10 @@ import type { Config } from '../config.js';
 import { CompaniesHouseError, fromHttpStatus, malformedResponse, networkError, timeout } from '../errors.js';
 import type { Logger } from '../telemetry/logger.js';
 import { silentLogger } from '../telemetry/logger.js';
-import type { CacheEntry, ResourceKind } from './cache.js';
+import type { CacheEntry, CacheStore, ResourceKind } from './cache.js';
 import { DEFAULT_TTLS, ResponseCache } from './cache.js';
 import type { RateLimitSnapshot } from './rate-limiter.js';
-import { RateLimiter } from './rate-limiter.js';
+import { DEFAULT_CLIENT_ID, RateLimiter } from './rate-limiter.js';
 
 /**
  * The HTTP layer.
@@ -17,6 +17,39 @@ import { RateLimiter } from './rate-limiter.js';
  * blank password, a five-minute request budget, 404s that mean two different
  * things, and occasional HTML error pages served with a JSON content type.
  */
+
+/**
+ * Whatever a failed `fetch` can tell us, flattened for a log line.
+ *
+ * Runtimes disagree about what they throw: Node nests the useful part in
+ * `cause`, workerd reports an opaque `internal error; reference = ...`, and
+ * either may surface only a name. Take all of it, since one line in a log is
+ * cheap and a second deploy to find out is not.
+ */
+function describeCause(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const parts = [`${error.name}: ${error.message}`];
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause instanceof Error) parts.push(`caused by ${cause.name}: ${cause.message}`);
+  else if (cause !== undefined) parts.push(`caused by ${String(cause)}`);
+  return parts.join(' | ');
+}
+
+/**
+ * Base64 without `Buffer`.
+ *
+ * `Buffer` is a Node global. This file has to run unchanged on Workers, where
+ * it exists only behind a compatibility flag, so the encoding goes through the
+ * Web standard instead. Routed via `TextEncoder` rather than calling `btoa`
+ * directly because `btoa` throws on anything outside Latin-1, and an API key
+ * with an unexpected character should not become a cryptic DOMException.
+ */
+function toBase64(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
 
 export interface QueryParams {
   [key: string]: string | number | boolean | undefined;
@@ -63,10 +96,24 @@ export interface CompaniesHouseClientOptions {
   logger?: Logger;
   clock?: Clock;
   cache?: ResponseCache;
+  /**
+   * Durable tier for the default cache. Ignored when `cache` is supplied.
+   * Entry points pass this rather than a path, because the portable core has
+   * no filesystem to point a path at.
+   */
+  cacheStore?: CacheStore | undefined;
   limiter?: RateLimiter;
   /** Injectable for tests. Defaults to global fetch. */
   fetchImpl?: typeof fetch;
   random?: () => number;
+  /**
+   * Identity this client spends the budget as.
+   *
+   * Only meaningful when the budget enforces fair shares, which is to say on a
+   * shared HTTP deployment. stdio leaves it at the default because there is
+   * one caller and nobody to be fair to. See `withClientId`.
+   */
+  clientId?: string | undefined;
 }
 
 /** Statuses worth trying again. Everything else is the caller's problem. */
@@ -81,6 +128,32 @@ export class CompaniesHouseClient {
   readonly #fetch: typeof fetch;
   readonly #random: () => number;
   readonly #authorization: string;
+  readonly #clientId: string;
+  /**
+   * Requests currently in flight, by cache key.
+   *
+   * The cache only helps once an answer exists. Ten sessions screening the
+   * same supplier list start together and all miss, so without this they make
+   * ten identical calls and spend ten slots of a budget the whole point was to
+   * conserve — `screen_companies` fans out concurrently by design, so this is
+   * the common case rather than a race. Followers wait for the leader's answer
+   * and are reported as cached, which is exactly what happened to them: they
+   * were served without contacting Companies House.
+   *
+   * Keyed per client instance and therefore per session; the cache underneath
+   * is what carries a result between sessions.
+   */
+  readonly #inFlight = new Map<string, Promise<ClientResponse<unknown>>>();
+  /**
+   * Budget last seen *by this client*.
+   *
+   * Not read off the limiter: `withClientId` shares one limiter across every
+   * pooled session, so the limiter's cached figure belongs to whichever caller
+   * acquired most recently. Reporting that in this session's response metadata
+   * would attribute another caller's spending — including a `remaining: 0` —
+   * to a request that may have been served entirely from cache.
+   */
+  #lastRateLimit: RateLimitSnapshot;
 
   constructor(options: CompaniesHouseClientOptions) {
     const { config } = options;
@@ -88,12 +161,18 @@ export class CompaniesHouseClient {
     this.#logger = options.logger ?? silentLogger;
     this.#clock = options.clock ?? systemClock;
     this.#random = options.random ?? Math.random;
-    this.#fetch = options.fetchImpl ?? globalThis.fetch;
+    // Bound, not merely referenced. Node tolerates a detached `fetch`;
+    // workerd requires `globalThis` as the receiver and throws
+    // `TypeError: Illegal invocation` otherwise — so storing the bare global
+    // here made every upstream request fail on Cloudflare while every test
+    // under Node passed. The injected implementation is used as given, since a
+    // test double has no such requirement.
+    this.#fetch = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
 
     this.#cache =
       options.cache ??
       new ResponseCache({
-        dir: config.cacheDir,
+        store: options.cacheStore,
         enabled: config.cacheEnabled,
         clock: this.#clock,
         logger: this.#logger
@@ -106,16 +185,68 @@ export class CompaniesHouseClient {
         windowMs: config.rateWindowMs,
         safetyMargin: config.rateSafetyMargin,
         clock: this.#clock,
-        random: this.#random
+        random: this.#random,
+        // Unset means wait, which is stdio's long-standing behaviour and the
+        // right one for a single local caller. Servers pass a ceiling.
+        ...(config.maxWaitMs === undefined ? {} : { maxWaitMs: config.maxWaitMs })
       });
 
     // Companies House uses HTTP basic auth with the API key as the username
     // and an ignored, empty password. The trailing colon is required.
-    this.#authorization = `Basic ${Buffer.from(`${config.apiKey}:`).toString('base64')}`;
+    this.#authorization = `Basic ${toBase64(`${config.apiKey}:`)}`;
+    this.#clientId = options.clientId ?? DEFAULT_CLIENT_ID;
+    // Seeded from the ceiling rather than the shared limiter's cached value:
+    // this session has spent nothing, and inheriting the previous caller's
+    // figure is the same cross-session leak the field exists to prevent.
+    this.#lastRateLimit = {
+      remaining: this.#limiter.effectiveLimit,
+      resetInMs: 0,
+      limit: this.#limiter.effectiveLimit
+    };
   }
 
+  /**
+   * A view of this client that spends the budget as `clientId`.
+   *
+   * Deliberately shares the cache and the limiter with the original rather
+   * than building its own. Those two are the whole point of a hosted
+   * deployment: one warm cache serving every session, and one window that all
+   * of them are counted against. What varies per session is only *whose share*
+   * a request comes out of, which is a single field. See ADR 13.
+   */
+  withClientId(clientId: string): CompaniesHouseClient {
+    return new CompaniesHouseClient({
+      config: this.#config,
+      logger: this.#logger,
+      clock: this.#clock,
+      cache: this.#cache,
+      limiter: this.#limiter,
+      fetchImpl: this.#fetch,
+      random: this.#random,
+      clientId
+    });
+  }
+
+  /**
+   * Last budget this session saw. Cheap, slightly behind on a shared
+   * deployment, and correct for reporting what a call just cost.
+   */
   get rateLimit(): RateLimitSnapshot {
-    return this.#limiter.snapshot();
+    return this.#lastRateLimit;
+  }
+
+  /**
+   * Authoritative budget for `clientId`, at the cost of a round trip.
+   *
+   * Anything that *plans* against the budget must use this rather than the
+   * cached getter. On a shared server the cached number can be an entire
+   * window out of date, and `screen_companies` sizing a batch against a stale
+   * figure is exactly the silently-short table ADR 8 forbids.
+   */
+  async budget(clientId?: string): Promise<RateLimitSnapshot> {
+    const snapshot = await this.#limiter.snapshot(clientId ?? this.#clientId);
+    this.#lastRateLimit = snapshot;
+    return snapshot;
   }
 
   get cache(): ResponseCache {
@@ -143,15 +274,37 @@ export class CompaniesHouseClient {
           attempts: 0,
           durationMs: this.#clock.now() - startedAt,
           ageMs: this.#clock.now() - lookup.entry.storedAt,
-          rateLimit: this.#limiter.snapshot()
+          rateLimit: this.#lastRateLimit
         }
       };
     }
 
     const staleEntry = lookup.state === 'stale' ? lookup.entry : undefined;
 
+    // Somebody is already asking for exactly this. Wait for their answer
+    // rather than making the same call and spending a second slot: a
+    // `screen_companies` fan-out issues its requests concurrently, so
+    // duplicates within a batch are the design rather than a coincidence.
+    // A caller that asked to bypass the cache is asking for a fresh read and
+    // gets one.
+    const existing = options.bypassCache === true ? undefined : this.#inFlight.get(key);
+    if (existing !== undefined) {
+      const shared = (await existing) as ClientResponse<T>;
+      return {
+        data: shared.data,
+        meta: {
+          ...shared.meta,
+          // True in the sense the field means: served without contacting
+          // Companies House. This request made no call and spent no budget.
+          cached: true,
+          durationMs: this.#clock.now() - startedAt,
+          rateLimit: this.#lastRateLimit
+        }
+      };
+    }
+
     try {
-      return await this.#fetchWithRetries<T>({
+      const pending = this.#fetchWithRetries<T>({
         url,
         key,
         ttlMs,
@@ -162,6 +315,18 @@ export class CompaniesHouseClient {
         identifier: options.identifier,
         signal: options.signal
       });
+
+      if (options.bypassCache !== true) {
+        this.#inFlight.set(key, pending as Promise<ClientResponse<unknown>>);
+      }
+
+      try {
+        return await pending;
+      } finally {
+        // Cleared whether it resolved or threw: a failed request must not
+        // leave a rejected promise that every later caller adopts.
+        this.#inFlight.delete(key);
+      }
     } catch (error) {
       // Upstream is unhappy and we hold an expired copy. An hour-old answer
       // labelled as an hour old beats no answer, so long as the caller can
@@ -181,7 +346,7 @@ export class CompaniesHouseClient {
             attempts: this.#config.maxRetries + 1,
             durationMs: this.#clock.now() - startedAt,
             ageMs: this.#clock.now() - staleEntry.storedAt,
-            rateLimit: this.#limiter.snapshot()
+            rateLimit: this.#lastRateLimit
           }
         };
       }
@@ -208,7 +373,10 @@ export class CompaniesHouseClient {
         await this.#clock.sleep(this.#backoffMs(attempt, lastError));
       }
 
-      await this.#limiter.acquire();
+      // Taken from the return value, not read back off the shared limiter:
+      // another session's continuation can run between the await resolving and
+      // a read of shared state, and would then be reported as this session's.
+      this.#lastRateLimit = await this.#limiter.acquire(this.#clientId);
 
       let response: Response;
       try {
@@ -219,12 +387,23 @@ export class CompaniesHouseClient {
         });
       } catch (error) {
         lastError = this.#classifyFetchFailure(error, label);
-        this.#logger.debug('request failed', { url, attempt, code: lastError.code });
+        // The underlying reason goes in the log, not in the error payload:
+        // the caller gets a sanitised code (ADR 3), while whoever is operating
+        // the server needs to know whether "could not reach Companies House"
+        // meant DNS, TLS, a proxy, or a runtime that does not support
+        // something. Without it a NETWORK_ERROR is a dead end for the one
+        // person who could fix it.
+        this.#logger.debug('request failed', {
+          url,
+          attempt,
+          code: lastError.code,
+          reason: describeCause(error)
+        });
         if (!lastError.retryable) throw lastError;
         continue;
       }
 
-      this.#limiter.applyServerHeaders(response.headers);
+      await this.#limiter.applyServerHeaders(response.headers);
 
       if (response.status === 304 && staleEntry !== undefined) {
         await this.#cache.refresh(key, staleEntry);
@@ -236,7 +415,7 @@ export class CompaniesHouseClient {
             stale: false,
             attempts: attempt + 1,
             durationMs: this.#clock.now() - startedAt,
-            rateLimit: this.#limiter.snapshot()
+            rateLimit: this.#lastRateLimit
           }
         };
       }
@@ -258,14 +437,14 @@ export class CompaniesHouseClient {
             stale: false,
             attempts: attempt + 1,
             durationMs: this.#clock.now() - startedAt,
-            rateLimit: this.#limiter.snapshot()
+            rateLimit: this.#lastRateLimit
           }
         };
       }
 
       const retryAfterMs = this.#retryAfterMs(response.headers);
       if (response.status === 429 && retryAfterMs !== undefined) {
-        this.#limiter.penalise(this.#clock.now() + retryAfterMs);
+        await this.#limiter.penalise(this.#clock.now() + retryAfterMs);
       }
 
       lastError = fromHttpStatus({

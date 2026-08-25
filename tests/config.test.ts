@@ -3,8 +3,9 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { ConfigError, defaultCacheDir, loadConfig, redactConfig } from '../src/config.js';
-import { loadEnvFile } from '../src/env-file.js';
+import { ConfigError, loadConfig, redactConfig } from '../src/config.js';
+import { defaultCacheDir } from '../src/node/cache-dir.js';
+import { loadEnvFile } from '../src/node/env-file.js';
 import { withTempDir } from './helpers/support.js';
 
 const base = { COMPANIES_HOUSE_API_KEY: 'abc123' } satisfies NodeJS.ProcessEnv;
@@ -146,5 +147,43 @@ describe('loadEnvFile', () => {
       expect(result.loaded).toBe(false);
       expect(result.error).toBeDefined();
     });
+  });
+});
+
+describe('loadConfig — blank environment variables', () => {
+  it.each([
+    ['CH_HTTP_HOST', 'httpHost', '127.0.0.1'],
+    ['CH_HTTP_PORT', 'httpPort', 8787],
+    ['CH_MAX_SESSIONS', 'maxSessions', 1000],
+    ['CH_USER_AGENT', 'userAgent', 'companies-house-screening-mcp'],
+    ['CH_LOG_LEVEL', 'logLevel', 'info']
+  ])('treats an empty %s as unset rather than exiting 78', (variable, field, expected) => {
+    // Compose files, shell exports and Kubernetes manifests all produce empty
+    // values by accident. An empty variable should not be the difference
+    // between a server that starts and one that refuses to.
+    const config = loadConfig({ COMPANIES_HOUSE_API_KEY: 'k', [variable]: '' }) as Record<
+      string,
+      unknown
+    >;
+    expect(config[field]).toBe(expected);
+  });
+});
+
+describe('loadConfig — CH_CACHE_DIR', () => {
+  it('treats an empty value as unset rather than as a fatal error', () => {
+    // Trimming used to happen inside `defaultCacheDir`. Losing it turned an
+    // empty variable — which a shell produces easily — into exit code 78.
+    const config = loadConfig({ COMPANIES_HOUSE_API_KEY: 'k', CH_CACHE_DIR: '' });
+    expect(config.cacheDir).toBeUndefined();
+  });
+
+  it('treats whitespace as unset rather than as a directory named "   "', () => {
+    const config = loadConfig({ COMPANIES_HOUSE_API_KEY: 'k', CH_CACHE_DIR: '   ' });
+    expect(config.cacheDir).toBeUndefined();
+  });
+
+  it('keeps a real path, trimmed', () => {
+    const config = loadConfig({ COMPANIES_HOUSE_API_KEY: 'k', CH_CACHE_DIR: ' /var/cache ' });
+    expect(config.cacheDir).toBe('/var/cache');
   });
 });

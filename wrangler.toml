@@ -1,0 +1,60 @@
+# Cloudflare Workers deployment.
+#
+# Requires the Workers **Paid** plan. Not for Durable Objects — SQLite-backed
+# ones are on the free plan — but for the subrequest ceiling: a single
+# `screen_companies` over fifty companies makes roughly 150 calls to Companies
+# House in one invocation, and the free plan allows 50 external subrequests per
+# invocation. See docs/deployment.md.
+
+name = "companies-house-screening-mcp"
+main = "src/cloudflare/worker.ts"
+compatibility_date = "2026-08-01"
+
+# `node:crypto`'s createHash backs cache keys and identity fingerprints. It is
+# the one Node built-in the portable core is allowed to use, and this flag is
+# what makes that true on Workers. See tests/runtime-portability.test.ts.
+compatibility_flags = ["nodejs_compat"]
+
+# Every deployed version otherwise gets its own permanently reachable preview
+# URL. For an authless server holding an API key that is a growing set of live
+# endpoints nobody meant to publish and nobody will remember — so the default
+# is off, and `workers.dev` alone is the published surface.
+preview_urls = false
+
+[limits]
+# Default on the paid plan is 10,000. Raised deliberately rather than relied on
+# implicitly, so that a future default change cannot silently truncate a batch.
+subrequests = 20000
+# Wall-clock waiting on fetch does not consume CPU; this covers the work around it.
+cpu_ms = 30000
+
+# The authoritative rate-limit window. One object per credential, single
+# threaded, so "check the budget and take a slot" is genuinely atomic across
+# every isolate. This is the reason to deploy here rather than anywhere else.
+[[durable_objects.bindings]]
+name = "RATE_LIMIT"
+class_name = "RateLimitDurableObject"
+
+[[migrations]]
+tag = "v1"
+# SQLite-backed, which is the only kind available on the free plan and the
+# cheaper kind on the paid one.
+new_sqlite_classes = ["RateLimitDurableObject"]
+
+# Shared response cache. Optional — without it the cache is per-isolate and
+# nearly worthless — so bind it. Replace the id with your own namespace:
+#   npx wrangler kv namespace create CACHE
+[[kv_namespaces]]
+binding = "CACHE"
+id = "replace-with-your-kv-namespace-id"
+
+[vars]
+# Non-secret configuration. The API key is a secret and must NOT go here:
+#   npx wrangler secret put COMPANIES_HOUSE_API_KEY
+# Set to "debug" when diagnosing a deployment: it logs the underlying reason a
+# request failed, which `wrangler tail` will show you. Put it back to "info"
+# afterwards — debug logs every request.
+CH_LOG_LEVEL = "info"
+CH_CACHE_ENABLED = "true"
+# Callers may supply their own key to get a private budget. See docs/deployment.md.
+CH_ALLOW_CLIENT_KEYS = "true"

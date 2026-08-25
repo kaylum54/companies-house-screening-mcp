@@ -10,7 +10,7 @@
  */
 
 export { attempt, type Attempt, DEFAULT_CONCURRENCY, mapWithConcurrency } from './concurrency.js';
-export { type EnvFileResult, loadEnvFile } from './env-file.js';
+export { type EnvFileResult, loadEnvFile } from './node/env-file.js';
 export {
   buildSnapshot,
   type SectionFailure,
@@ -19,6 +19,20 @@ export {
 } from './domain/snapshot.js';
 export { deriveSignals, type Signal, type SignalCode, SIGNAL_CODES } from './domain/signals.js';
 export { COMPOSITE_TOOL_NAMES, registerCompositeTools } from './tools/composite.js';
+
+/**
+ * Runtime adapters. These reach for Node built-ins and are safe to import only
+ * from a Node entry point; the portable core above never touches them. See
+ * ADR 14 and `tests/runtime-portability.test.ts`.
+ */
+export { defaultCacheDir } from './node/cache-dir.js';
+export { FileCacheStore, type FileCacheStoreOptions } from './node/file-cache-store.js';
+export {
+  type CacheStore,
+  type CacheEntry as CacheStoreEntry,
+  isCacheEntry,
+  MemoryCacheStore
+} from './http/cache-store.js';
 
 export {
   projectCharges,
@@ -35,14 +49,13 @@ export * as schemas from './domain/schemas.js';
 export { createServer, INSTRUCTIONS, SERVER_NAME } from './server.js';
 export { registerTools, TOOL_NAMES } from './tools/definitions.js';
 export { type ToolContext, type ToolResult } from './tools/shared.js';
-export { packageVersion } from './version.js';
+export { packageVersion } from './node/version.js';
 
 export { type Clock, FakeClock, systemClock } from './clock.js';
 export {
   type Config,
   ConfigError,
   configSchema,
-  defaultCacheDir,
   loadConfig,
   redactConfig
 } from './config.js';

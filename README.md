@@ -39,11 +39,53 @@ that matter:
 | **Nothing dropped quietly** | Partial results are labelled; a screening table that comes back short always says why. [ADR 8](docs/adr/0008-partial-results-and-budget-honesty.md). |
 | **Documentation that cannot go stale** | The tool reference is generated from the running server and every example executes; CI fails if either drifts. [ADR 9](docs/adr/0009-documentation-is-generated-and-gated.md). |
 | **A tool-selection eval** | Asks a real model which tool it reaches for, and fails on flakiness. [ADR 10](docs/adr/0010-tool-selection-eval.md). |
+| **Runs hosted or local** | Streamable HTTP as well as stdio, so it works in claude.ai on web and mobile — with one shared rate-limit budget that is actually authoritative rather than one guess per process. [ADR 12](docs/adr/0012-remote-transport-alongside-stdio.md), [ADR 13](docs/adr/0013-one-key-shared-budget-fair-shares.md). |
 
-Eleven decisions are written up in [docs/adr](docs/adr), including the ones
-that did not go the obvious way.
+Fifteen decisions are written up in [docs/adr](docs/adr), including the ones
+that did not go the obvious way. [docs/mcp-surface.md](docs/mcp-surface.md)
+describes what the server implements as an MCP server — capabilities,
+transports, session and budget semantics — read off the running server rather
+than from intent.
 
 ## Install
+
+Two ways to run it, and they answer different questions.
+
+### Hosted — you deploy it, users paste a URL
+
+**There is no public instance of this server.** You run one; the people you
+give the URL to need nothing but the link — no install, no Node, no Companies
+House key of their own. That is the point of the hosted mode, and it is what
+makes the server usable from claude.ai on web and mobile, where no local
+process can be spawned.
+
+Deploy to Cloudflare Workers or any single Node host —
+[docs/deployment.md](docs/deployment.md) has both, with the costs and the
+trade-offs stated. Then hand out your endpoint:
+
+In claude.ai: Settings → Connectors → Add custom connector → paste the URL.
+In Claude Code:
+
+```bash
+claude mcp add --transport http companies-house https://your-deployment/mcp
+```
+
+Your deployment holds one Companies House key and shares its 600 requests per
+five minutes across everyone using it. Each caller is guaranteed a share, so a
+50-company screening run cannot starve somebody's single lookup. A caller who
+finds that tight can send `X-Companies-House-Api-Key` and get a private budget
+of their own — in Claude Code, `--header "X-Companies-House-Api-Key: ..."`.
+
+Before you make a deployment public, read the
+[**what to expect**](docs/deployment.md#before-you-make-it-public) section: an
+authless URL means anyone holding it spends your budget, and whether you may
+pool one personal API key for third parties is a question for the Companies
+House developer terms.
+
+### Local — stdio
+
+Still the right answer for one person on one machine: no infrastructure, no
+hosting bill, and your own full rate-limit budget.
 
 ```bash
 npx -y companies-house-screening-mcp
@@ -238,6 +280,7 @@ Only one variable is required.
 ```bash
 npm install
 npm test
+npm run test:workers
 npm run typecheck
 npm run build
 npm run docs:generate
@@ -254,6 +297,15 @@ The suite runs offline against fixtures recorded from the live Companies House
 API, so a fresh clone works with nothing configured. `npm run record-fixtures`
 re-records them — see [tests/fixtures/README.md](tests/fixtures/README.md) for
 which companies they come from and why those were chosen.
+
+**`npm test` runs under Node; `npm run test:workers` runs under `workerd`.**
+The second is not a duplicate of the first. Node and workerd disagree — a
+`globalThis.fetch` stored detached works on one and throws `Illegal
+invocation` on the other — and that disagreement once passed every Node test
+while breaking every request on the deployed Worker. `tests/workers/` runs the
+real handler in the real runtime against the bindings `wrangler.toml`
+declares, with only Companies House replaced. CI runs both, and neither is
+optional before a deploy.
 
 Once you hold a key, copy `.env.example` to `.env` and fill it in:
 

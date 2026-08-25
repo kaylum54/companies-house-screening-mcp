@@ -25,7 +25,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { loadEnvFile } from '../src/env-file.js';
+import { loadEnvFile } from '../src/node/env-file.js';
 import type { FakeResponseSpec } from '../tests/helpers/fake-fetch.js';
 import { harnessRoutes } from '../tests/helpers/harness.js';
 import type { GeneratedFile } from './lib/generate.js';

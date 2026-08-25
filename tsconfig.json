@@ -22,5 +22,13 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "evals/**/*.ts", "vitest.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "scripts/**/*.ts",
+    "evals/**/*.ts",
+    "vitest.config.ts",
+    "vitest.live.config.ts",
+    "vitest.workers.config.ts"
+  ]
 }

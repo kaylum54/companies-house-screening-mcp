@@ -1,6 +1,3 @@
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-
 import { z } from 'zod';
 
 import { LOG_LEVELS } from './telemetry/logger.js';
@@ -37,39 +34,85 @@ export const configSchema = z.object({
   rateSafetyMargin: z.coerce.number().gt(0).lte(1).default(0.95),
 
   cacheEnabled: booleanish.default(true),
-  cacheDir: z.string().min(1),
+  /**
+   * Optional: only a runtime with a filesystem has anywhere to put this. The
+   * Node entry points resolve a platform default via `defaultCacheDir`; a
+   * Worker leaves it unset and supplies a KV-backed store instead.
+   */
+  cacheDir: z.string().min(1).optional(),
 
   timeoutMs: positiveInt('CH_TIMEOUT_MS').default(10_000),
   maxRetries: z.coerce.number().int().min(0).max(10).default(3),
   retryBaseMs: positiveInt('CH_RETRY_BASE_MS').default(500),
 
   userAgent: z.string().min(1).default('companies-house-screening-mcp'),
-  logLevel: z.enum(LOG_LEVELS).default('info')
+  logLevel: z.enum(LOG_LEVELS).default('info'),
+
+  // ---- Hosted deployment. Ignored entirely by the stdio entry point. ----
+
+  httpPort: positiveInt('CH_HTTP_PORT').default(8787),
+  /**
+   * Loopback by default. A server that binds every interface the moment it
+   * starts is one `npm start` away from being on the office network, and this
+   * one holds an API key. Deployments that mean to be reachable say so.
+   */
+  httpHost: z.string().min(1).default('127.0.0.1'),
+  /**
+   * Origins permitted to reach the endpoint from a browser. Empty means none,
+   * which is correct: MCP clients are not browsers and send no Origin, so an
+   * empty list blocks browser-driven requests without affecting real callers.
+   */
+  allowedOrigins: z
+    .union([z.string(), z.array(z.string())])
+    .transform((value) =>
+      (typeof value === 'string' ? value.split(',') : value)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry !== '')
+    )
+    .default([]),
+  /** Largest request body accepted, in bytes. */
+  maxRequestBytes: positiveInt('CH_MAX_REQUEST_BYTES').default(1_048_576),
+
+  /**
+   * Requests each caller is guaranteed within a window. Unset disables fair
+   * sharing, which is right for stdio and wrong for anything shared; the HTTP
+   * entry points derive a default from the effective limit when it is unset.
+   */
+  clientReservation: positiveInt('CH_CLIENT_RESERVATION').optional(),
+  /** How many not-yet-seen callers to hold a reservation free for. */
+  newcomerAllowance: z.coerce.number().int().min(0).max(100).default(1),
+  /** Upper bound on distinct callers tracked for fair sharing. */
+  maxTrackedClients: positiveInt('CH_MAX_TRACKED_CLIENTS').default(10_000),
+  /** Whether a caller may supply their own Companies House key. */
+  allowClientKeys: booleanish.default(true),
+  /**
+   * Whether to believe `X-Forwarded-For` when identifying a caller.
+   *
+   * Off by default, because the header is set by the caller and a client that
+   * varies it per request mints a fresh identity each time — and with it a
+   * fresh fair-share reservation, which is the whole mechanism defeated. Turn
+   * it on only when a proxy you control is in front and overwrites the header.
+   * Cloudflare's `CF-Connecting-IP` is exempt: the platform sets it and strips
+   * any client-supplied copy, so it is trustworthy where it exists.
+   */
+  trustProxyHeaders: booleanish.default(false),
+  /** Open sessions retained before the least recently used is evicted. */
+  maxSessions: positiveInt('CH_MAX_SESSIONS').default(1_000),
+  /** How long a session may sit idle before it is swept. */
+  sessionIdleMs: positiveInt('CH_SESSION_IDLE_MS').default(1_800_000),
+  /**
+   * How long a request will wait for budget before failing with RATE_LIMITED.
+   *
+   * Deliberately undefaulted. A ceiling is right for a server, where a hung
+   * request holds a connection and the client times out anyway, and wrong for
+   * stdio, where the previous behaviour was to wait for the window and there
+   * is one caller to keep waiting. The HTTP entry points supply the server
+   * answer; stdio leaves it unset and waits, as it always did.
+   */
+  maxWaitMs: positiveInt('CH_MAX_WAIT_MS').optional()
 });
 
 export type Config = z.infer<typeof configSchema>;
-
-/**
- * Picks a cache directory that respects platform convention, so the server
- * does not scatter files into the working directory of whatever host launched
- * it.
- */
-export function defaultCacheDir(env: NodeJS.ProcessEnv = process.env): string {
-  const explicit = env['CH_CACHE_DIR'];
-  if (explicit !== undefined && explicit.trim() !== '') return explicit;
-
-  const xdg = env['XDG_CACHE_HOME'];
-  if (xdg !== undefined && xdg.trim() !== '') return join(xdg, 'companies-house-screening-mcp');
-
-  if (process.platform === 'win32') {
-    const localAppData = env['LOCALAPPDATA'];
-    if (localAppData !== undefined && localAppData.trim() !== '') {
-      return join(localAppData, 'companies-house-screening-mcp', 'cache');
-    }
-  }
-
-  return join(homedir(), '.cache', 'companies-house-screening-mcp');
-}
 
 /**
  * Config field back to the environment variable that sets it. Error messages
@@ -87,8 +130,27 @@ const ENV_NAMES: Record<string, string> = {
   maxRetries: 'CH_MAX_RETRIES',
   retryBaseMs: 'CH_RETRY_BASE_MS',
   userAgent: 'CH_USER_AGENT',
-  logLevel: 'CH_LOG_LEVEL'
+  logLevel: 'CH_LOG_LEVEL',
+  httpPort: 'CH_HTTP_PORT',
+  httpHost: 'CH_HTTP_HOST',
+  allowedOrigins: 'CH_ALLOWED_ORIGINS',
+  maxRequestBytes: 'CH_MAX_REQUEST_BYTES',
+  clientReservation: 'CH_CLIENT_RESERVATION',
+  newcomerAllowance: 'CH_NEWCOMER_ALLOWANCE',
+  maxTrackedClients: 'CH_MAX_TRACKED_CLIENTS',
+  allowClientKeys: 'CH_ALLOW_CLIENT_KEYS',
+  trustProxyHeaders: 'CH_TRUST_PROXY_HEADERS',
+  maxSessions: 'CH_MAX_SESSIONS',
+  sessionIdleMs: 'CH_SESSION_IDLE_MS',
+  maxWaitMs: 'CH_MAX_WAIT_MS'
 };
+
+/** Treats an unset variable and a variable set to whitespace as the same thing. */
+function blankToUndefined(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  return trimmed === '' ? undefined : trimmed;
+}
 
 export class ConfigError extends Error {
   readonly issues: string[];
@@ -115,17 +177,38 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     rateWindowMs: env['CH_RATE_WINDOW_MS'],
     rateSafetyMargin: env['CH_RATE_SAFETY_MARGIN'],
     cacheEnabled: env['CH_CACHE_ENABLED'],
-    cacheDir: defaultCacheDir(env),
+    cacheDir: env['CH_CACHE_DIR'],
     timeoutMs: env['CH_TIMEOUT_MS'],
     maxRetries: env['CH_MAX_RETRIES'],
     retryBaseMs: env['CH_RETRY_BASE_MS'],
     userAgent: env['CH_USER_AGENT'],
-    logLevel: env['CH_LOG_LEVEL']
+    logLevel: env['CH_LOG_LEVEL'],
+    httpPort: env['CH_HTTP_PORT'],
+    httpHost: env['CH_HTTP_HOST'],
+    allowedOrigins: env['CH_ALLOWED_ORIGINS'],
+    maxRequestBytes: env['CH_MAX_REQUEST_BYTES'],
+    clientReservation: env['CH_CLIENT_RESERVATION'],
+    newcomerAllowance: env['CH_NEWCOMER_ALLOWANCE'],
+    maxTrackedClients: env['CH_MAX_TRACKED_CLIENTS'],
+    allowClientKeys: env['CH_ALLOW_CLIENT_KEYS'],
+    trustProxyHeaders: env['CH_TRUST_PROXY_HEADERS'],
+    maxSessions: env['CH_MAX_SESSIONS'],
+    sessionIdleMs: env['CH_SESSION_IDLE_MS'],
+    maxWaitMs: env['CH_MAX_WAIT_MS']
   };
 
-  // Strip undefined so that zod applies defaults rather than failing on them.
+  // Blank means "not set", not "use the empty string", for every variable
+  // rather than the one that happened to get reported. Compose files, shell
+  // exports and Kubernetes manifests all produce empty values by accident, and
+  // `CH_HTTP_HOST=` should not be the difference between a server that starts
+  // and exit code 78.
+  //
+  // Stripping undefined afterwards is what lets zod apply its defaults instead
+  // of failing on them.
   const cleaned = Object.fromEntries(
-    Object.entries(candidate).filter(([, value]) => value !== undefined)
+    Object.entries(candidate)
+      .map(([key, value]) => [key, typeof value === 'string' ? blankToUndefined(value) : value])
+      .filter(([, value]) => value !== undefined)
   );
 
   const result = configSchema.safeParse(cleaned);

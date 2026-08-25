@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { COMPOSITE_TOOL_NAMES } from '../src/tools/composite.js';
 import { TOOL_NAMES } from '../src/tools/definitions.js';
 import type { Harness } from './helpers/harness.js';
-import { errorPayload, harnessAlways, harnessRoutes, structured } from './helpers/harness.js';
+import { errorPayload, harnessAlways, harnessRoutes, structured, harnessWithBudget } from './helpers/harness.js';
 import { loadFixture } from './helpers/support.js';
 
 let harness: Harness | undefined;
@@ -373,7 +373,71 @@ describe('screen_companies', () => {
     expect(screened.length + notScreened.length).toBe(3);
     expect(notScreened.length).toBeGreaterThan(0);
     expect(notScreened[0]?.['reason']).toContain('rate-limit budget');
+    // Budget remains — just not a whole company's worth — so the window has
+    // not reset and there is no honest number of seconds to quote. Saying
+    // "retry in 0 seconds" would be worse than saying nothing.
+    expect(notScreened[0]?.['reason']).toContain('shorter list');
+    expect(notScreened[0]?.['reason']).not.toContain('Retry in 0 seconds');
+  });
+
+  it('does not describe a limiter outage as an exhausted budget', async () => {
+    // `remaining: 0` has two meanings. Returning a table where every row
+    // blames a spent five-minute window would be a confident wrong diagnosis
+    // of an outage in this server, and would send the caller away to wait for
+    // a reset that has nothing to do with their problem.
+    const { client, close } = await harnessWithBudget({
+      acquire: async () => ({
+        granted: false,
+        remaining: 0,
+        retryInMs: 1000,
+        limit: 0,
+        boundBy: 'unavailable' as const
+      }),
+      peek: async () => ({
+        granted: false,
+        remaining: 0,
+        retryInMs: 1000,
+        limit: 0,
+        boundBy: 'unavailable' as const
+      }),
+      penalise: async () => undefined,
+      observe: async () => undefined
+    });
+
+    const result = await client.callTool({
+      name: 'screen_companies',
+      arguments: { companies: ['04138203', '00000006'] }
+    });
+
+    expect(result.isError).toBe(true);
+    const text = JSON.stringify(result);
+    expect(text).toContain('could not be reached');
+    expect(text).not.toContain('600 requests per five minutes has been reached');
+
+    await close();
+  });
+
+  it('quotes a real retry time once the window is genuinely exhausted', async () => {
+    // Spend the entire window first. Now nothing is left at all, the window
+    // itself is what the caller is waiting for, and the reset time is a real
+    // number worth printing — unlike the case above, where budget remained.
+    harness = await harnessRoutes(FULL_ROUTES, { rateLimit: 1 });
+    await harness.client.callTool({
+      name: 'get_company',
+      arguments: { company_number: '04138203' }
+    });
+
+    const result = structured(
+      await harness.client.callTool({
+        name: 'screen_companies',
+        arguments: { companies: ['04138203', '00000006'] }
+      })
+    );
+
+    const notScreened = result['not_screened'] as Record<string, unknown>[];
+    expect(notScreened.length).toBeGreaterThan(0);
     expect(notScreened[0]?.['reason']).toContain('Retry in');
+    expect(notScreened[0]?.['reason']).not.toContain('Retry in 0 seconds');
   });
 
   it('keeps going when one company in the list fails', async () => {

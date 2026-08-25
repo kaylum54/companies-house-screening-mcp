@@ -40,7 +40,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { loadConfig } from '../src/config.js';
-import { loadEnvFile } from '../src/env-file.js';
+import { loadEnvFile } from '../src/node/env-file.js';
 import type { ResourceKind } from '../src/http/cache.js';
 import type { QueryParams } from '../src/http/client.js';
 import { CompaniesHouseClient } from '../src/http/client.js';

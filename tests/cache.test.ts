@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { FakeClock } from '../src/clock.js';
 import { DEFAULT_TTLS, ResponseCache } from '../src/http/cache.js';
+import { FileCacheStore } from '../src/node/file-cache-store.js';
 import { withTempDir } from './helpers/support.js';
 
 const entry = (body: unknown, storedAt: number, ttlMs = 1000) => ({ body, storedAt, ttlMs });
@@ -12,7 +13,7 @@ const entry = (body: unknown, storedAt: number, ttlMs = 1000) => ({ body, stored
 describe('ResponseCache', () => {
   it('reports a miss for an unknown key', async () => {
     await withTempDir(async (dir) => {
-      const cache = new ResponseCache({ dir, clock: new FakeClock(0) });
+      const cache = new ResponseCache({ store: new FileCacheStore({ dir }), clock: new FakeClock(0) });
       expect((await cache.get('nope')).state).toBe('miss');
     });
   });
@@ -20,7 +21,7 @@ describe('ResponseCache', () => {
   it('serves a fresh entry inside its TTL', async () => {
     await withTempDir(async (dir) => {
       const clock = new FakeClock(0);
-      const cache = new ResponseCache({ dir, clock });
+      const cache = new ResponseCache({ store: new FileCacheStore({ dir }), clock });
       await cache.set('k', entry({ hello: 'world' }, 0, 1000));
 
       clock.advance(999);
@@ -35,7 +36,7 @@ describe('ResponseCache', () => {
     // and they are what gets served if the upstream is down.
     await withTempDir(async (dir) => {
       const clock = new FakeClock(0);
-      const cache = new ResponseCache({ dir, clock });
+      const cache = new ResponseCache({ store: new FileCacheStore({ dir }), clock });
       await cache.set('k', entry({ hello: 'world' }, 0, 1000));
 
       clock.advance(1001);
@@ -48,10 +49,10 @@ describe('ResponseCache', () => {
   it('survives a process restart by reading from disk', async () => {
     await withTempDir(async (dir) => {
       const clock = new FakeClock(0);
-      const first = new ResponseCache({ dir, clock });
+      const first = new ResponseCache({ store: new FileCacheStore({ dir }), clock });
       await first.set('k', entry({ persisted: true }, 0, 10_000));
 
-      const second = new ResponseCache({ dir, clock });
+      const second = new ResponseCache({ store: new FileCacheStore({ dir }), clock });
       const lookup = await second.get('k');
       expect(lookup.state).toBe('fresh');
       expect(lookup.state === 'fresh' && lookup.entry.body).toEqual({ persisted: true });
@@ -61,7 +62,7 @@ describe('ResponseCache', () => {
   it('refresh resets the age without rewriting the body', async () => {
     await withTempDir(async (dir) => {
       const clock = new FakeClock(0);
-      const cache = new ResponseCache({ dir, clock });
+      const cache = new ResponseCache({ store: new FileCacheStore({ dir }), clock });
       const original = entry({ v: 1 }, 0, 1000);
       await cache.set('k', original);
 
@@ -77,7 +78,7 @@ describe('ResponseCache', () => {
 
   it('does nothing at all when disabled', async () => {
     await withTempDir(async (dir) => {
-      const cache = new ResponseCache({ dir, enabled: false, clock: new FakeClock(0) });
+      const cache = new ResponseCache({ store: new FileCacheStore({ dir }), enabled: false, clock: new FakeClock(0) });
       await cache.set('k', entry({ v: 1 }, 0));
       expect((await cache.get('k')).state).toBe('miss');
       await expect(readdir(dir)).resolves.toEqual([]);
@@ -86,7 +87,7 @@ describe('ResponseCache', () => {
 
   it('evicts the oldest entries when memory fills', async () => {
     await withTempDir(async (dir) => {
-      const cache = new ResponseCache({ dir, clock: new FakeClock(0), memoryMax: 2 });
+      const cache = new ResponseCache({ store: new FileCacheStore({ dir }), clock: new FakeClock(0), memoryMax: 2 });
       await cache.set('a', entry({ n: 1 }, 0));
       await cache.set('b', entry({ n: 2 }, 0));
       await cache.set('c', entry({ n: 3 }, 0));
@@ -96,7 +97,7 @@ describe('ResponseCache', () => {
 
   it('ignores a corrupt cache file instead of failing the request', async () => {
     await withTempDir(async (dir) => {
-      const cache = new ResponseCache({ dir, clock: new FakeClock(0) });
+      const cache = new ResponseCache({ store: new FileCacheStore({ dir }), clock: new FakeClock(0) });
       const key = ResponseCache.key('GET', 'https://example.test/thing');
       await mkdir(join(dir, key.slice(0, 2)), { recursive: true });
       await writeFile(join(dir, key.slice(0, 2), `${key}.json`), '{ not json', 'utf8');
@@ -107,7 +108,7 @@ describe('ResponseCache', () => {
 
   it('ignores a cache file whose shape is wrong', async () => {
     await withTempDir(async (dir) => {
-      const cache = new ResponseCache({ dir, clock: new FakeClock(0) });
+      const cache = new ResponseCache({ store: new FileCacheStore({ dir }), clock: new FakeClock(0) });
       const key = ResponseCache.key('GET', 'https://example.test/other');
       await mkdir(join(dir, key.slice(0, 2)), { recursive: true });
       await writeFile(join(dir, key.slice(0, 2), `${key}.json`), '{"unexpected":true}', 'utf8');
@@ -125,7 +126,7 @@ describe('ResponseCache', () => {
 
   it('clears everything', async () => {
     await withTempDir(async (dir) => {
-      const cache = new ResponseCache({ dir, clock: new FakeClock(0) });
+      const cache = new ResponseCache({ store: new FileCacheStore({ dir }), clock: new FakeClock(0) });
       await cache.set('k', entry({ v: 1 }, 0));
       await cache.clear();
       expect(cache.size).toBe(0);

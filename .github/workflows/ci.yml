@@ -54,6 +54,28 @@ jobs:
       - name: Test
         run: npm run test:coverage
 
+  workers:
+    # The Node suite proves the logic; this proves the runtime. A detached
+    # `globalThis.fetch` passes every Node test and throws `Illegal
+    # invocation` on workerd, so a green Node suite is not evidence that the
+    # deployed Worker runs. Separate job because the two cannot share a pool.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # Runs the Worker inside workerd against the bindings wrangler.toml
+      # declares, with only Companies House replaced. No network access.
+      - name: Test on workerd
+        run: npm run test:workers
+
   live-smoke:
     # Fixtures make the suite fast and offline. This is the price of that: it
     # runs against the real API on a schedule so that a change to the API
