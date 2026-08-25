@@ -38,6 +38,9 @@ jobs:
       - run: npm run docs:check
       - run: npm run build
       - run: npm run test:coverage
+      # The Node suite is not evidence the deployed Worker runs — see the
+      # `workers` job in ci.yml. A release should not go out without it.
+      - run: npm run test:workers
       - run: npm run release:check
 
   npm:

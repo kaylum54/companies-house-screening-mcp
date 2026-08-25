@@ -4,7 +4,7 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — 2026-08-25
 
 ### Added — the server is reachable without a laptop
 
@@ -350,6 +350,14 @@ All notable changes to this project are recorded here. The format follows
   rotate. It replaced a granular token, which npm rejected anyway: publishing
   from CI requires a token flagged to bypass 2FA, and npm is removing those for
   direct publishing in January 2027.
+
+---
+
+## [0.1.1] and earlier
+
+Everything below shipped in 0.1.0 and 0.1.1. It is kept as one block because
+the changelog was not sectioned by release until 0.2.0, and inventing a split
+after the fact would be a guess presented as a record.
 
 ### Changed — tool descriptions, driven by the expanded eval
 
