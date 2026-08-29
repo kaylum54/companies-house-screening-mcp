@@ -42,12 +42,64 @@ and upstream cost triples. The operator found out by trying it.
 - **No per-caller identifier**, including the truncated fingerprint the limiter
   already computes — a hashed address is still pseudonymous personal data, and
   the only question that wanted it is answered by a count.
-- **Enforced by the interface, not by care.** `MetricsRecorder` exposes
-  counters and two label methods rather than a general `record(name, value)`,
-  and both labels pass a sanitiser keeping only `[a-z0-9_]`, truncated at 48
-  characters. A URL handed to it emits a mangled token rather than a leak;
-  `tests/metrics.test.ts` asserts that, including that a company number on the
-  end of a URL does not survive.
+- **Enforced by an allowlist.** `MetricsRecorder` exposes counters and two
+  label methods rather than a general `record(name, value)`, and a label is
+  emitted only if it is a registered tool name or a typed error code. Anything
+  else records `other`.
+
+### Fixed — found by a five-agent audit of the observability work
+
+Each of these was verified against the code before being accepted, and each is
+covered by a test that fails without the fix.
+
+- **The alert could not fire for the failure it was built for.** The scheduled
+  check peeks as an unseen client, and an unseen client is guaranteed a
+  reservation — 71 of 570 — so its share cannot fall below that until the
+  window is nearly gone. That share was being compared against 5% of the same
+  570, a threshold 2.5× underneath a floor the number could not cross. One
+  caller draining the window while everybody else was refused produced a steady
+  71 and silence. `BudgetOutcome` now carries `globalRemaining` and the
+  threshold reads that.
+- **Every hard failure was recorded as a success.** A missing key, a missing
+  Durable Object binding, a rejected origin, a refused credential and an
+  escaping exception all flushed a row saying `ok`, so a wholly broken
+  deployment charted as 100% healthy.
+- **A change of cause while firing silently cleared the alert.** The first
+  incident was never resolved and sat open forever; and two bad checks of
+  *different* kinds reset the strike count, so a deployment failing every
+  single check — a flaky coordinator alternating between timing out and
+  reporting a drained window — never alerted at all.
+- **`firing` was persisted before delivery.** A webhook down for one check
+  swallowed the whole incident: the next run saw `firing`, stayed quiet, and
+  the operator eventually received a "resolved" for an alert they were never
+  sent.
+- **The sanitiser was described as redaction and is not.** A company number is
+  eight characters of `[a-z0-9_]`, so `label('SC123456')` returned
+  `'sc123456'`, intact. Replaced with the allowlist above; the filter stays as
+  a normaliser and a test now pins that it does *not* redact.
+- **A partial refusal marked a successful response as refused.** A
+  `screen_companies` run that skipped one company for budget and returned a
+  complete, honest table was recorded as a rejection. Refusals are now counted
+  in their own column and `outcome` reports what the caller actually got.
+- **A coalesced request was denied the stale fallback its leader received.**
+  The `await` sat outside every `try`, so a follower waiting on a failed fetch
+  was rejected while the leader beside it was served an hour-old answer — and
+  it was counted as a cache hit despite being served nothing.
+- **The heartbeat drew a coordinator outage as the budget collapsing to zero**
+  and injected a synthetic `refused` row every five minutes into the query that
+  counts callers turned away.
+- **An unreadable stored alert state was swallowed with no log at all**, which
+  disables alerting silently: the strike count resets every run and nothing can
+  ever reach the bound.
+- **`sendAlert` followed redirects**, so an endpoint answering `302 → http://`
+  would have replayed the POST in clear text and defeated the https-only check.
+- **Roughly fifteen tests proved less than they claimed.** The worst: the
+  recorder could be hoisted from per-invocation to per-isolate — which is
+  exactly the deployed shape — and the whole suite passed, because the test
+  meant to catch it built a fresh handler for each call and observed
+  independence it had manufactured. Also fixed: a redaction test fired at a
+  path that could not leak, a precedence test whose fixture excluded the branch
+  it was contesting, and assertions comparing two literals.
 
 ### Fixed — found by the new tests rather than by review
 
@@ -96,7 +148,7 @@ and upstream cost triples. The operator found out by trying it.
 
 ### Fixed — documentation
 
-- The README claimed 284 tests. It is 511 under Node plus 16 inside `workerd`.
+- The README claimed 284 tests. It is 549 under Node plus 16 inside `workerd`.
 - Corrected against the code while writing the page above: the rate-limit
   error field is `retry_after_ms`, not `retry_in_ms`; an unreachable limiter
   reports `UPSTREAM_UNAVAILABLE` rather than `RATE_LIMITED`, deliberately, so a

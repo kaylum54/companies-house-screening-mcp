@@ -304,22 +304,33 @@ export class CompaniesHouseClient {
     // gets one.
     const existing = options.bypassCache === true ? undefined : this.#inFlight.get(key);
     if (existing !== undefined) {
-      // Counted as a hit because that is what happened to this request: it was
-      // served without contacting Companies House and spent no budget. The
-      // leader it waited on records its own miss.
-      this.#metrics.cacheHit();
-      const shared = (await existing) as ClientResponse<T>;
-      return {
-        data: shared.data,
-        meta: {
-          ...shared.meta,
-          // True in the sense the field means: served without contacting
-          // Companies House. This request made no call and spent no budget.
-          cached: true,
-          durationMs: this.#clock.now() - startedAt,
-          rateLimit: this.#lastRateLimit
-        }
-      };
+      try {
+        const shared = (await existing) as ClientResponse<T>;
+        // Counted only once the leader has actually answered. Recording the
+        // hit before the await counted a follower whose leader then failed —
+        // a request that was served nothing at all.
+        this.#metrics.cacheHit();
+        return {
+          data: shared.data,
+          meta: {
+            ...shared.meta,
+            // True in the sense the field means: served without contacting
+            // Companies House. This request made no call and spent no budget.
+            cached: true,
+            durationMs: this.#clock.now() - startedAt,
+            rateLimit: this.#lastRateLimit
+          }
+        };
+      } catch (error) {
+        // The leader failed. This request holds its own stale entry and is
+        // entitled to the same fallback a leader would get — previously the
+        // await sat outside every `try`, so a follower was rejected while the
+        // leader beside it was served an hour-old answer. Falling through
+        // rather than returning, so the one exit below stays the only one.
+        const fallback = this.#staleFallback<T>(staleEntry, error, url, startedAt);
+        if (fallback !== undefined) return fallback;
+        throw error;
+      }
     }
 
     this.#metrics.cacheMiss();
@@ -349,31 +360,48 @@ export class CompaniesHouseClient {
         this.#inFlight.delete(key);
       }
     } catch (error) {
-      // Upstream is unhappy and we hold an expired copy. An hour-old answer
-      // labelled as an hour old beats no answer, so long as the caller can
-      // see that is what happened.
-      if (staleEntry !== undefined && CompaniesHouseError.is(error) && error.retryable) {
-        this.#metrics.staleServed();
-        this.#logger.warn('serving stale cache entry after upstream failure', {
-          url,
-          code: error.code,
-          ageMs: this.#clock.now() - staleEntry.storedAt
-        });
-        return {
-          data: staleEntry.body as T,
-          meta: {
-            cached: true,
-            revalidated: false,
-            stale: true,
-            attempts: this.#config.maxRetries + 1,
-            durationMs: this.#clock.now() - startedAt,
-            ageMs: this.#clock.now() - staleEntry.storedAt,
-            rateLimit: this.#lastRateLimit
-          }
-        };
-      }
+      const fallback = this.#staleFallback<T>(staleEntry, error, url, startedAt);
+      if (fallback !== undefined) return fallback;
       throw error;
     }
+  }
+
+  /**
+   * An expired copy, when the upstream cannot be reached.
+   *
+   * An hour-old answer labelled as an hour old beats no answer, so long as the
+   * caller can see that is what happened. Extracted so that a request which
+   * waited on somebody else's failed fetch gets the same treatment as one that
+   * made its own — those two were different before, and the difference was
+   * invisible from either call site.
+   */
+  #staleFallback<T>(
+    staleEntry: CacheEntry | undefined,
+    error: unknown,
+    url: string,
+    startedAt: number
+  ): ClientResponse<T> | undefined {
+    if (staleEntry === undefined) return undefined;
+    if (!CompaniesHouseError.is(error) || !error.retryable) return undefined;
+
+    this.#metrics.staleServed();
+    this.#logger.warn('serving stale cache entry after upstream failure', {
+      url,
+      code: error.code,
+      ageMs: this.#clock.now() - staleEntry.storedAt
+    });
+    return {
+      data: staleEntry.body as T,
+      meta: {
+        cached: true,
+        revalidated: false,
+        stale: true,
+        attempts: this.#config.maxRetries + 1,
+        durationMs: this.#clock.now() - startedAt,
+        ageMs: this.#clock.now() - staleEntry.storedAt,
+        rateLimit: this.#lastRateLimit
+      }
+    };
   }
 
   async #fetchWithRetries<T>(input: {

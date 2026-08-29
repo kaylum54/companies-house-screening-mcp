@@ -374,6 +374,12 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         // confident wrong diagnosis of an outage in this server, so say what
         // actually happened instead.
         if (budget.boundBy === 'unavailable') {
+          // Recorded here because this path never reaches the limiter's own
+          // refusal accounting: the batch is sized from a `peek`, so the
+          // coordinator being down is discovered before anything is acquired.
+          // Without this the row said `refusalCause: 'none'` and the one query
+          // that groups refusals by cause dropped it silently.
+          context.metrics?.refused('unavailable');
           return fail(budgetUnavailable(budget.resetInMs), logger, context.metrics);
         }
 

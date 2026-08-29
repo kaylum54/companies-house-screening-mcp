@@ -288,6 +288,7 @@ export function budgetUnavailable(retryInMs: number): CompaniesHouseError {
     remaining: 0,
     retryInMs,
     limit: 0,
+    globalRemaining: 0,
     boundBy: 'unavailable'
   });
 }

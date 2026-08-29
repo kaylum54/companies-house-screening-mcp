@@ -29,16 +29,43 @@ import type { RequestSnapshot } from '../src/telemetry/metrics.js';
  * follows is about *not* sending.
  */
 
+/**
+ * A reading as the scheduled check receives it.
+ *
+ * `remaining` and `globalRemaining` are deliberately different numbers here,
+ * because conflating them was the defect this file now guards against:
+ * `remaining` is one caller's share and is bounded below by their reservation,
+ * so peeking as an unseen client can never report less than 71 of 570 until
+ * the window itself is nearly gone. Alerting on it meant the threshold could
+ * not be crossed by the failure it was written for.
+ */
 const reading = (over: Partial<BudgetOutcome> = {}): BudgetOutcome => ({
   granted: true,
-  remaining: 400,
+  remaining: 71,
+  globalRemaining: 400,
   retryInMs: 0,
   limit: 570,
   ...over
 });
 
-const EXHAUSTED = reading({ remaining: 10, granted: false });
-const UNAVAILABLE = reading({ remaining: 0, granted: false, boundBy: 'unavailable', limit: 0 });
+/** The window itself is nearly spent — while the per-client share still reads 71. */
+const EXHAUSTED = reading({ remaining: 71, globalRemaining: 10, granted: false });
+/**
+ * A coordinator that could not be reached.
+ *
+ * `limit` is deliberately non-zero. With `limit: 0` the exhausted branch is
+ * excluded by its own `limit > 0` guard and the two rules never compete, so a
+ * test claiming to prove the precedence proved nothing — swapping the order of
+ * the checks in `classify` passed. Here both rules match and only the order
+ * decides.
+ */
+const UNAVAILABLE = reading({
+  remaining: 0,
+  globalRemaining: 0,
+  granted: false,
+  boundBy: 'unavailable',
+  limit: 570
+});
 
 describe('decideAlert', () => {
   it('says nothing about a healthy window', () => {
@@ -99,9 +126,9 @@ describe('decideAlert', () => {
   });
 
   it('treats an unreachable limiter as its own problem, not an empty budget', () => {
-    // An unreachable window reports `remaining: 0`, which reads as an
-    // exhausted budget and would send the operator to look at traffic while
-    // the coordinator is down.
+    // Both rules match this reading — zero remaining of a 570 window — so this
+    // is a genuine precedence test. Reading it as an exhausted budget would
+    // send the operator to look at traffic while the coordinator is down.
     const first = decideAlert(INITIAL_ALERT_STATE, UNAVAILABLE, 1_000);
     const second = decideAlert(first.state, UNAVAILABLE, 2_000);
 
@@ -109,27 +136,106 @@ describe('decideAlert', () => {
     expect(second.payload?.text).toContain('Durable Object');
   });
 
-  it('restarts the count when the cause changes', () => {
-    // Two consecutive bad checks of *different* kinds is not the same
-    // evidence as two of the same, so the bound starts again.
+  it('alerts on the window, not on the checking client\'s share of it', () => {
+    // The defect this replaced. The check peeks as an unseen client, and an
+    // unseen client is guaranteed a reservation — 71 of 570 at the defaults —
+    // so its share cannot fall below that until the window is nearly gone.
+    // Comparing that share against 5% of the same 570 put the threshold 2.5x
+    // underneath a floor the reading could not cross, and the alert was silent
+    // through exactly the case it was written for: one caller draining the
+    // window while everybody else is refused.
+    const drained = reading({ remaining: 71, globalRemaining: 4, limit: 570 });
+    const first = decideAlert(INITIAL_ALERT_STATE, drained, 1_000);
+    const second = decideAlert(first.state, drained, 2_000);
+
+    expect(second.payload).toMatchObject({
+      state: 'firing',
+      reason: 'budget_exhausted',
+      budgetRemaining: 4
+    });
+  });
+
+  it('is not fooled by a healthy window that happens to floor one share', () => {
+    // The mirror image, and the false positive the old basis could produce
+    // once many callers were active: a share pinned at its reservation while
+    // hundreds of slots remain.
+    const busy = reading({ remaining: 20, globalRemaining: 300, limit: 570 });
+    const first = decideAlert(INITIAL_ALERT_STATE, busy, 1_000);
+    expect(decideAlert(first.state, busy, 2_000).payload).toBeUndefined();
+  });
+
+  it('counts consecutive bad checks whatever the cause', () => {
+    // Counting per-cause meant a deployment failing every single check — a
+    // flaky Durable Object alternating between timing out and reporting a
+    // drained window — reset the count each time and never alerted at all.
     const first = decideAlert(INITIAL_ALERT_STATE, EXHAUSTED, 1_000);
     const second = decideAlert(first.state, UNAVAILABLE, 2_000);
 
-    expect(second.state.strikes).toBe(1);
-    expect(second.payload).toBeUndefined();
+    expect(second.state.strikes).toBe(2);
+    expect(second.payload).toMatchObject({ state: 'firing', reason: 'limiter_unavailable' });
+  });
+
+  it('alerts even when the two bad checks keep alternating', () => {
+    let state = INITIAL_ALERT_STATE;
+    const sent: string[] = [];
+    for (const [at, r] of [
+      [1_000, EXHAUSTED],
+      [2_000, UNAVAILABLE],
+      [3_000, EXHAUSTED],
+      [4_000, UNAVAILABLE]
+    ] as const) {
+      const decision = decideAlert(state, r, at);
+      if (decision.payload !== undefined) sent.push(decision.payload.reason);
+      state = decision.state;
+    }
+
+    // Previously this sent nothing at all, forever, while every check failed.
+    expect(sent.length).toBeGreaterThan(0);
+  });
+
+  it('re-fires under the new cause rather than clearing the old one silently', () => {
+    // The worst of the old transitions: a change of cause while firing reset
+    // `firing` to false with no payload, so the first incident was never
+    // resolved and sat open in the channel forever.
+    let state = decideAlert(INITIAL_ALERT_STATE, EXHAUSTED, 1_000).state;
+    const fired = decideAlert(state, EXHAUSTED, 2_000);
+    expect(fired.payload?.reason).toBe('budget_exhausted');
+    state = fired.state;
+
+    const changed = decideAlert(state, UNAVAILABLE, 3_000);
+    expect(changed.state.firing).toBe(true);
+    expect(changed.payload).toMatchObject({ state: 'firing', reason: 'limiter_unavailable' });
+    // And says which incident it supersedes, so the channel reads coherently.
+    expect(changed.payload?.text).toContain('replacing');
+  });
+
+  it('still resolves after the cause changed mid-incident', () => {
+    let state = decideAlert(INITIAL_ALERT_STATE, EXHAUSTED, 1_000).state;
+    state = decideAlert(state, EXHAUSTED, 2_000).state;
+    state = decideAlert(state, UNAVAILABLE, 3_000).state;
+
+    const recovered = decideAlert(state, reading(), 4_000);
+    expect(recovered.payload).toMatchObject({ state: 'resolved' });
   });
 
   it('alerts before the window is completely empty', () => {
     // At zero, callers have been refused for a while already. The useful
     // moment is while somebody could still act.
-    const nearly = reading({ remaining: 28, limit: 570 });
+    const nearly = reading({ globalRemaining: 28, limit: 570 });
     const first = decideAlert(INITIAL_ALERT_STATE, nearly, 1_000);
     expect(decideAlert(first.state, nearly, 2_000).payload).toBeDefined();
   });
 
   it('leaves a comfortable window alone', () => {
-    const fine = reading({ remaining: 29, limit: 570 });
+    const fine = reading({ globalRemaining: 29, limit: 570 });
     expect(decideAlert(INITIAL_ALERT_STATE, fine, 1_000).state.strikes).toBe(0);
+  });
+
+  it('dates an incident from its first bad check, not from the alert', () => {
+    // Taken at firing time it understated every incident by a full period.
+    const first = decideAlert(INITIAL_ALERT_STATE, EXHAUSTED, 300_000);
+    const second = decideAlert(first.state, EXHAUSTED, 600_000);
+    expect(second.state.since).toBe(300_000);
   });
 
   it('carries no caller identity or company number in the payload', () => {
@@ -211,6 +317,41 @@ describe('sendAlert', () => {
     expect(ok).toBe(true);
     expect(seen?.url).toBe('https://hooks.example/abc');
     expect(JSON.parse(seen?.body ?? '{}')).toMatchObject({ state: 'firing' });
+  });
+
+  it('posts, declares JSON, and refuses to follow a redirect', async () => {
+    // `redirect` matters as much as the https check it protects. `fetch`
+    // follows by default, so an endpoint answering `302 -> http://...` would
+    // replay this POST in clear text to an arbitrary host.
+    let init: RequestInit | undefined;
+    await sendAlert({
+      url: new URL('https://hooks.example/abc'),
+      payload,
+      fetchImpl: async (_input, options) => {
+        init = options;
+        return new Response('', { status: 200 });
+      }
+    });
+
+    expect(init?.method).toBe('POST');
+    expect((init?.headers as Record<string, string>)['content-type']).toBe('application/json');
+    expect(init?.redirect).toBe('manual');
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('gives up on a webhook that never answers', async () => {
+    // Otherwise a hanging endpoint holds the scheduled run open.
+    const ok = await sendAlert({
+      url: new URL('https://hooks.example/abc'),
+      payload,
+      timeoutMs: 10,
+      fetchImpl: (_input, options) =>
+        new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        })
+    });
+
+    expect(ok).toBe(false);
   });
 
   it('reports a rejection without throwing', async () => {
@@ -313,13 +454,12 @@ describe('the scheduled run', () => {
       await createScheduledHandler({ metricsSink: sink })(controller, shared, ctx);
     }
 
-    // 499, not 570: the check reads the pooled window as an unknown caller
-    // would see it, so the figure is what a newcomer could spend right now
-    // rather than the raw global remainder. That is the number worth alerting
-    // on — it answers "is the next person through the door going to be
-    // refused" — and because a share is bounded by what is globally
-    // available, it can only fall this low when the window really is spent.
-    expect(rows.map((row) => row.budgetRemaining)).toEqual([499, 499, 499, 499, 499]);
+    // 570, the whole window — not 499, which is what one unseen caller's
+    // share reads. The share is floored at a reservation, so charting it drew
+    // a flat line that could not show the window filling up. This is the
+    // figure the alert threshold is compared against, so it is the figure the
+    // chart has to show.
+    expect(rows.map((row) => row.budgetRemaining)).toEqual([570, 570, 570, 570, 570]);
   });
 
   it('sends nothing when no webhook is configured', async () => {
@@ -454,6 +594,159 @@ describe('the scheduled run', () => {
         { COMPANIES_HOUSE_API_KEY: 'k' } as WorkerEnv,
         ctx
       )
+    ).resolves.toBeUndefined();
+  });
+});
+
+
+describe('the scheduled run, end to end', () => {
+  const controller: ScheduledController = { scheduledTime: 0, cron: '*/5 * * * *' };
+  const ctx: ExecutionContext = { waitUntil: () => undefined };
+
+  function kv(seed?: string): KVNamespace & { data: Map<string, string> } {
+    const data = new Map<string, string>();
+    if (seed !== undefined) data.set('ch-mcp:alert-state', seed);
+    return {
+      data,
+      get: async (key: string) => data.get(key) ?? null,
+      put: async (key: string, value: string) => void data.set(key, value),
+      delete: async (key: string) => void data.delete(key)
+    };
+  }
+
+  /** A Durable Object that answers every peek with a fixed reading. */
+  function windowAt(globalRemaining: number): NonNullable<WorkerEnv['RATE_LIMIT']> {
+    return {
+      idFromName: (name: string) => ({ toString: () => name }),
+      get: () => ({
+        fetch: async () =>
+          new Response(
+            JSON.stringify({
+              granted: true,
+              remaining: 71,
+              globalRemaining,
+              retryInMs: 0,
+              limit: 570
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+      })
+    };
+  }
+
+  function envAt(
+    globalRemaining: number,
+    cache: KVNamespace,
+    webhook = 'https://hooks.example/x'
+  ): WorkerEnv {
+    return {
+      COMPANIES_HOUSE_API_KEY: 'pooled-test-key',
+      RATE_LIMIT: windowAt(globalRemaining),
+      CACHE: cache,
+      CH_ALERT_WEBHOOK_URL: webhook
+    };
+  }
+
+  const posting = (
+    sent: string[],
+    ok = true
+  ): typeof fetch =>
+    (async (_input, init) => {
+      sent.push(String(init?.body));
+      return new Response('', { status: ok ? 200 : 500 });
+    }) as typeof fetch;
+
+  it('alerts on a nearly spent window, which is what it exists for', async () => {
+    // The primary alert, driven through the real handler rather than against a
+    // hand-written reading. Previously the only handler-level alerting test
+    // used an unreachable Durable Object, so `budget_exhausted` — the case the
+    // feature was built for — was never exercised end to end.
+    const sent: string[] = [];
+    const cache = kv();
+    const handler = createScheduledHandler({ fetchImpl: posting(sent) });
+
+    await handler(controller, envAt(4, cache), ctx);
+    expect(sent).toHaveLength(0);
+
+    await handler(controller, envAt(4, cache), ctx);
+    expect(JSON.parse(sent[0] ?? '{}')).toMatchObject({
+      state: 'firing',
+      reason: 'budget_exhausted',
+      budgetRemaining: 4,
+      budgetLimit: 570
+    });
+  });
+
+  it('carries the incident across runs through KV, then resolves it once', async () => {
+    const sent: string[] = [];
+    const cache = kv();
+    const handler = createScheduledHandler({ fetchImpl: posting(sent) });
+
+    await handler(controller, envAt(4, cache), ctx);
+    await handler(controller, envAt(4, cache), ctx);
+    expect(sent).toHaveLength(1);
+
+    // Recovered.
+    await handler(controller, envAt(500, cache), ctx);
+    expect(JSON.parse(sent[1] ?? '{}')).toMatchObject({ state: 'resolved' });
+
+    // And stays quiet afterwards.
+    await handler(controller, envAt(500, cache), ctx);
+    expect(sent).toHaveLength(2);
+  });
+
+  it('retries on the next check when the webhook refuses the message', async () => {
+    // Committing `firing: true` before delivery meant one bad check swallowed
+    // the whole incident: the next run saw `firing` and stayed quiet, and the
+    // operator eventually got a "resolved" for an alert never sent.
+    const sent: string[] = [];
+    const cache = kv();
+    const failing = createScheduledHandler({ fetchImpl: posting(sent, false) });
+
+    await failing(controller, envAt(4, cache), ctx);
+    await failing(controller, envAt(4, cache), ctx);
+    expect(sent).toHaveLength(1);
+
+    const working = createScheduledHandler({ fetchImpl: posting(sent, true) });
+    await working(controller, envAt(4, cache), ctx);
+
+    expect(sent).toHaveLength(2);
+    expect(JSON.parse(sent[1] ?? '{}')).toMatchObject({ state: 'firing' });
+  });
+
+  it.each([
+    ['malformed JSON', 'not json at all'],
+    ['a value of the wrong shape', JSON.stringify({ firing: 'yes' })],
+    ['a non-finite strike count', JSON.stringify({ firing: true, strikes: null, since: 0, reason: 'none' })]
+  ])('starts from scratch when the stored state is %s', async (_what, seed) => {
+    // `isAlertState` is unit-tested in isolation; this is the path where it
+    // actually runs. A latched or corrupt state disables alerting silently.
+    const sent: string[] = [];
+    const cache = kv(seed);
+    const handler = createScheduledHandler({ fetchImpl: posting(sent) });
+
+    await handler(controller, envAt(4, cache), ctx);
+    await handler(controller, envAt(4, cache), ctx);
+
+    expect(sent).toHaveLength(1);
+    expect(JSON.parse(cache.data.get('ch-mcp:alert-state') ?? '{}')).toMatchObject({
+      firing: true
+    });
+  });
+
+  it('survives KV refusing to answer at all', async () => {
+    const broken: KVNamespace = {
+      get: async () => {
+        throw new Error('kv is down');
+      },
+      put: async () => {
+        throw new Error('kv is down');
+      },
+      delete: async () => undefined
+    };
+
+    await expect(
+      createScheduledHandler({ fetchImpl: posting([]) })(controller, envAt(4, broken), ctx)
     ).resolves.toBeUndefined();
   });
 });

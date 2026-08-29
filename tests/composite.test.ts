@@ -390,14 +390,14 @@ describe('screen_companies', () => {
         granted: false,
         remaining: 0,
         retryInMs: 1000,
-        limit: 0,
+        limit: 0, globalRemaining: 0,
         boundBy: 'unavailable' as const
       }),
       peek: async () => ({
         granted: false,
         remaining: 0,
         retryInMs: 1000,
-        limit: 0,
+        limit: 0, globalRemaining: 0,
         boundBy: 'unavailable' as const
       }),
       penalise: async () => undefined,

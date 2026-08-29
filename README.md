@@ -268,7 +268,7 @@ takes `verbose` to return the untouched payload alongside the shaped one.
 | `CompaniesHouseError` | Every failure carries a stable code, a plain sentence and a next step. |
 | Projections | Upstream read defensively field by field; output validated strictly against the published schema. |
 
-511 tests under Node and 16 inside `workerd`, no network and no API key required to run any of them.
+549 tests under Node and 16 inside `workerd`, no network and no API key required to run any of them.
 
 ## Configuration
 

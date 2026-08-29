@@ -33,6 +33,9 @@ import type { BudgetBound } from '../http/budget.js';
 /** Why the limiter said no. Mirrors `BudgetBound`, plus "it did not". */
 export type RefusalCause = BudgetBound | 'none';
 
+/** The only values `refusalCause` may take. Checked, not assumed. */
+const REFUSAL_CAUSES: readonly BudgetBound[] = ['global', 'client', 'penalty', 'unavailable'];
+
 /**
  * Ceiling on every counter.
  *
@@ -49,15 +52,37 @@ const MAX_COUNT = 1_000_000;
 const MAX_LABEL = 48;
 
 /**
- * Reduces a label to something that cannot carry information out.
+ * Normalises a label. **This is not a leak-prevention control.**
  *
- * Lowercase letters, digits and underscores only — the shape of every tool
- * name and error code this server defines. Everything else is dropped rather
- * than replaced, so a URL or a company name collapses instead of surviving in
- * a recognisable form.
+ * It lowercases and keeps `[a-z0-9_]`, which is the shape of every tool name
+ * and error code this server defines — but a company number is eight
+ * characters drawn from exactly that set, so `label('SC123456')` returns
+ * `'sc123456'`, intact. Anything under 48 word characters survives in a
+ * readable form. Treating this as a redaction step was the mistake; the real
+ * guarantee is `permitted()` below.
  */
 export function label(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, MAX_LABEL);
+}
+
+/**
+ * The actual guarantee: a label is emitted only if it is a value this
+ * codebase defines.
+ *
+ * An allowlist rather than a filter, because a filter cannot distinguish
+ * `get_company` from `sc123456` — both are lowercase word characters, and a
+ * character class has no way to tell a tool name from a company number. Every
+ * caller today passes a literal or a closed-set error code, so this changes
+ * nothing about what is recorded; what it changes is that a future call site
+ * handing over a path, a query or a session id records `other` instead of
+ * publishing it for three months.
+ *
+ * The allowed sets live where they are defined, and are passed in rather than
+ * imported, so that this module keeps no dependency on the tool registry.
+ */
+function permitted(value: string, allowed: ReadonlySet<string>): string | undefined {
+  const clean = label(value);
+  return allowed.has(clean) ? clean : undefined;
 }
 
 const clamp = (value: number): number => {
@@ -75,18 +100,41 @@ const clamp = (value: number): number => {
 export interface RequestSnapshot {
   /** The tool called, or `unknown` for a handshake or a malformed request. */
   tool: string;
-  /** `ok`, `error`, or `refused` when the limiter turned the request away. */
+  /**
+   * What the caller got.
+   *
+   * `refused` is narrower than it looks: it means the request **failed** and
+   * the limiter had turned something away. A `screen_companies` run where one
+   * company was skipped for budget but the table came back complete and
+   * correct is `ok` — it was not refused, part of it was, and `refusals`
+   * below is where that shows. Marking the whole request `refused` counted
+   * successful responses as rejections in the one query built to find them.
+   */
   outcome: 'ok' | 'error' | 'refused';
   /** The error code, when there was one. Empty otherwise. */
   errorCode: string;
   /** Why the limiter refused, when it did. `none` otherwise. */
   refusalCause: RefusalCause;
+  /**
+   * How many sub-requests the limiter turned away.
+   *
+   * Separate from `outcome` because a fan-out can have some refused and still
+   * answer well. Non-zero with `outcome: 'ok'` is the honest shape of a batch
+   * that came back short and said so.
+   */
+  refusals: number;
   /** Calls actually made to Companies House. The thing that spends the key. */
   upstreamRequests: number;
   /** Answers served from the shared cache, having spent nothing. */
   cacheHits: number;
   cacheMisses: number;
-  /** Retries after a failure. High values mean the upstream is struggling. */
+  /**
+   * Retries after a failure — a **subset** of `upstreamRequests`, not extra.
+   *
+   * A call that failed three times then succeeded records 4 requests and 3
+   * retries. Adding them double-counts; dividing them reads 75% for a request
+   * that worked.
+   */
   upstreamRetries: number;
   /** 429s from Companies House. Any of these means the key is over its limit. */
   upstreamThrottled: number;
@@ -129,11 +177,24 @@ export interface MetricsSink {
   write(snapshot: RequestSnapshot): void;
 }
 
-export function createRequestMetrics(): MetricsRecorder {
+export interface RequestMetricsOptions {
+  /** Tool names that may be recorded. Anything else is recorded as `other`. */
+  tools: Iterable<string>;
+  /** Error codes that may be recorded. Anything else is recorded as `other`. */
+  errorCodes: Iterable<string>;
+}
+
+/** What an unrecognised label becomes. Visible in a query, useless to an attacker. */
+export const UNRECOGNISED = 'other';
+
+export function createRequestMetrics(options: RequestMetricsOptions): MetricsRecorder {
+  const allowedTools = new Set([...options.tools].map(label));
+  const allowedCodes = new Set([...options.errorCodes].map(label));
   let tool = 'unknown';
   let outcome: RequestSnapshot['outcome'] = 'ok';
   let errorCode = '';
   let refusalCause: RefusalCause = 'none';
+  let refusals = 0;
   let upstreamRequests = 0;
   let cacheHits = 0;
   let cacheMisses = 0;
@@ -146,8 +207,7 @@ export function createRequestMetrics(): MetricsRecorder {
 
   return {
     tool: (name) => {
-      const clean = label(name);
-      if (clean !== '') tool = clean;
+      tool = permitted(name, allowedTools) ?? UNRECOGNISED;
     },
     upstreamRequest: () => {
       upstreamRequests = clamp(upstreamRequests + 1);
@@ -168,17 +228,23 @@ export function createRequestMetrics(): MetricsRecorder {
       staleServed = clamp(staleServed + 1);
     },
     refused: (cause) => {
-      // A refusal is the more specific answer, so it wins over a plain error:
-      // "somebody was turned away and here is why" is the reading an operator
-      // needs, and it would otherwise be indistinguishable from an upstream
-      // fault in the same column.
-      outcome = 'refused';
+      // Validated rather than trusted. `boundBy` reaches here from a Durable
+      // Object response that `do-budget-store.ts` casts without checking, so
+      // this is the last point at which a changed remote shape can be stopped
+      // from writing an arbitrary string into an analytics column.
+      if (!REFUSAL_CAUSES.includes(cause)) return;
+      refusals = clamp(refusals + 1);
       refusalCause = cause;
+      // Deliberately does not touch `outcome`. A refusal is a fact about one
+      // sub-request; whether the caller ended up with an answer is a fact
+      // about the request, and `failed` is what knows it.
     },
     failed: (code) => {
-      if (outcome !== 'refused') outcome = 'error';
-      const clean = label(code);
-      if (clean !== '') errorCode = clean;
+      // A failure with a refusal behind it is the more specific answer, and
+      // the one an operator needs: "turned away, and here is why" rather than
+      // an upstream fault in the same column.
+      outcome = refusals > 0 ? 'refused' : 'error';
+      errorCode = permitted(code, allowedCodes) ?? UNRECOGNISED;
     },
     ownKey: () => {
       ownKey = true;
@@ -194,6 +260,7 @@ export function createRequestMetrics(): MetricsRecorder {
       outcome,
       errorCode,
       refusalCause,
+      refusals,
       upstreamRequests,
       cacheHits,
       cacheMisses,
@@ -231,6 +298,7 @@ export const silentMetrics: MetricsRecorder = {
     outcome: 'ok',
     errorCode: '',
     refusalCause: 'none',
+    refusals: 0,
     upstreamRequests: 0,
     cacheHits: 0,
     cacheMisses: 0,

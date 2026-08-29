@@ -116,13 +116,18 @@ export class DurableObjectBudgetStore implements BudgetStore {
    */
   #unavailable(): BudgetOutcome {
     if (this.#failOpen) {
-      return { granted: true, remaining: 1, retryInMs: 0, limit: 1 };
+      return { granted: true, remaining: 1, retryInMs: 0, limit: 1, globalRemaining: 1 };
     }
     return {
       granted: false,
       remaining: 0,
       retryInMs: 1_000,
       limit: 0,
+      // Not a reading of an empty window: nothing was read at all. `boundBy`
+      // is what distinguishes the two, and anything charting this figure has
+      // to check it — see the heartbeat in worker.ts, which records nothing
+      // rather than plotting a coordinator outage as a budget collapse.
+      globalRemaining: 0,
       boundBy: 'unavailable'
     };
   }

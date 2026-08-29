@@ -25,7 +25,13 @@ export interface AlertState {
   firing: boolean;
   /** Consecutive bad readings. Alerting waits for this to clear the bound. */
   strikes: number;
-  /** When the alert was raised, so a message can say how long it has run. */
+  /**
+   * When the trouble started — the first bad check, not the moment of firing.
+   *
+   * Recorded at onset rather than at the alert so it means what an operator
+   * would assume; taking it at firing time understated every incident by a
+   * full period.
+   */
   since: number;
   /** Which condition fired, so a change of cause is reported rather than swallowed. */
   reason: AlertReason;
@@ -103,46 +109,85 @@ export function decideAlert(
       payload: {
         state: 'resolved',
         reason: previous.reason,
-        text: `Recovered: ${describe(previous.reason)} has cleared. Budget ${reading.remaining} of ${reading.limit}.`,
-        budgetRemaining: reading.remaining,
+        text: `Recovered: ${describe(previous.reason)} has cleared. Budget ${reading.globalRemaining} of ${reading.limit}.`,
+        budgetRemaining: reading.globalRemaining,
         budgetLimit: reading.limit,
         at: new Date(now).toISOString()
       }
     };
   }
 
-  const strikes = previous.reason === reason ? previous.strikes + 1 : 1;
+  // Consecutive *bad* checks, whatever the cause. Counting per-cause meant a
+  // deployment failing every single check — a flaky Durable Object alternating
+  // between timing out and reporting a drained window — reset the count each
+  // time and never alerted at all. Two bad checks is two bad checks.
+  const bad = previous.reason !== 'none' || previous.strikes > 0;
+  const strikes = bad ? previous.strikes + 1 : 1;
+  const since = previous.strikes > 0 ? previous.since : now;
 
   // Already alerting on this same cause: stay quiet. Repeating every five
   // minutes is how a channel gets muted, and a muted channel is worse than no
   // channel because everyone believes it is working.
   if (previous.firing && previous.reason === reason) {
-    return { state: { firing: true, strikes, since: previous.since, reason } };
+    return { state: { firing: true, strikes, since, reason } };
+  }
+
+  // Firing already, but on something else. The situation has changed under
+  // the operator and they are still owed the end of the first incident, so
+  // this re-fires immediately under the new cause rather than waiting out the
+  // strike count again — which previously cleared `firing` silently and left
+  // the original alert open forever.
+  if (previous.firing) {
+    return {
+      state: { firing: true, strikes, since, reason },
+      payload: fire(reason, reading, now, previous.reason)
+    };
   }
 
   if (strikes < STRIKES_BEFORE_ALERTING) {
-    return { state: { firing: false, strikes, since: now, reason } };
+    return { state: { firing: false, strikes, since, reason } };
   }
 
   return {
-    state: { firing: true, strikes, since: now, reason },
-    payload: {
-      state: 'firing',
-      reason,
-      text: `${describe(reason)} Budget ${reading.remaining} of ${reading.limit}.`,
-      budgetRemaining: reading.remaining,
-      budgetLimit: reading.limit,
-      at: new Date(now).toISOString()
-    }
+    state: { firing: true, strikes, since, reason },
+    payload: fire(reason, reading, now)
+  };
+}
+
+function fire(
+  reason: AlertReason,
+  reading: BudgetOutcome,
+  now: number,
+  replacing?: AlertReason
+): AlertPayload {
+  const changed =
+    replacing === undefined || replacing === reason
+      ? ''
+      : `(replacing: ${describe(replacing)}) `;
+  return {
+    state: 'firing',
+    reason,
+    text: `${changed}${describe(reason)} Budget ${reading.globalRemaining} of ${reading.limit}.`,
+    budgetRemaining: reading.globalRemaining,
+    budgetLimit: reading.limit,
+    at: new Date(now).toISOString()
   };
 }
 
 function classify(reading: BudgetOutcome): AlertReason {
-  // Checked first: a window that cannot be consulted reports `remaining: 0`,
+  // Checked first: a window that cannot be consulted reports zero everywhere,
   // which would otherwise be read as an exhausted budget and send the
   // operator looking at traffic when the coordinator is down.
   if (reading.boundBy === 'unavailable') return 'limiter_unavailable';
-  if (reading.limit > 0 && reading.remaining <= reading.limit * EXHAUSTED_BELOW) {
+
+  // `globalRemaining`, not `remaining`. The check peeks as an unseen client,
+  // and an unseen client is guaranteed a reservation — 71 of 570 at the
+  // defaults — so its share cannot fall below that until the window is
+  // almost gone. Comparing it against 5% of the same 570 put the threshold
+  // 2.5x underneath a floor the reading could not cross, which made this
+  // silent through exactly the case it was written for: one caller draining
+  // the window while every other caller is refused.
+  if (reading.limit > 0 && reading.globalRemaining <= reading.limit * EXHAUSTED_BELOW) {
     return 'budget_exhausted';
   }
   return 'none';
@@ -216,6 +261,10 @@ export async function sendAlert(options: SendAlertOptions): Promise<boolean> {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(options.payload),
+      // Not followed. `fetch` follows redirects by default, so an endpoint
+      // answering `302 -> http://...` would replay the POST in clear text to
+      // an arbitrary host and quietly defeat the https-only check above.
+      redirect: 'manual',
       signal: AbortSignal.timeout(options.timeoutMs ?? 5_000)
     });
     return response.ok;

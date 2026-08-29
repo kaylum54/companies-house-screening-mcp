@@ -207,7 +207,7 @@ every transport alike.
 | `CH_NEWCOMER_ALLOWANCE` | `1` | How many unseen callers to hold a reservation for |
 | `CH_MAX_TRACKED_CLIENTS` | `10000` | Bound on identities tracked for fair sharing |
 | `CH_ALLOW_CLIENT_KEYS` | `true` | Whether callers may bring their own key |
-| `CH_ALERT_WEBHOOK_URL` | — | A secret, not a var. `https` only. Where the scheduled check sends alerts; unset means none. See [observability.md](observability.md) |
+| `CH_ALERT_WEBHOOK_URL` | — | **Workers only.** A secret, not a var. `https` only. Where the scheduled check sends alerts; unset means none. See [observability.md](observability.md) |
 | `CH_TRUST_PROXY_HEADERS` | `false` | Believe `X-Forwarded-For` / `CF-Connecting-IP` when identifying callers. Turn on **only** behind a proxy you control |
 | `CH_MAX_SESSIONS` | `1000` | Open sessions kept before the least recently used is evicted |
 | `CH_SESSION_IDLE_MS` | `1800000` | How long a session may idle before being swept |

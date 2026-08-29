@@ -63,6 +63,18 @@ export interface BudgetOutcome {
   limit: number;
   /** Absent when granted. */
   boundBy?: BudgetBound | undefined;
+  /**
+   * What the *whole window* has left, before fair shares are applied.
+   *
+   * Different from `remaining`, and the difference is the point. `remaining`
+   * is one caller's share, which is bounded below by their reservation — an
+   * unseen client is guaranteed one, so peeking as one can never report less
+   * than a reservation until the window itself is almost gone. Anything
+   * asking "is this deployment near its ceiling" has to read this instead, or
+   * it is watching a number that structurally cannot cross the threshold it
+   * is being compared against. Used by the scheduled health check.
+   */
+  globalRemaining: number;
 }
 
 export interface SlidingWindowBudgetOptions {
@@ -220,6 +232,10 @@ export class SlidingWindowBudget {
         remaining: 0,
         retryInMs: this.#blockedUntil - now,
         limit: this.#effectiveLimit,
+        // Reported even while blocked: a 429 penalty says nothing about how
+        // full the window is, and a health check must not read a hold as an
+        // exhausted budget.
+        globalRemaining: this.#globalAvailable(now),
         boundBy: 'penalty'
       };
     }
@@ -231,6 +247,7 @@ export class SlidingWindowBudget {
         remaining: 0,
         retryInMs: this.#globalRetryInMs(now),
         limit: this.#effectiveLimit,
+        globalRemaining: 0,
         boundBy: 'global'
       };
     }
@@ -241,6 +258,7 @@ export class SlidingWindowBudget {
         remaining: 0,
         retryInMs: this.#clientRetryInMs(clientId, now),
         limit: this.#effectiveLimit,
+        globalRemaining: globalAvailable,
         boundBy: 'client'
       };
     }
@@ -254,7 +272,8 @@ export class SlidingWindowBudget {
       granted: true,
       remaining: this.#availableFor(clientId, now),
       retryInMs: 0,
-      limit: this.#effectiveLimit
+      limit: this.#effectiveLimit,
+      globalRemaining: this.#globalAvailable(now)
     };
   }
 
@@ -274,13 +293,20 @@ export class SlidingWindowBudget {
         remaining: 0,
         retryInMs: this.#blockedUntil - now,
         limit: this.#effectiveLimit,
+        globalRemaining: this.#globalAvailable(now),
         boundBy: 'penalty'
       };
     }
 
     const remaining = this.#availableFor(clientId, now);
     if (remaining > 0) {
-      return { granted: true, remaining, retryInMs: 0, limit: this.#effectiveLimit };
+      return {
+        granted: true,
+        remaining,
+        retryInMs: 0,
+        limit: this.#effectiveLimit,
+        globalRemaining: this.#globalAvailable(now)
+      };
     }
 
     const globalAvailable = this.#globalAvailable(now);
@@ -291,6 +317,7 @@ export class SlidingWindowBudget {
       retryInMs:
         boundBy === 'global' ? this.#globalRetryInMs(now) : this.#clientRetryInMs(clientId, now),
       limit: this.#effectiveLimit,
+      globalRemaining: globalAvailable,
       boundBy
     };
   }

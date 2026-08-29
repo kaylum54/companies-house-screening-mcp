@@ -40,6 +40,9 @@ import type { AnalyticsEngineDataset } from './types.js';
  *   double8  budgetLimit        -1 likewise
  *   double9  durationMs
  *   double10 ownKey             1 when the caller brought their own key
+ *   double11 refusals           sub-requests the limiter turned away; non-zero
+ *                               with outcome `ok` is a batch that came back
+ *                               short and said so
  *
  * Nothing here identifies a caller or says which company was looked up. See
  * ADR 16 for why that is a deliberate limit rather than an oversight.
@@ -66,7 +69,8 @@ export function toDataPoint(snapshot: RequestSnapshot, version: string): DataPoi
       snapshot.budgetRemaining,
       snapshot.budgetLimit,
       snapshot.durationMs,
-      snapshot.ownKey ? 1 : 0
+      snapshot.ownKey ? 1 : 0,
+      snapshot.refusals
     ]
   };
 }

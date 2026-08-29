@@ -10,6 +10,7 @@ import { CompaniesHouseClient } from '../http/client.js';
 import { RateLimiter, SERVER_MAX_WAIT_MS } from '../http/rate-limiter.js';
 import { createLogger } from '../telemetry/logger.js';
 import { createRequestMetrics } from '../telemetry/metrics.js';
+import { RECORDABLE_ERROR_CODES, RECORDABLE_TOOLS } from '../telemetry/recordable.js';
 import type { MetricsRecorder, MetricsSink } from '../telemetry/metrics.js';
 import { fingerprint, NoAuthProvider } from '../transport/identity.js';
 import type { AuthProvider } from '../transport/identity.js';
@@ -56,6 +57,14 @@ import type {
  * Node.
  */
 const WORKER_VERSION: string = packageJson.version;
+
+/**
+ * What this deployment may write into an analytics label.
+ *
+ * Derived from the real registries, so the set cannot drift from the tools
+ * that exist. See src/telemetry/recordable.ts.
+ */
+const RECORDABLE = { tools: RECORDABLE_TOOLS, errorCodes: RECORDABLE_ERROR_CODES };
 
 const MCP_PATH = '/mcp';
 const HEALTH_PATH = '/health';
@@ -121,7 +130,7 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
     // invocation and a fifty-company screen makes roughly 150 upstream
     // requests, so per-call writes would start dropping exactly the runs an
     // operator most wants to see. See ./analytics-metrics.ts.
-    const metrics = createRequestMetrics();
+    const metrics = createRequestMetrics(RECORDABLE);
     const sink =
       deps.metricsSink ??
       (env.ANALYTICS === undefined
@@ -136,6 +145,12 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
 
     try {
       return await handleMcp({ request, env, version, metrics, deps });
+    } catch (error) {
+      // An escaping throw is a bug in this server, and it used to flush a row
+      // saying `ok` on its way out — the single most misleading thing the
+      // dataset could contain.
+      metrics.failed('internal_error');
+      throw error;
     } finally {
       // Written whatever happened, refusals included. A deployment turning
       // callers away is precisely the one that needs a row, and measuring only
@@ -180,11 +195,13 @@ async function handleMcp({ request, env, version, metrics, deps }: McpRequest): 
     // variables is misconfigured is none of their business.
     const detail = error instanceof ConfigError ? error.message : String(error);
     console.error(`configuration is invalid: ${detail}`);
+    metrics.failed('misconfigured');
     return json(jsonRpcError(-32603, 'The server is misconfigured.'), 500);
   }
 
   if (env.RATE_LIMIT === undefined) {
     console.error('the RATE_LIMIT Durable Object binding is missing; see wrangler.toml');
+    metrics.failed('misconfigured');
     return json(jsonRpcError(-32603, 'The server is misconfigured.'), 500);
   }
 
@@ -192,6 +209,7 @@ async function handleMcp({ request, env, version, metrics, deps }: McpRequest): 
   const clock = systemClock;
 
   if (!originAllowed(request, config.allowedOrigins)) {
+    metrics.failed('origin_rejected');
     return json(jsonRpcError(-32600, 'Origin not allowed.'), 403);
   }
 
@@ -206,6 +224,7 @@ async function handleMcp({ request, env, version, metrics, deps }: McpRequest): 
   });
 
   if (!auth.ok) {
+    metrics.failed('unauthorised');
     // Relayed, not dropped: a 401 without it leaves an MCP client with
     // nothing to discover. `NoAuthProvider` never fails, so this is latent
     // today — but the injected provider is the whole point of the seam in
@@ -432,10 +451,20 @@ export function createScheduledHandler(deps: ScheduledDependencies = {}) {
     // caller or inflate anybody else's crowd.
     const reading = await store.peek('scheduled-check', now());
 
-    const metrics = createRequestMetrics();
+    const metrics = createRequestMetrics(RECORDABLE);
     metrics.tool('heartbeat');
-    metrics.budget(reading.remaining, reading.limit);
-    if (reading.boundBy === 'unavailable') metrics.refused('unavailable');
+    if (reading.boundBy === 'unavailable') {
+      // Recorded as an error, not a refusal: the check uses `peek` and turns
+      // nobody away, and a synthetic `refused` row every five minutes pollutes
+      // the one query an operator uses to count callers who were. The budget
+      // columns are left at their "never observed" sentinel rather than
+      // plotting a coordinator outage as the window collapsing to zero.
+      metrics.failed('UPSTREAM_UNAVAILABLE');
+    } else {
+      // The window, not this synthetic caller's share of it. The share is
+      // floored at a reservation and would chart as a flat line.
+      metrics.budget(reading.globalRemaining, reading.limit);
+    }
 
     const sink =
       deps.metricsSink ??
@@ -481,15 +510,24 @@ export function createScheduledHandler(deps: ScheduledDependencies = {}) {
     const previous = await readAlertState(env.CACHE);
     const decision = decideAlert(previous, reading, now());
 
-    try {
-      await env.CACHE.put(ALERT_STATE_KEY, JSON.stringify(decision.state));
-    } catch (error) {
-      console.error(`alert state write failed: ${String(error)}`);
-    }
-
+    // Sent before the state is committed, and the state records what actually
+    // arrived. Persisting `firing: true` first meant a webhook that was down
+    // for a single check swallowed the whole incident: the next run saw
+    // `firing` and stayed quiet, and the operator eventually received a
+    // "resolved" for an alert they had never been sent.
+    let state = decision.state;
     if (decision.payload !== undefined) {
       const delivered = await sendAlert({ url: endpoint, payload: decision.payload, fetchImpl });
-      if (!delivered) console.error('alert webhook did not accept the message');
+      if (!delivered) {
+        console.error('alert webhook did not accept the message; will retry on the next check');
+        state = { ...state, firing: false };
+      }
+    }
+
+    try {
+      await env.CACHE.put(ALERT_STATE_KEY, JSON.stringify(state));
+    } catch (error) {
+      console.error(`alert state write failed: ${String(error)}`);
     }
   };
 }
@@ -502,8 +540,14 @@ async function readAlertState(cache: NonNullable<WorkerEnv['CACHE']>): Promise<A
     // A stored value that is not a state is treated as absent rather than
     // trusted: a malformed `strikes` would otherwise latch the alerting
     // permanently on or permanently off.
-    return isAlertState(parsed) ? parsed : { ...INITIAL_ALERT_STATE };
-  } catch {
+    if (isAlertState(parsed)) return parsed;
+    console.error('stored alert state was unreadable and has been reset');
+    return { ...INITIAL_ALERT_STATE };
+  } catch (error) {
+    // Said out loud. This was the only failure path here with no log at all,
+    // and it disables alerting completely — the strike count resets on every
+    // run, so nothing can ever reach the bound.
+    console.error(`alert state read failed, starting from scratch: ${String(error)}`);
     return { ...INITIAL_ALERT_STATE };
   }
 }

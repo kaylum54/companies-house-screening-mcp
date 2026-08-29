@@ -48,20 +48,21 @@ new_sqlite_classes = ["RateLimitDurableObject"]
 binding = "CACHE"
 id = "replace-with-your-kv-namespace-id"
 
-# Where each request is counted: one row per invocation carrying volume,
-# cache effectiveness, refusals and budget. Optional — without it the Worker
-# runs exactly as before and measures nothing.
+# The health check. Every five minutes, matching the length of the rate-limit
+# window: one check per window is enough to see a window that failed to
+# recover, and more often would only add noise. It reads the Durable Object and
+# never spends budget. Delete this block to stop the check and its heartbeat
+# rows; request rows keep being written. See src/cloudflare/worker.ts.
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Where each request is counted: one row per invocation carrying volume, cache
+# effectiveness, refusals and budget. Optional — delete this block and the
+# Worker runs exactly as before and measures nothing.
 #
 # The dataset holds no caller identity and no company numbers by construction;
 # see docs/adr/0016-measure-volume-not-content.md for what is deliberately
 # absent and why.
-# Every five minutes, matching the length of the rate-limit window: one check
-# per window is enough to see a window that failed to recover, and more often
-# would only add noise. The scheduled run reads the Durable Object and never
-# spends budget — see src/cloudflare/worker.ts.
-[triggers]
-crons = ["*/5 * * * *"]
-
 [[analytics_engine_datasets]]
 binding = "ANALYTICS"
 dataset = "companies_house_mcp"

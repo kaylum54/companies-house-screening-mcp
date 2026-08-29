@@ -34,11 +34,11 @@ months and read by whoever runs the deployment.
 
 **Measure volume, cost and outcome. Never content, never identity.**
 
-Recorded, per request: the tool called, whether it succeeded, failed or was
-refused, the error code or refusal cause, how many upstream calls it made, how
-many answers came from cache, retries, upstream 429s, stale answers served,
-the budget at the end, whether the caller brought their own key, and the
-duration.
+Recorded, per request: the tool called, whether it succeeded or failed, the
+error code, the refusal cause and how many sub-requests were refused, how many
+upstream calls it made, how many answers came from cache, retries, upstream
+429s, stale answers served, the budget at the end, whether the caller brought
+their own key, the duration, and the deployed version.
 
 Deliberately **not** recorded:
 
@@ -52,13 +52,27 @@ Deliberately **not** recorded:
   is answered by a count.
 - **API keys, URLs, request bodies, headers.**
 
-**The rule is enforced by the shape of the interface, not by care.**
-`MetricsRecorder` exposes counters and two label methods, rather than a
-general `record(name, value)`. Both labels pass through a sanitiser that keeps
-only `[a-z0-9_]` and truncates at 48 characters, so a value that should never
-have been passed emits a mangled token instead of a leak. The two call sites
-take a tool name and an error code, both from closed sets in this codebase;
-the sanitiser is what holds when a change six months from now is careless.
+**The rule is enforced by an allowlist, not by a filter.** `MetricsRecorder`
+exposes counters and two label methods rather than a general
+`record(name, value)`, and each label is emitted only if it is a value this
+codebase defines — a registered tool name, a typed error code, or one of the
+handful of literals in `src/telemetry/recordable.ts`. Anything else records
+`other`.
+
+The first version of this used a character filter — keep `[a-z0-9_]`,
+truncate at 48 — and described it as a redaction step. It is not one, and the
+audit that caught it was right to be blunt: a company number is eight
+characters drawn from exactly that set, so `label('SC123456')` returns
+`'sc123456'`, intact, and any path, query or name under 48 word characters
+survives readably. A character class cannot distinguish `get_company` from
+`sc123456`; only membership of a known set can. The filter remains as a
+normaliser, and `tests/metrics.test.ts` now pins the fact that it does *not*
+redact, so nobody reads it as a control again.
+
+What this changes in practice today is nothing — every call site already
+passed a literal or a closed-set code. What it changes is the failure mode of
+a careless change six months from now: a call site handing over a path or a
+session id records `other` instead of publishing it for three months.
 
 **One data point per invocation, not per upstream call.** Analytics Engine
 accepts 250 `writeDataPoint` calls per invocation and a fifty-company
@@ -101,12 +115,11 @@ webhook is set *and* KV is bound, because without KV there is nowhere to keep
 the strike count that stops it crying wolf. Declining to alert is the honest
 answer there; the guide says so rather than degrading quietly.
 
-The scheduled run reads the pooled window as an unknown caller would see it,
-so its figure is what an arriving caller could spend rather than the raw
-global remainder — 499 of 570 on a quiet deployment, not 570. That is the
-number worth alerting on, because it answers whether the next person through
-the door will be refused, and a share is bounded by what is globally available
-so it can only fall near zero when the window genuinely has.
+The heartbeat charts the whole window — 570 of 570 on a quiet deployment. It
+records `-1` rather than `0` while the Durable Object is unreachable, so a
+coordinator outage shows as a gap rather than as the budget collapsing, and it
+is written as an `error` row rather than a `refused` one because a `peek`
+turns nobody away.
 
 Analytics Engine columns are positional — `blob1..blob20`, `double1..double20`
 — and inserting one in the middle does not migrate old rows, it reinterprets
@@ -115,6 +128,22 @@ field. The layout is documented in `src/cloudflare/analytics-metrics.ts` and
 asserted in `tests/metrics.test.ts`; new columns append, and a retired slot is
 never reused.
 
+**A refusal is counted separately from the outcome.** `outcome: 'refused'`
+means the request failed *and* the limiter had turned something away; a
+`screen_companies` run that skipped one company for budget and returned a
+complete, honest table is `ok` with a non-zero refusal count. Collapsing the
+two counted successful responses as rejections in the one query built to find
+them.
+
+**The alert reads the window, not a caller's share of it.** The scheduled
+check peeks as an unseen client, and an unseen client is guaranteed a
+reservation — 71 of 570 at the defaults — so its share cannot fall below that
+until the window is nearly gone. Comparing it against 5% of the same 570 put
+the threshold 2.5× underneath a floor the reading could not cross, and the
+alert was silent through precisely the case it was written for: one caller
+draining the window while every other caller is refused. `BudgetOutcome` now
+carries `globalRemaining` and the threshold is compared against that.
+
 Two defects were found by the tests rather than by review, both worth
 recording because both were invisible to inspection. The pooled limiter is
 constructed explicitly in `worker.ts` rather than by the client, so it never
@@ -122,3 +151,10 @@ received the recorder and the deployed path recorded no budget and no refusals
 at all. And the flush was guarded only inside one sink implementation, so any
 other sink throwing in the `finally` would have turned a good response into a
 500 — measurement taking down the thing it measures.
+
+A later audit found a third of the same kind, and it is the reason the tests
+now reuse one handler across invocations: the recorder could be hoisted out of
+the request function — making it per-isolate, which is exactly the deployed
+shape of `export default { fetch: createFetchHandler() }` — and the entire
+suite still passed. The test meant to catch it built a fresh handler for each
+call and so observed independence it had manufactured itself.

@@ -43,14 +43,17 @@ Remove the block and the Worker runs exactly as before and measures nothing.
 
 ### What one row contains
 
-One data point per invocation — never one per upstream call, because the
-platform accepts 250 `writeDataPoint` calls per invocation and a fifty-company
-`screen_companies` run makes roughly 150 upstream requests.
+One data point per invocation — never one per upstream call. The platform
+accepts 250 `writeDataPoint` calls per invocation, and a fifty-company
+`screen_companies` run makes roughly 150 upstream requests for the sections,
+plus one search per name that arrived as a name rather than a number, plus
+retries: 250 is reachable, and the runs that reach it are the ones most worth
+seeing.
 
 | Column | Meaning |
 |---|---|
 | `index1` | Tool name. Also the sampling key, so a flood of one tool cannot hide the others |
-| `blob1` | Outcome: `ok`, `error` or `refused` |
+| `blob1` | Outcome: `ok`, `error`, or `refused` — see below |
 | `blob2` | Error code, when there was one |
 | `blob3` | Refusal cause: `none`, `client`, `global`, `penalty`, `unavailable` |
 | `blob4` | Deployed version, for before-and-after comparisons |
@@ -64,6 +67,24 @@ platform accepts 250 `writeDataPoint` calls per invocation and a fifty-company
 | `double8` | Budget limit, or `-1` |
 | `double9` | Duration in milliseconds |
 | `double10` | `1` if the caller brought their own key |
+| `double11` | Sub-requests the limiter turned away |
+
+**`refused` is narrower than it sounds.** It means the request *failed* and
+the limiter had turned something away. A `screen_companies` run where one
+company was skipped for budget but the table came back complete and correct is
+`ok` — it was not refused, part of it was, and `double11` is where that shows.
+Counting `blob1 = 'refused'` as "callers turned away" would count successful
+responses as rejections.
+
+**Two values in `index1` are not tools.** `heartbeat` is the scheduled check
+(288 rows a day), and `unknown` is any request that never reached a handler —
+an `initialize` handshake, a `tools/list`, or a call the MCP SDK rejected on
+its schema before this server saw it. Exclude both when reading a tool mix.
+
+**Rows are written for `POST /mcp` only.** Health checks, wrong paths and
+non-POST methods return before the recorder exists, deliberately: uptime
+probes would otherwise bury everything that says something. So the row count
+is not the request count.
 
 **Columns are positional and permanent.** Analytics Engine stores these as
 `blob1..blob20` and `double1..double20`; the names above exist only in
@@ -102,6 +123,7 @@ SELECT index1 AS tool,
        SUM(_sample_interval) AS calls
 FROM companies_house_mcp
 WHERE timestamp > NOW() - INTERVAL '1' DAY
+  AND index1 NOT IN ('heartbeat', 'unknown')
 GROUP BY tool
 ORDER BY calls DESC
 ```
@@ -124,12 +146,17 @@ their own key, `global` means the window is genuinely spent, `penalty` means
 Companies House returned a 429, and `unavailable` means the Durable Object
 could not be reached and this is not a budget problem at all.
 
+Filtered on the count rather than on the outcome, so a batch that came back
+short but correct is included — that is the common case, and filtering on
+`blob1 = 'refused'` would miss all of it.
+
 ```sql
 SELECT blob3 AS cause,
-       SUM(_sample_interval) AS refusals
+       SUM(_sample_interval * double11) AS refusals,
+       SUM(_sample_interval) AS requests_affected
 FROM companies_house_mcp
 WHERE timestamp > NOW() - INTERVAL '1' DAY
-  AND blob1 = 'refused'
+  AND double11 > 0
 GROUP BY cause
 ORDER BY refusals DESC
 ```
@@ -225,7 +252,7 @@ Two numbers and a state. No caller, no company, no key.
 
 | Condition | Fires when |
 |---|---|
-| `budget_exhausted` | A newcomer would get under 5% of the window, twice in a row |
+| `budget_exhausted` | The window is at or under 5% remaining, twice in a row |
 | `limiter_unavailable` | The Durable Object could not be reached, twice in a row |
 
 **Two consecutive checks, not one.** A busy five minutes legitimately drains
@@ -237,11 +264,22 @@ When it clears you get one `"state": "resolved"` message and the count resets.
 
 ### Reading the budget figure
 
-On a quiet deployment the heartbeat reports **499 of 570**, not 570. That is
-correct: the check reads the pooled window as an arriving caller would see it,
-so the figure answers *is the next person through the door going to be
-refused* rather than *what is left in total*. See
-[rate-limits.md](rate-limits.md#fair-shares) for where 499 comes from.
+The heartbeat reports the **whole window** — 570 of 570 on a quiet deployment,
+falling as it fills.
+
+It is worth knowing why it does not report one caller's share, because the
+first version of this did and the alert was useless as a result. A share is
+floored at a caller's reservation (71 of 570 at the defaults, see
+[rate-limits.md](rate-limits.md#fair-shares)), so it charts as a flat line
+through everything short of total exhaustion — and a 5% threshold compared
+against it sat 2.5× underneath a floor the number could not cross. One caller
+draining the window while everybody else was refused produced a steady 71 and
+no alert at all.
+
+**During a Durable Object outage the budget columns are `-1`, not `0`.**
+Nothing was read, so nothing is reported; the chart shows a gap rather than
+drawing an outage as the window collapsing. Those rows carry
+`blob1 = 'error'`, `blob2 = 'upstream_unavailable'`.
 
 ---
 
@@ -263,10 +301,15 @@ the server serves requests identically with all three gone.
 
 ## A note on sources
 
-The binding syntax and the platform limits quoted here were read out of the
-`wrangler` config schema and Miniflare's implementation in this repository's
-own `node_modules`, so they match the version that will run. The SQL API
-endpoint and the `_sample_interval` convention come from Cloudflare's
-published documentation, which this project's build environment cannot reach
-to quote directly — check them against the current docs if a query behaves
-unexpectedly.
+**Read from this repository's own `node_modules`**, so they match the version
+that will run: the binding syntax (the `wrangler` config schema) and the fact
+that Miniflare's Analytics Engine binding is a no-op stub which validates
+nothing — which is why the column limits are asserted in
+`tests/metrics.test.ts` under Node rather than in the workerd suite.
+
+**From Cloudflare's published documentation**, which this project's build
+environment cannot reach to quote directly: the SQL API endpoint, the
+`_sample_interval` convention, the 250-`writeDataPoint`-per-invocation cap,
+the 20/20/1 column ceilings, the 96-byte index and 16 KB blob bounds, and the
+three-month retention. Check them against the current docs if something
+behaves unexpectedly.
