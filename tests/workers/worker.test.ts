@@ -1,7 +1,14 @@
-import { env, SELF } from 'cloudflare:test';
+import {
+  createExecutionContext,
+  createScheduledController,
+  env,
+  SELF,
+  waitOnExecutionContext
+} from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
 import type { Meta } from '../../src/domain/schemas.js';
+import worker from '../../src/cloudflare/worker.js';
 
 /**
  * The Worker, end to end, inside `workerd`.
@@ -207,5 +214,62 @@ describe('the Durable Object rate-limit window, across invocations', () => {
     );
 
     expect(own.meta.rate_limit_remaining).toBeGreaterThan(pooled.meta.rate_limit_remaining);
+  });
+});
+
+describe('the Analytics Engine binding, in the real runtime', () => {
+  it('is bound, so the deployment config and the code agree', () => {
+    expect(env.ANALYTICS).toBeDefined();
+  });
+
+  it('accepts a request with the dataset bound, and still answers it', async () => {
+    // What this can and cannot prove is worth being precise about. Miniflare's
+    // Analytics Engine binding is `writeDataPoint(_event) {}` — a no-op stub —
+    // so nothing here can assert *what* was written; those assertions live in
+    // tests/metrics.test.ts and tests/cloudflare.test.ts, against a recording
+    // sink under Node. What this proves is the half those cannot: that a real
+    // `writeDataPoint` on a real binding accepts the shape we send, in the
+    // runtime that will run it, without taking the response down with it.
+    const response = await SELF.fetch(
+      post({
+        jsonrpc: '2.0',
+        id: 40,
+        method: 'tools/call',
+        params: { name: 'get_company', arguments: { company_number: '08888830' } }
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result?: { isError?: boolean } };
+    expect(body.result?.isError).toBeFalsy();
+  });
+});
+
+describe('the scheduled run, in the real runtime', () => {
+  it('completes against real bindings without throwing', async () => {
+    // Nobody watches a Cron Trigger. An exception here would be invisible
+    // until somebody noticed the alerts had never arrived, which is the
+    // failure mode alerting exists to prevent.
+    const controller = createScheduledController({ cron: '*/5 * * * *' });
+    const ctx = createExecutionContext();
+
+    await expect(worker.scheduled(controller, env, ctx)).resolves.toBeUndefined();
+    await waitOnExecutionContext(ctx);
+  });
+
+  it('spends no budget, so watching the window does not drain it', async () => {
+    // The check runs 288 times a day. If it took a slot each time it would
+    // consume half the effective window doing nothing but looking at it.
+    const before = await callTool(50, 'get_company', { company_number: '08888840' });
+
+    const ctx = createExecutionContext();
+    for (let run = 0; run < 3; run += 1) {
+      await worker.scheduled(createScheduledController({ cron: '*/5 * * * *' }), env, ctx);
+    }
+    await waitOnExecutionContext(ctx);
+
+    const after = await callTool(51, 'get_company', { company_number: '08888841' });
+    // One request apart, which is the second `get_company` and nothing else.
+    expect(after.meta.rate_limit_remaining).toBe(before.meta.rate_limit_remaining - 1);
   });
 });

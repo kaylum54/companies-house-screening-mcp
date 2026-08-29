@@ -81,6 +81,12 @@ budget is, exactly how much of it any one caller can take, how to read
 `meta.rate_limit_remaining`, what happens when it runs out, and how to bring
 your own key.
 
+Once it is live, [**docs/observability.md**](docs/observability.md) covers
+knowing what it is doing: one row per request in Workers Analytics Engine,
+the SQL to query it, and a five-minute check that alerts when the window is
+spent or the limiter is unreachable. It records volume and outcome and
+deliberately never records which companies anybody looked up.
+
 Before you make a deployment public, read the
 [**what to expect**](docs/deployment.md#before-you-make-it-public) section. The
 short version: an authless URL means anyone holding it spends your budget, and
@@ -262,7 +268,7 @@ takes `verbose` to return the untouched payload alongside the shaped one.
 | `CompaniesHouseError` | Every failure carries a stable code, a plain sentence and a next step. |
 | Projections | Upstream read defensively field by field; output validated strictly against the published schema. |
 
-438 tests under Node and 12 inside `workerd`, no network and no API key required to run any of them.
+511 tests under Node and 16 inside `workerd`, no network and no API key required to run any of them.
 
 ## Configuration
 

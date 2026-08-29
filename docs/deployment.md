@@ -97,6 +97,19 @@ and `cpu_ms`.
 **Do not put the API key in `[vars]`.** Vars are plain text in the dashboard
 and in your repository. Use `wrangler secret put`.
 
+### Knowing what it is doing once it is live
+
+An authless endpoint you cannot observe is the one thing left that can bite
+you quietly: the key gets throttled, one caller drains the window, or the
+Durable Object has a bad hour, and each of those is invisible until somebody
+complains. `wrangler.toml` already declares an Analytics Engine dataset and a
+five-minute scheduled check — see
+[**observability.md**](observability.md) for what is recorded, the SQL to
+query it, and how to point alerts at a webhook.
+
+Worth doing first, because it is free and needs no code: Cloudflare dashboard
+→ Notifications → Add → Workers → error rate, pointed at your email.
+
 ### Before you deploy a change
 
 ```bash
@@ -194,6 +207,7 @@ every transport alike.
 | `CH_NEWCOMER_ALLOWANCE` | `1` | How many unseen callers to hold a reservation for |
 | `CH_MAX_TRACKED_CLIENTS` | `10000` | Bound on identities tracked for fair sharing |
 | `CH_ALLOW_CLIENT_KEYS` | `true` | Whether callers may bring their own key |
+| `CH_ALERT_WEBHOOK_URL` | — | A secret, not a var. `https` only. Where the scheduled check sends alerts; unset means none. See [observability.md](observability.md) |
 | `CH_TRUST_PROXY_HEADERS` | `false` | Believe `X-Forwarded-For` / `CF-Connecting-IP` when identifying callers. Turn on **only** behind a proxy you control |
 | `CH_MAX_SESSIONS` | `1000` | Open sessions kept before the least recently used is evicted |
 | `CH_SESSION_IDLE_MS` | `1800000` | How long a session may idle before being swept |

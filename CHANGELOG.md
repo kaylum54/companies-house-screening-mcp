@@ -6,6 +6,60 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added — you can now see what a deployment is doing
+
+Running an authless server on a shared key with no observability meant every
+failure mode was silent: the key gets throttled, one caller drains the window
+every five minutes, the Durable Object has a bad hour, the cache stops hitting
+and upstream cost triples. The operator found out by trying it.
+
+- **One row per request in Workers Analytics Engine**, carrying the tool, the
+  outcome, upstream calls, cache hits and misses, retries, 429s, stale answers,
+  refusals split by cause, the budget at the end, and whether the caller
+  brought their own key. Optional: without the binding the Worker runs exactly
+  as before.
+- **A five-minute scheduled check** that reads the Durable Object, writes a
+  heartbeat row so the budget can be charted through quiet periods, and alerts
+  when the window is nearly spent or the limiter is unreachable. Two
+  consecutive bad checks before it fires, one message when it recovers, and
+  nothing in between — alerting that cries wolf gets muted, and a muted channel
+  is worse than none.
+- **No new credential in the Worker.** The obvious alerting design queries the
+  Analytics Engine SQL API on a schedule, which needs an account API token
+  inside a Worker anybody on the internet can reach. Reading the Durable Object
+  — the same counter every request already consults — avoids it entirely. The
+  only secret is the optional `CH_ALERT_WEBHOOK_URL`, which must be `https`.
+- **[docs/observability.md](docs/observability.md)** with the column layout,
+  the five queries worth running, and the alerting setup;
+  [ADR 16](docs/adr/0016-measure-volume-not-content.md) on what is measured and
+  what is deliberately not.
+
+### Security — what the measurement deliberately cannot see
+
+- **No company numbers and no search queries.** What a user looks up is their
+  commercial business, and it is the most sensitive thing flowing through this
+  server. Nothing operational needs it.
+- **No per-caller identifier**, including the truncated fingerprint the limiter
+  already computes — a hashed address is still pseudonymous personal data, and
+  the only question that wanted it is answered by a count.
+- **Enforced by the interface, not by care.** `MetricsRecorder` exposes
+  counters and two label methods rather than a general `record(name, value)`,
+  and both labels pass a sanitiser keeping only `[a-z0-9_]`, truncated at 48
+  characters. A URL handed to it emits a mangled token rather than a leak;
+  `tests/metrics.test.ts` asserts that, including that a company number on the
+  end of a URL does not survive.
+
+### Fixed — found by the new tests rather than by review
+
+- **The pooled limiter never received the recorder.** It is constructed
+  explicitly in `worker.ts` rather than by the client, so the fallback that
+  wired it never ran and the deployed path recorded no budget readings and no
+  refusals at all — the two numbers the whole exercise existed for.
+- **A throwing metrics sink took the response down with it.** The flush runs in
+  a `finally` after the answer is built, and was guarded only inside one sink
+  implementation, so any other sink would have turned a good response into a
+  500. Measurement taking down the thing it measures.
+
 ### Added — documentation
 
 - **[docs/rate-limits.md](docs/rate-limits.md)**, the missing page. The shared
@@ -42,7 +96,7 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed — documentation
 
-- The README claimed 284 tests. It is 438 under Node plus 12 inside `workerd`.
+- The README claimed 284 tests. It is 511 under Node plus 16 inside `workerd`.
 - Corrected against the code while writing the page above: the rate-limit
   error field is `retry_after_ms`, not `retry_in_ms`; an unreachable limiter
   reports `UPSTREAM_UNAVAILABLE` rather than `RATE_LIMITED`, deliberately, so a

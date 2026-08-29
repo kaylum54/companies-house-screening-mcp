@@ -411,3 +411,5 @@ people to self-host over stdio.
 - [ADR 2 — the sliding-window limiter](adr/0002-sliding-window-rate-limiter.md) — the original single-process design and what was wrong with it
 - [ADR 15 — authless now, OAuth-ready](adr/0015-authless-now-oauth-ready.md) — what identity does and does not mean here
 - [docs/deployment.md](deployment.md) — running one
+- [docs/observability.md](observability.md) — seeing what a running one is doing
+- [ADR 16 — measure volume and outcome, never content](adr/0016-measure-volume-not-content.md) — what the analytics deliberately cannot tell you

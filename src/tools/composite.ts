@@ -263,7 +263,7 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
       annotations: READ_ONLY
     },
     async ({ company_number, include_officers, include_charges, include_insolvency, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'company_snapshot', async () => {
         const number = resolveCompanyNumber(company_number);
         const sections: SnapshotSection[] = ['profile'];
         if (include_officers !== false) sections.push('officers');
@@ -321,7 +321,7 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
       annotations: READ_ONLY
     },
     async ({ companies, include_officers, include_charges, include_insolvency }) =>
-      guard(logger, async () => {
+      guard(context, 'screen_companies', async () => {
         const sections: SnapshotSection[] = ['profile'];
         if (include_officers === true) sections.push('officers');
         if (include_charges !== false) sections.push('charges');
@@ -374,7 +374,7 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         // confident wrong diagnosis of an outage in this server, so say what
         // actually happened instead.
         if (budget.boundBy === 'unavailable') {
-          return fail(budgetUnavailable(budget.resetInMs), logger);
+          return fail(budgetUnavailable(budget.resetInMs), logger, context.metrics);
         }
 
         const affordable = Math.max(Math.floor(budget.remaining / perCompany), 0);

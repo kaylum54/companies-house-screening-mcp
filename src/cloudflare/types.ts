@@ -46,6 +46,28 @@ export interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
 }
 
+/**
+ * Workers Analytics Engine.
+ *
+ * `writeDataPoint` returns void and is not awaited by the platform: it is
+ * queued and delivered outside the request. That is exactly the property
+ * wanted here — measurement must not be able to slow a request down or fail
+ * one — and it is also why nothing downstream can confirm a write.
+ */
+export interface AnalyticsEngineDataset {
+  writeDataPoint(event: {
+    indexes?: string[];
+    blobs?: string[];
+    doubles?: number[];
+  }): void;
+}
+
+/** Fired by a Cron Trigger. `scheduledTime` is milliseconds since the epoch. */
+export interface ScheduledController {
+  scheduledTime: number;
+  cron: string;
+}
+
 /** Bindings and variables the Worker expects, as declared in wrangler.toml. */
 export interface WorkerEnv extends Record<string, unknown> {
   COMPANIES_HOUSE_API_KEY?: string;
@@ -53,4 +75,6 @@ export interface WorkerEnv extends Record<string, unknown> {
   RATE_LIMIT?: DurableObjectNamespace;
   /** KV namespace backing the shared response cache. Optional; memory-only without it. */
   CACHE?: KVNamespace;
+  /** Analytics Engine dataset. Optional; nothing is measured without it. */
+  ANALYTICS?: AnalyticsEngineDataset;
 }

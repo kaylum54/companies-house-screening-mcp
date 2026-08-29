@@ -4,6 +4,8 @@ import type { Config } from '../config.js';
 import { CompaniesHouseError, fromHttpStatus, malformedResponse, networkError, timeout } from '../errors.js';
 import type { Logger } from '../telemetry/logger.js';
 import { silentLogger } from '../telemetry/logger.js';
+import type { MetricsRecorder } from '../telemetry/metrics.js';
+import { silentMetrics } from '../telemetry/metrics.js';
 import type { CacheEntry, CacheStore, ResourceKind } from './cache.js';
 import { DEFAULT_TTLS, ResponseCache } from './cache.js';
 import type { RateLimitSnapshot } from './rate-limiter.js';
@@ -114,6 +116,14 @@ export interface CompaniesHouseClientOptions {
    * one caller and nobody to be fair to. See `withClientId`.
    */
   clientId?: string | undefined;
+  /**
+   * Where this request's activity is counted. Defaults to counting nothing.
+   *
+   * Per request rather than per client, because the thing an operator wants
+   * to read is "what did that call cost" — a counter shared across every
+   * session would answer a question nobody asks.
+   */
+  metrics?: MetricsRecorder | undefined;
 }
 
 /** Statuses worth trying again. Everything else is the caller's problem. */
@@ -129,6 +139,7 @@ export class CompaniesHouseClient {
   readonly #random: () => number;
   readonly #authorization: string;
   readonly #clientId: string;
+  readonly #metrics: MetricsRecorder;
   /**
    * Requests currently in flight, by cache key.
    *
@@ -161,6 +172,7 @@ export class CompaniesHouseClient {
     this.#logger = options.logger ?? silentLogger;
     this.#clock = options.clock ?? systemClock;
     this.#random = options.random ?? Math.random;
+    this.#metrics = options.metrics ?? silentMetrics;
     // Bound, not merely referenced. Node tolerates a detached `fetch`;
     // workerd requires `globalThis` as the receiver and throws
     // `TypeError: Illegal invocation` otherwise — so storing the bare global
@@ -186,6 +198,7 @@ export class CompaniesHouseClient {
         safetyMargin: config.rateSafetyMargin,
         clock: this.#clock,
         random: this.#random,
+        metrics: this.#metrics,
         // Unset means wait, which is stdio's long-standing behaviour and the
         // right one for a single local caller. Servers pass a ceiling.
         ...(config.maxWaitMs === undefined ? {} : { maxWaitMs: config.maxWaitMs })
@@ -223,6 +236,7 @@ export class CompaniesHouseClient {
       limiter: this.#limiter,
       fetchImpl: this.#fetch,
       random: this.#random,
+      metrics: this.#metrics,
       clientId
     });
   }
@@ -265,6 +279,7 @@ export class CompaniesHouseClient {
 
     if (lookup.state === 'fresh') {
       this.#logger.debug('cache hit', { url, resource });
+      this.#metrics.cacheHit();
       return {
         data: lookup.entry.body as T,
         meta: {
@@ -289,6 +304,10 @@ export class CompaniesHouseClient {
     // gets one.
     const existing = options.bypassCache === true ? undefined : this.#inFlight.get(key);
     if (existing !== undefined) {
+      // Counted as a hit because that is what happened to this request: it was
+      // served without contacting Companies House and spent no budget. The
+      // leader it waited on records its own miss.
+      this.#metrics.cacheHit();
       const shared = (await existing) as ClientResponse<T>;
       return {
         data: shared.data,
@@ -302,6 +321,8 @@ export class CompaniesHouseClient {
         }
       };
     }
+
+    this.#metrics.cacheMiss();
 
     try {
       const pending = this.#fetchWithRetries<T>({
@@ -332,6 +353,7 @@ export class CompaniesHouseClient {
       // labelled as an hour old beats no answer, so long as the caller can
       // see that is what happened.
       if (staleEntry !== undefined && CompaniesHouseError.is(error) && error.retryable) {
+        this.#metrics.staleServed();
         this.#logger.warn('serving stale cache entry after upstream failure', {
           url,
           code: error.code,
@@ -370,6 +392,7 @@ export class CompaniesHouseClient {
 
     for (let attempt = 0; attempt <= this.#config.maxRetries; attempt += 1) {
       if (attempt > 0) {
+        this.#metrics.upstreamRetry();
         await this.#clock.sleep(this.#backoffMs(attempt, lastError));
       }
 
@@ -380,6 +403,10 @@ export class CompaniesHouseClient {
 
       let response: Response;
       try {
+        // Counted here rather than around the whole attempt: this is the line
+        // that spends a slot of the key's window, and it is the number every
+        // cost question comes back to.
+        this.#metrics.upstreamRequest();
         response = await this.#fetch(url, {
           method: 'GET',
           headers: this.#headers(staleEntry),
@@ -443,6 +470,7 @@ export class CompaniesHouseClient {
       }
 
       const retryAfterMs = this.#retryAfterMs(response.headers);
+      if (response.status === 429) this.#metrics.upstreamThrottled();
       if (response.status === 429 && retryAfterMs !== undefined) {
         await this.#limiter.penalise(this.#clock.now() + retryAfterMs);
       }

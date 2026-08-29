@@ -9,13 +9,23 @@ import { ResponseCache } from '../http/cache.js';
 import { CompaniesHouseClient } from '../http/client.js';
 import { RateLimiter, SERVER_MAX_WAIT_MS } from '../http/rate-limiter.js';
 import { createLogger } from '../telemetry/logger.js';
+import { createRequestMetrics } from '../telemetry/metrics.js';
+import type { MetricsRecorder, MetricsSink } from '../telemetry/metrics.js';
 import { fingerprint, NoAuthProvider } from '../transport/identity.js';
 import type { AuthProvider } from '../transport/identity.js';
 import { createSession, defaultClientReservation } from '../transport/sessions.js';
 import { BudgetDurableObject } from './budget-do.js';
+import { alertEndpoint, decideAlert, INITIAL_ALERT_STATE, isAlertState, sendAlert } from './alerts.js';
+import type { AlertState } from './alerts.js';
+import { AnalyticsEngineSink } from './analytics-metrics.js';
 import { DurableObjectBudgetStore } from './do-budget-store.js';
 import { KvCacheStore } from './kv-cache-store.js';
-import type { DurableObjectState, ExecutionContext, WorkerEnv } from './types.js';
+import type {
+  DurableObjectState,
+  ExecutionContext,
+  ScheduledController,
+  WorkerEnv
+} from './types.js';
 
 /**
  * Cloudflare Workers entry point.
@@ -60,6 +70,16 @@ export interface WorkerDependencies {
   fetchImpl?: typeof fetch;
   /** Defaults to the package version, inlined at build time. */
   version?: string;
+  /**
+   * Where finished requests are written. Defaults to the Analytics Engine
+   * dataset when one is bound, and to nothing when it is not.
+   *
+   * Injectable because Miniflare's Analytics Engine binding is a no-op stub:
+   * a test in `workerd` can prove a data point was accepted but never what was
+   * in it, so every assertion about column layout runs under Node against a
+   * recording sink instead. See tests/cloudflare.test.ts.
+   */
+  metricsSink?: MetricsSink;
 }
 
 export function createFetchHandler(deps: WorkerDependencies = {}) {
@@ -93,142 +113,211 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
       );
     }
 
-    let config: Config;
+    // Below the routing checks on purpose: a health probe and a wrong-path 404
+    // are noise, and a row for each would bury the requests that matter.
+    const startedAt = Date.now();
+    // One recorder per invocation, and therefore one row per request — not one
+    // per upstream call. The platform accepts 250 `writeDataPoint` calls per
+    // invocation and a fifty-company screen makes roughly 150 upstream
+    // requests, so per-call writes would start dropping exactly the runs an
+    // operator most wants to see. See ./analytics-metrics.ts.
+    const metrics = createRequestMetrics();
+    const sink =
+      deps.metricsSink ??
+      (env.ANALYTICS === undefined
+        ? undefined
+        : new AnalyticsEngineSink({
+            dataset: env.ANALYTICS,
+            version,
+            onError: (error) => {
+              console.error(`analytics write failed: ${String(error)}`);
+            }
+          }));
+
     try {
-      config = loadConfig(env as NodeJS.ProcessEnv);
-    } catch (error) {
-      // The detail goes to the operator's logs, not down the wire. Whoever is
-      // calling this endpoint is unauthenticated, and which of our environment
-      // variables is misconfigured is none of their business.
-      const detail = error instanceof ConfigError ? error.message : String(error);
-      console.error(`configuration is invalid: ${detail}`);
-      return json(jsonRpcError(-32603, 'The server is misconfigured.'), 500);
+      return await handleMcp({ request, env, version, metrics, deps });
+    } finally {
+      // Written whatever happened, refusals included. A deployment turning
+      // callers away is precisely the one that needs a row, and measuring only
+      // the happy path would hide every problem worth alerting on.
+      //
+      // Guarded here rather than only inside the sink: this runs in a
+      // `finally` after the answer is built, so anything thrown replaces a
+      // good response with a 500. That defence has to hold for every sink,
+      // not only the one that happens to catch its own errors today.
+      try {
+        sink?.write(metrics.snapshot(Date.now() - startedAt));
+      } catch (error) {
+        console.error(`metrics flush failed: ${String(error)}`);
+      }
     }
+  };
+}
 
-    if (env.RATE_LIMIT === undefined) {
-      console.error('the RATE_LIMIT Durable Object binding is missing; see wrangler.toml');
-      return json(jsonRpcError(-32603, 'The server is misconfigured.'), 500);
-    }
+interface McpRequest {
+  request: Request;
+  env: WorkerEnv;
+  version: string;
+  metrics: MetricsRecorder;
+  deps: WorkerDependencies;
+}
 
-    const logger = createLogger({ level: config.logLevel });
-    const clock = systemClock;
+/**
+ * One MCP request, from configuration through to the transport.
+ *
+ * Split out from the routing above so that every exit path — a bad config, a
+ * rejected origin, a refused credential, a normal answer — passes through the
+ * caller's `finally` and is counted. Instrumentation that covers only the
+ * happy path measures the half of the system that was never in doubt.
+ */
+async function handleMcp({ request, env, version, metrics, deps }: McpRequest): Promise<Response> {
+  let config: Config;
+  try {
+    config = loadConfig(env as NodeJS.ProcessEnv);
+  } catch (error) {
+    // The detail goes to the operator's logs, not down the wire. Whoever is
+    // calling this endpoint is unauthenticated, and which of our environment
+    // variables is misconfigured is none of their business.
+    const detail = error instanceof ConfigError ? error.message : String(error);
+    console.error(`configuration is invalid: ${detail}`);
+    return json(jsonRpcError(-32603, 'The server is misconfigured.'), 500);
+  }
 
-    if (!originAllowed(request, config.allowedOrigins)) {
-      return json(jsonRpcError(-32600, 'Origin not allowed.'), 403);
-    }
+  if (env.RATE_LIMIT === undefined) {
+    console.error('the RATE_LIMIT Durable Object binding is missing; see wrangler.toml');
+    return json(jsonRpcError(-32603, 'The server is misconfigured.'), 500);
+  }
 
-    const authProvider =
-      deps.authProvider ?? new NoAuthProvider({ allowClientKeys: config.allowClientKeys });
+  const logger = createLogger({ level: config.logLevel });
+  const clock = systemClock;
 
-    const auth = await authProvider.authenticate({
-      header: (name) => request.headers.get(name),
-      // Cloudflare sets this and strips any client-supplied copy, so unlike
-      // `X-Forwarded-For` it cannot be forged by the caller.
-      remoteAddress: request.headers.get('cf-connecting-ip') ?? undefined
+  if (!originAllowed(request, config.allowedOrigins)) {
+    return json(jsonRpcError(-32600, 'Origin not allowed.'), 403);
+  }
+
+  const authProvider =
+    deps.authProvider ?? new NoAuthProvider({ allowClientKeys: config.allowClientKeys });
+
+  const auth = await authProvider.authenticate({
+    header: (name) => request.headers.get(name),
+    // Cloudflare sets this and strips any client-supplied copy, so unlike
+    // `X-Forwarded-For` it cannot be forged by the caller.
+    remoteAddress: request.headers.get('cf-connecting-ip') ?? undefined
+  });
+
+  if (!auth.ok) {
+    // Relayed, not dropped: a 401 without it leaves an MCP client with
+    // nothing to discover. `NoAuthProvider` never fails, so this is latent
+    // today — but the injected provider is the whole point of the seam in
+    // ADR 15, and the Node entry point already does this.
+    return new Response(JSON.stringify(jsonRpcError(-32001, auth.message)), {
+      status: auth.status,
+      headers: {
+        'content-type': 'application/json',
+        ...(auth.wwwAuthenticate === undefined
+          ? {}
+          : { 'www-authenticate': auth.wwwAuthenticate })
+      }
     });
+  }
 
-    if (!auth.ok) {
-      // Relayed, not dropped: a 401 without it leaves an MCP client with
-      // nothing to discover. `NoAuthProvider` never fails, so this is latent
-      // today — but the injected provider is the whole point of the seam in
-      // ADR 15, and the Node entry point already does this.
-      return new Response(JSON.stringify(jsonRpcError(-32001, auth.message)), {
-        status: auth.status,
-        headers: {
-          'content-type': 'application/json',
-          ...(auth.wwwAuthenticate === undefined
-            ? {}
-            : { 'www-authenticate': auth.wwwAuthenticate })
-        }
-      });
-    }
+  // KV is optional: without it the cache is memory-only, which for a Worker
+  // means per-isolate and nearly worthless — but a working server beats a
+  // refusing one, and the deployment guide says to bind it.
+  const cache = new ResponseCache({
+    store:
+      env.CACHE === undefined ? undefined : new KvCacheStore({ namespace: env.CACHE, logger }),
+    enabled: config.cacheEnabled,
+    clock,
+    logger
+  });
 
-    // KV is optional: without it the cache is memory-only, which for a Worker
-    // means per-isolate and nearly worthless — but a working server beats a
-    // refusing one, and the deployment guide says to bind it.
-    const cache = new ResponseCache({
-      store:
-        env.CACHE === undefined ? undefined : new KvCacheStore({ namespace: env.CACHE, logger }),
-      enabled: config.cacheEnabled,
+  const namespace = env.RATE_LIMIT;
+
+  const pooledClient = new CompaniesHouseClient({
+    config,
+    logger,
+    clock,
+    cache,
+    limiter: new RateLimiter({
       clock,
-      logger
-    });
+      maxWaitMs: config.maxWaitMs ?? SERVER_MAX_WAIT_MS,
+      // Handed over directly for the same reason as the limits below: this
+      // limiter is constructed here rather than by the client, so it inherits
+      // nothing. Without it the pooled path — which is the deployed one —
+      // records no budget readings and no refusals at all.
+      metrics,
+      // Passed explicitly: without them the limiter falls back to the
+      // documented defaults for its reported ceiling, and a deployment that
+      // set CH_RATE_LIMIT would be told a number that was never true.
+      limit: config.rateLimit,
+      safetyMargin: config.rateSafetyMargin,
+      store: new DurableObjectBudgetStore({
+        namespace,
+        budgetName: budgetName(config.apiKey),
+        // The pooled window: shared by strangers, so fair shares apply.
+        budgetOptions: {
+          limit: config.rateLimit,
+          windowMs: config.rateWindowMs,
+          safetyMargin: config.rateSafetyMargin,
+          clientReservation: defaultClientReservation(config),
+          newcomerAllowance: config.newcomerAllowance,
+          maxTrackedClients: config.maxTrackedClients
+        }
+      })
+    }),
+    metrics,
+    ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl })
+  });
 
-    const namespace = env.RATE_LIMIT;
-
-    const pooledClient = new CompaniesHouseClient({
+  const session = createSession(
+    {
       config,
       logger,
       clock,
+      version,
       cache,
-      limiter: new RateLimiter({
-        clock,
-        maxWaitMs: config.maxWaitMs ?? SERVER_MAX_WAIT_MS,
-        // Passed explicitly: without them the limiter falls back to the
-        // documented defaults for its reported ceiling, and a deployment that
-        // set CH_RATE_LIMIT would be told a number that was never true.
-        limit: config.rateLimit,
-        safetyMargin: config.rateSafetyMargin,
-        store: new DurableObjectBudgetStore({
+      pooledClient,
+      // A caller's own key gets its own Durable Object, and therefore its own
+      // window, reached by the same route as the pooled one.
+      createBudgetStore: (label) =>
+        new DurableObjectBudgetStore({
           namespace,
-          budgetName: budgetName(config.apiKey),
-          // The pooled window: shared by strangers, so fair shares apply.
+          budgetName: `client-${label}`,
+          // A private window has exactly one caller. Slicing it into shares
+          // for callers who by definition cannot reach it would only make it
+          // smaller, so `clientReservation` is deliberately left unset.
           budgetOptions: {
             limit: config.rateLimit,
             windowMs: config.rateWindowMs,
-            safetyMargin: config.rateSafetyMargin,
-            clientReservation: defaultClientReservation(config),
-            newcomerAllowance: config.newcomerAllowance,
-            maxTrackedClients: config.maxTrackedClients
+            safetyMargin: config.rateSafetyMargin
           }
-        })
-      }),
+        }),
+      metrics,
       ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl })
-    });
+    },
+    auth.identity
+  );
 
-    const session = createSession(
-      {
-        config,
-        logger,
-        clock,
-        version,
-        cache,
-        pooledClient,
-        // A caller's own key gets its own Durable Object, and therefore its own
-        // window, reached by the same route as the pooled one.
-        createBudgetStore: (label) =>
-          new DurableObjectBudgetStore({
-            namespace,
-            budgetName: `client-${label}`,
-            // A private window has exactly one caller. Slicing it into shares
-            // for callers who by definition cannot reach it would only make it
-            // smaller, so `clientReservation` is deliberately left unset.
-            budgetOptions: {
-              limit: config.rateLimit,
-              windowMs: config.rateWindowMs,
-              safetyMargin: config.rateSafetyMargin
-            }
-          }),
-        ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl })
-      },
-      auth.identity
+  // Read from the outcome, not from the header: a caller who supplies this
+  // deployment's own key is routed into the pool and gets no window of their
+  // own, so counting the header would overstate it.
+  if (session.ownsBudget) metrics.ownKey();
+
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    // Stateless: see the note at the top of this file.
+    enableJsonResponse: true
+  });
+
+  try {
+    await session.server.connect(
+      transport as unknown as Parameters<typeof session.server.connect>[0]
     );
-
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      // Stateless: see the note at the top of this file.
-      enableJsonResponse: true
-    });
-
-    try {
-      await session.server.connect(
-        transport as unknown as Parameters<typeof session.server.connect>[0]
-      );
-      return await transport.handleRequest(request);
-    } finally {
-      // Nothing survives the request, so nothing may be left holding a socket.
-      await session.server.close().catch(() => undefined);
-    }
-  };
+    return await transport.handleRequest(request);
+  } finally {
+    // Nothing survives the request, so nothing may be left holding a socket.
+    await session.server.close().catch(() => undefined);
+  }
 }
 
 export function originAllowed(request: Request, allowed: string[]): boolean {
@@ -262,10 +351,167 @@ export class RateLimitDurableObject extends BudgetDurableObject {
   }
 }
 
+
 /**
- * The deployed handler.
+ * Where the alerting state lives between scheduled runs.
  *
- * The version defaults inside `createFetchHandler` rather than being passed
- * here, so that every caller gets it right rather than only this one.
+ * Shares the response cache's namespace rather than asking for a second one:
+ * cache keys are SHA-256 hex, so a prefixed literal cannot collide with one,
+ * and requiring another binding to get alerting would mean most deployments
+ * never turn it on.
  */
-export default { fetch: createFetchHandler() };
+const ALERT_STATE_KEY = 'ch-mcp:alert-state';
+
+export interface ScheduledDependencies {
+  fetchImpl?: typeof fetch;
+  version?: string;
+  metricsSink?: MetricsSink;
+  /** Injectable so tests do not have to wait for a real clock. */
+  now?: () => number;
+}
+
+/**
+ * The Cron Trigger: check the window, alert if it is in trouble, leave a mark.
+ *
+ * It reads the Durable Object directly. The alternative — querying the
+ * Analytics Engine SQL API — would need an account-scoped API token stored in
+ * a Worker that anybody on the internet can reach, which is a poor trade for
+ * a number the deployment already holds authoritatively.
+ *
+ * The heartbeat matters as much as the alert. Without it the dataset only has
+ * rows when somebody called, so a quiet period and an outage look identical,
+ * and the budget cannot be charted over time.
+ */
+export function createScheduledHandler(deps: ScheduledDependencies = {}) {
+  return async function scheduledHandler(
+    _controller: ScheduledController,
+    env: WorkerEnv,
+    _ctx: ExecutionContext
+  ): Promise<void> {
+    const version = deps.version ?? WORKER_VERSION;
+    const now = deps.now ?? (() => Date.now());
+    const fetchImpl = deps.fetchImpl ?? globalThis.fetch.bind(globalThis);
+
+    let config: Config;
+    try {
+      config = loadConfig(env as NodeJS.ProcessEnv);
+    } catch (error) {
+      const detail = error instanceof ConfigError ? error.message : String(error);
+      console.error(`scheduled check skipped, configuration is invalid: ${detail}`);
+      return;
+    }
+
+    if (env.RATE_LIMIT === undefined) {
+      console.error('scheduled check skipped: the RATE_LIMIT binding is missing');
+      return;
+    }
+
+    const store = new DurableObjectBudgetStore({
+      namespace: env.RATE_LIMIT,
+      budgetName: budgetName(config.apiKey),
+      budgetOptions: {
+        limit: config.rateLimit,
+        windowMs: config.rateWindowMs,
+        safetyMargin: config.rateSafetyMargin,
+        clientReservation: defaultClientReservation(config),
+        newcomerAllowance: config.newcomerAllowance,
+        maxTrackedClients: config.maxTrackedClients
+      }
+    });
+
+    // `peek`, never `acquire`: watching the budget must not spend any of it.
+    // A check every five minutes that took a slot would consume 288 requests a
+    // day of the very allowance it exists to protect.
+    //
+    // Read under a client id of its own, so the figure is what an arriving
+    // caller would be allowed right now rather than the raw global remainder.
+    // That is the number worth alerting on — it answers "is the next person
+    // through the door going to be refused" — and since a share is bounded by
+    // what is globally available, it can only fall near zero when the window
+    // genuinely is. `peek` records nothing, so this does not itself count as a
+    // caller or inflate anybody else's crowd.
+    const reading = await store.peek('scheduled-check', now());
+
+    const metrics = createRequestMetrics();
+    metrics.tool('heartbeat');
+    metrics.budget(reading.remaining, reading.limit);
+    if (reading.boundBy === 'unavailable') metrics.refused('unavailable');
+
+    const sink =
+      deps.metricsSink ??
+      (env.ANALYTICS === undefined
+        ? undefined
+        : new AnalyticsEngineSink({ dataset: env.ANALYTICS, version }));
+    try {
+      sink?.write(metrics.snapshot(0));
+    } catch (error) {
+      console.error(`heartbeat write failed: ${String(error)}`);
+    }
+
+    const configured =
+      typeof env['CH_ALERT_WEBHOOK_URL'] === 'string' ? env['CH_ALERT_WEBHOOK_URL'] : undefined;
+    const endpoint = alertEndpoint(configured);
+
+    // Both of these say so out loud. An operator who has set a webhook
+    // believes alerting is on, and silently declining to send would leave
+    // them trusting a channel that will never fire — which is the failure
+    // this whole check exists to prevent, reproduced one level up.
+    //
+    // The rejected value is never echoed: it is a capability URL and a
+    // secret, and a log line is the wrong place for it.
+    if (configured !== undefined && configured.trim() !== '' && endpoint === undefined) {
+      console.error(
+        'CH_ALERT_WEBHOOK_URL is set but is not a usable https URL; no alerts will be sent'
+      );
+      return;
+    }
+    if (endpoint === undefined) return;
+
+    // Without KV there is nowhere to keep a strike count, so the hysteresis
+    // that stops this crying wolf cannot work. Refusing to alert is the honest
+    // answer: alerting that fires on every blip gets muted, and a muted
+    // channel is worse than none because it is still believed to work.
+    if (env.CACHE === undefined) {
+      console.error(
+        'CH_ALERT_WEBHOOK_URL is set but the CACHE binding is missing, so alert state cannot be kept; no alerts will be sent'
+      );
+      return;
+    }
+
+    const previous = await readAlertState(env.CACHE);
+    const decision = decideAlert(previous, reading, now());
+
+    try {
+      await env.CACHE.put(ALERT_STATE_KEY, JSON.stringify(decision.state));
+    } catch (error) {
+      console.error(`alert state write failed: ${String(error)}`);
+    }
+
+    if (decision.payload !== undefined) {
+      const delivered = await sendAlert({ url: endpoint, payload: decision.payload, fetchImpl });
+      if (!delivered) console.error('alert webhook did not accept the message');
+    }
+  };
+}
+
+async function readAlertState(cache: NonNullable<WorkerEnv['CACHE']>): Promise<AlertState> {
+  try {
+    const raw = await cache.get(ALERT_STATE_KEY, 'text');
+    if (raw === null) return { ...INITIAL_ALERT_STATE };
+    const parsed: unknown = JSON.parse(raw);
+    // A stored value that is not a state is treated as absent rather than
+    // trusted: a malformed `strikes` would otherwise latch the alerting
+    // permanently on or permanently off.
+    return isAlertState(parsed) ? parsed : { ...INITIAL_ALERT_STATE };
+  } catch {
+    return { ...INITIAL_ALERT_STATE };
+  }
+}
+
+/**
+ * The deployed handlers.
+ *
+ * The version defaults inside each factory rather than being passed here, so
+ * that every caller gets it right rather than only this one.
+ */
+export default { fetch: createFetchHandler(), scheduled: createScheduledHandler() };
