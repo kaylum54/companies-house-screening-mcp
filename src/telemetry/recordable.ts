@@ -38,5 +38,8 @@ export const RECORDABLE_ERROR_CODES: readonly string[] = [
   'internal_error',
   'misconfigured',
   'origin_rejected',
-  'unauthorised'
+  'unauthorised',
+  // Answered by the MCP SDK above this server's handlers: a malformed body, an
+  // unknown method, an unknown tool, or arguments that failed the schema.
+  'protocol_error'
 ];

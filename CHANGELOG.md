@@ -44,8 +44,9 @@ and upstream cost triples. The operator found out by trying it.
   the only question that wanted it is answered by a count.
 - **Enforced by an allowlist.** `MetricsRecorder` exposes counters and two
   label methods rather than a general `record(name, value)`, and a label is
-  emitted only if it is a registered tool name or a typed error code. Anything
-  else records `other`.
+  emitted only if it is a value this codebase defines — a registered tool name,
+  a typed error code, or one of the handful of literals in
+  `src/telemetry/recordable.ts`. Anything else records `other`.
 
 ### Fixed — found by a five-agent audit of the observability work
 
@@ -112,6 +113,50 @@ covered by a test that fails without the fix.
   implementation, so any other sink would have turned a good response into a
   500. Measurement taking down the thing it measures.
 
+### Fixed — found by a second audit, of the first audit's fixes
+
+Three more agents, one of them tasked only with finding defects the previous
+round introduced. It found some.
+
+- **A 429 hold from Companies House became invisible.** Reading the whole
+  window rather than one caller's share was the right fix for the alert
+  threshold, but during a hold the window is deliberately reported *full* — a
+  hold is not a spending problem — so the check reported perfect health while
+  every caller was being refused. Before the fix it at least alerted, wrongly
+  labelled. There is now an `upstream_throttled` condition, checked before the
+  window is looked at.
+- **A changed cause re-fired on every check.** The round-one fix for "a change
+  of cause is swallowed" had no bound, so a flapping coordinator produced an
+  alert every five minutes forever — caller-drivable, and the exact outcome the
+  hysteresis exists to prevent. Two messages are now at least half an hour
+  apart.
+- **A failed recovery message was still lost.** The delivery-failure fixup only
+  helped the firing direction; a `resolved` that failed to send landed on a
+  state that had already been reset. A failed send now persists the previous
+  state unchanged, so either direction retries.
+- **`double11` was never incremented for the case it was added for.**
+  `screen_companies` sizes its batch from a `peek` and never asks the limiter
+  about the companies it drops, so the documented headline shape — a batch that
+  came back short and said so — recorded zero refusals.
+- **A degraded answer was indistinguishable from a clean one.** The composite
+  tools absorb a failed section rather than failing the whole snapshot; a
+  Companies House wobble degrading every answer on the server produced a
+  dataset of clean `ok` rows. New `subrequestFailures` column.
+- **Protocol-level failures still charted as successes.** A malformed body, an
+  unknown method, an unknown tool and arguments that fail the schema are all
+  answered by the MCP SDK above `guard`, so nothing saw them. The response is
+  now inspected — only when no tool was named, so a successful call is never
+  re-parsed — and recorded as `protocol_error`.
+- **`budgetRemaining` meant two things in one column.** Request rows carried
+  one caller's share, heartbeat rows the whole window; under a hold a request
+  row read "0 of 570" while the window was almost untouched.
+- **A retry was counted for an attempt that never reached the network**, so the
+  retry rate read 100% for a request that retried nothing.
+- **A coalesced request served a stale answer was counted in no cache column**,
+  so five requests served from cache reported a 0% hit rate.
+- **An unrecognised refusal cause was dropped rather than counted**, which is
+  the undercount the guard was written to prevent.
+
 ### Added — documentation
 
 - **[docs/rate-limits.md](docs/rate-limits.md)**, the missing page. The shared
@@ -148,7 +193,7 @@ covered by a test that fails without the fix.
 
 ### Fixed — documentation
 
-- The README claimed 284 tests. It is 549 under Node plus 16 inside `workerd`.
+- The README claimed 284 tests. It is 562 under Node plus 16 inside `workerd`.
 - Corrected against the code while writing the page above: the rate-limit
   error field is `retry_after_ms`, not `retry_in_ms`; an unreachable limiter
   reports `UPSTREAM_UNAVAILABLE` rather than `RATE_LIMITED`, deliberately, so a

@@ -46,6 +46,17 @@ describe('RequestMetrics counts what a request did', () => {
     });
   });
 
+  it('counts a sub-request that failed and was absorbed into the answer', () => {
+    // A snapshot where three of four sections 503 still returns a useful
+    // answer, and used to record a clean `ok` row with nothing to say that
+    // three quarters of it was missing.
+    const metrics = production();
+    metrics.tool('company_snapshot');
+    for (let i = 0; i < 3; i += 1) metrics.subrequestFailed();
+
+    expect(metrics.snapshot(1)).toMatchObject({ outcome: 'ok', subrequestFailures: 3 });
+  });
+
   it('accumulates the counters a cost question comes back to', () => {
     const metrics = production();
     metrics.tool('company_snapshot');
@@ -131,15 +142,17 @@ describe('a refusal is a fact about a sub-request, not about the response', () =
     }
   );
 
-  it('ignores a cause outside the closed set', () => {
+  it('counts a cause outside the closed set, but does not publish it', () => {
     // `boundBy` reaches the recorder from a Durable Object response that the
-    // store casts without validating. This is the last point at which a
-    // changed remote shape can be stopped from writing an arbitrary string
-    // into an analytics column.
+    // store casts without validating. Two things have to be true at once: the
+    // string must not reach a column, and the refusal must still be counted —
+    // dropping it made the guard undercount to zero, which is the failure it
+    // was written to prevent.
     const metrics = production();
     (metrics.refused as (cause: string) => void)('/company/04138203');
 
-    expect(metrics.snapshot(1)).toMatchObject({ refusalCause: 'none', refusals: 0 });
+    expect(metrics.snapshot(1)).toMatchObject({ refusalCause: 'other', refusals: 1 });
+    expect(JSON.stringify(metrics.snapshot(1))).not.toContain('04138203');
   });
 });
 
@@ -300,6 +313,7 @@ describe('the Analytics Engine data point', () => {
     upstreamRetries: 2,
     upstreamThrottled: 3,
     staleServed: 5,
+    subrequestFailures: 6,
     budgetRemaining: 71,
     budgetLimit: 570,
     ownKey: true,
@@ -314,7 +328,7 @@ describe('the Analytics Engine data point', () => {
     expect(toDataPoint(snapshot, '0.3.0')).toEqual({
       indexes: ['screen_companies'],
       blobs: ['refused', 'rate_limited', 'client', '0.3.0'],
-      doubles: [150, 12, 38, 2, 3, 5, 71, 570, 4200, 1, 9]
+      doubles: [150, 12, 38, 2, 3, 5, 71, 570, 4200, 1, 9, 6]
     });
   });
 

@@ -26,7 +26,7 @@ import type { AnalyticsEngineDataset } from './types.js';
  *   index1  tool          also the sampling key, so a flood of one tool
  *                         cannot hide the others
  *   blob1   outcome       ok | error | refused
- *   blob2   errorCode     '' unless outcome is error
+ *   blob2   errorCode     '' unless the request failed; set on `refused` too
  *   blob3   refusalCause  none | client | global | penalty | unavailable
  *   blob4   version       the deployed version, for before/after comparisons
  *
@@ -43,6 +43,9 @@ import type { AnalyticsEngineDataset } from './types.js';
  *   double11 refusals           sub-requests the limiter turned away; non-zero
  *                               with outcome `ok` is a batch that came back
  *                               short and said so
+ *   double12 subrequestFailures sub-requests that failed and were absorbed
+ *                               into the answer — a degraded snapshot, which
+ *                               is otherwise indistinguishable from a clean one
  *
  * Nothing here identifies a caller or says which company was looked up. See
  * ADR 16 for why that is a deliberate limit rather than an oversight.
@@ -70,7 +73,8 @@ export function toDataPoint(snapshot: RequestSnapshot, version: string): DataPoi
       snapshot.budgetLimit,
       snapshot.durationMs,
       snapshot.ownKey ? 1 : 0,
-      snapshot.refusals
+      snapshot.refusals,
+      snapshot.subrequestFailures
     ]
   };
 }

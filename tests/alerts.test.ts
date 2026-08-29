@@ -202,11 +202,32 @@ describe('decideAlert', () => {
     expect(fired.payload?.reason).toBe('budget_exhausted');
     state = fired.state;
 
-    const changed = decideAlert(state, UNAVAILABLE, 3_000);
+    // Past the minimum gap: inside it the re-fire is deliberately suppressed,
+    // which is the next test.
+    const changed = decideAlert(state, UNAVAILABLE, 2_000 + 31 * 60 * 1000);
     expect(changed.state.firing).toBe(true);
     expect(changed.payload).toMatchObject({ state: 'firing', reason: 'limiter_unavailable' });
     // And says which incident it supersedes, so the channel reads coherently.
     expect(changed.payload?.text).toContain('replacing');
+  });
+
+  it('will not send on every check when the cause flaps', () => {
+    // Without a bound, a coordinator alternating between timing out and
+    // reporting a drained window re-fired on every single check — an alert
+    // every five minutes forever, which is the outcome this whole file is
+    // written against, and it is caller-drivable.
+    let state = decideAlert(INITIAL_ALERT_STATE, EXHAUSTED, 0).state;
+    const sent: string[] = [];
+    for (let check = 1; check <= 8; check += 1) {
+      const decision = decideAlert(state, check % 2 === 0 ? EXHAUSTED : UNAVAILABLE, check * 300_000);
+      if (decision.payload !== undefined) sent.push(decision.payload.reason);
+      state = decision.state;
+    }
+
+    // Forty minutes of flapping: the first alert, and one more once the gap
+    // has passed. Not eight.
+    expect(sent.length).toBeLessThanOrEqual(2);
+    expect(sent.length).toBeGreaterThan(0);
   });
 
   it('still resolves after the cause changed mid-incident', () => {
@@ -238,6 +259,26 @@ describe('decideAlert', () => {
     expect(second.state.since).toBe(300_000);
   });
 
+  it('names a 429 hold as its own problem, not as a healthy window', () => {
+    // The worst reading this check can produce. During a hold every caller is
+    // refused, and the window is deliberately reported *full* because a hold
+    // is not a spending problem — so judging on the window alone reported
+    // perfect health while the deployment was completely down.
+    const held = reading({
+      remaining: 0,
+      globalRemaining: 530,
+      granted: false,
+      boundBy: 'penalty',
+      limit: 570
+    });
+
+    const first = decideAlert(INITIAL_ALERT_STATE, held, 1_000);
+    const second = decideAlert(first.state, held, 2_000);
+
+    expect(second.payload).toMatchObject({ state: 'firing', reason: 'upstream_throttled' });
+    expect(second.payload?.text).toContain('rate-limited the key');
+  });
+
   it('carries no caller identity or company number in the payload', () => {
     const first = decideAlert(INITIAL_ALERT_STATE, EXHAUSTED, 1_000);
     const payload = decideAlert(first.state, EXHAUSTED, 2_000).payload;
@@ -253,7 +294,13 @@ describe('decideAlert', () => {
 });
 
 describe('isAlertState', () => {
-  const valid: AlertState = { firing: true, strikes: 2, since: 1, reason: 'budget_exhausted' };
+  const valid: AlertState = {
+    firing: true,
+    strikes: 2,
+    since: 1,
+    reason: 'budget_exhausted',
+    alertedAt: 1
+  };
 
   it('accepts a well-formed state', () => {
     expect(isAlertState(valid)).toBe(true);
@@ -263,6 +310,9 @@ describe('isAlertState', () => {
     ['null', null],
     ['a string', 'firing'],
     ['a missing field', { firing: true, strikes: 1, since: 0 }],
+    ['a missing alertedAt', { firing: true, strikes: 1, since: 0, reason: 'none' }],
+    ['a negative strike count', { ...valid, strikes: -20 }],
+    ['a fractional strike count', { ...valid, strikes: 1.5 }],
     ['a non-finite strike count', { ...valid, strikes: Number.NaN }],
     ['an infinite timestamp', { ...valid, since: Number.POSITIVE_INFINITY }],
     ['an unknown reason', { ...valid, reason: 'something_else' }]
@@ -712,6 +762,35 @@ describe('the scheduled run, end to end', () => {
 
     expect(sent).toHaveLength(2);
     expect(JSON.parse(sent[1] ?? '{}')).toMatchObject({ state: 'firing' });
+  });
+
+  it('retries a recovery message the webhook refused', async () => {
+    // The failed-delivery fixup only ever helped the firing direction: a
+    // failed `resolved` landed on a state that had already been reset, so the
+    // recovery was dropped for good and the operator kept an incident open.
+    const sent: string[] = [];
+    const cache = kv();
+    let accept = true;
+    const handler = createScheduledHandler({
+      fetchImpl: (async (_input, init) => {
+        sent.push(String(init?.body));
+        return new Response('', { status: accept ? 200 : 500 });
+      }) as typeof fetch
+    });
+
+    await handler(controller, envAt(4, cache), ctx);
+    await handler(controller, envAt(4, cache), ctx);
+    expect(JSON.parse(sent[0] ?? '{}')).toMatchObject({ state: 'firing' });
+
+    // Recovered, but the webhook is down.
+    accept = false;
+    await handler(controller, envAt(500, cache), ctx);
+    expect(JSON.parse(sent[1] ?? '{}')).toMatchObject({ state: 'resolved' });
+
+    // Still healthy, webhook back: the recovery is sent again rather than lost.
+    accept = true;
+    await handler(controller, envAt(500, cache), ctx);
+    expect(JSON.parse(sent[2] ?? '{}')).toMatchObject({ state: 'resolved' });
   });
 
   it.each([

@@ -1010,6 +1010,57 @@ describe('what the Worker measures', () => {
     ]);
   });
 
+  it.each([
+    ['a malformed body', 'not json at all'],
+    ['an unknown tool', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'no_such_tool', arguments: {} } })],
+    ['an unknown method', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'nope/at/all', params: {} })],
+    ['arguments that fail the schema', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_company', arguments: { company_number: 12345 } } })]
+  ])('records %s as a protocol error, not as a healthy request', async (_what, body) => {
+    // The MCP SDK answers all of these itself, above `guard`, as ordinary
+    // JSON-RPC error responses rather than exceptions. Nothing downstream ever
+    // saw them, so a client sending garbage in a loop charted as healthy
+    // traffic in the one column an operator alerts on.
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) },
+      fetchImpl: async () => new Response(PROFILE, { status: 200 })
+    });
+
+    await handler(
+      new Request('https://worker.test/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream'
+        },
+        body
+      }),
+      env(),
+      ctx
+    );
+
+    expect(rows[0]).toMatchObject({ outcome: 'error', errorCode: 'protocol_error' });
+  });
+
+  it('leaves a healthy handshake alone', async () => {
+    // The inspection must not turn ordinary traffic into errors.
+    const rows = await rowsFor({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } }
+    });
+
+    expect(rows[0]).toMatchObject({ tool: 'unknown', outcome: 'ok', errorCode: '' });
+  });
+
+  it('does not re-read the body of a successful tool call', async () => {
+    // Guarded on `tool === 'unknown'` so a fifty-company screen is never
+    // parsed twice just to find out it succeeded.
+    const [row] = await rowsFor(call('get_company', { company_number: '04138203' }));
+    expect(row).toMatchObject({ tool: 'get_company', outcome: 'ok', errorCode: '' });
+  });
+
   it('does not fail a request when the sink throws', async () => {
     // The sink runs in a `finally` after the answer is built. A throw there
     // would turn a good response into a 500.

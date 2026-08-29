@@ -30,8 +30,8 @@
 
 import type { BudgetBound } from '../http/budget.js';
 
-/** Why the limiter said no. Mirrors `BudgetBound`, plus "it did not". */
-export type RefusalCause = BudgetBound | 'none';
+/** Why the limiter said no: a `BudgetBound`, "it did not", or one we do not know. */
+export type RefusalCause = BudgetBound | 'none' | 'other';
 
 /** The only values `refusalCause` may take. Checked, not assumed. */
 const REFUSAL_CAUSES: readonly BudgetBound[] = ['global', 'client', 'penalty', 'unavailable'];
@@ -140,6 +140,16 @@ export interface RequestSnapshot {
   upstreamThrottled: number;
   /** Expired answers served because the upstream was unreachable. */
   staleServed: number;
+  /**
+   * Sub-requests that failed and were absorbed into the answer.
+   *
+   * The composite tools deliberately do not fail a whole snapshot because one
+   * section 404ed or 503ed — they report the section as unavailable and carry
+   * on, which is right for the caller and invisible to everyone else. Without
+   * this, a Companies House wobble that degrades every answer on the server
+   * produces a dataset of clean `ok` rows.
+   */
+  subrequestFailures: number;
   /** Budget left for this caller at the end, or -1 if never observed. */
   budgetRemaining: number;
   /** The effective window, or -1 if never observed. */
@@ -164,6 +174,7 @@ export interface MetricsRecorder {
   upstreamRetry(): void;
   upstreamThrottled(): void;
   staleServed(): void;
+  subrequestFailed(): void;
   refused(cause: BudgetBound): void;
   failed(code: string): void;
   ownKey(): void;
@@ -201,6 +212,7 @@ export function createRequestMetrics(options: RequestMetricsOptions): MetricsRec
   let upstreamRetries = 0;
   let upstreamThrottled = 0;
   let staleServed = 0;
+  let subrequestFailures = 0;
   let budgetRemaining = -1;
   let budgetLimit = -1;
   let ownKey = false;
@@ -227,14 +239,20 @@ export function createRequestMetrics(options: RequestMetricsOptions): MetricsRec
     staleServed: () => {
       staleServed = clamp(staleServed + 1);
     },
+    subrequestFailed: () => {
+      subrequestFailures = clamp(subrequestFailures + 1);
+    },
     refused: (cause) => {
       // Validated rather than trusted. `boundBy` reaches here from a Durable
       // Object response that `do-budget-store.ts` casts without checking, so
       // this is the last point at which a changed remote shape can be stopped
       // from writing an arbitrary string into an analytics column.
-      if (!REFUSAL_CAUSES.includes(cause)) return;
       refusals = clamp(refusals + 1);
-      refusalCause = cause;
+      // Counted first, then labelled. Returning early on an unknown cause
+      // defeated the guard's own purpose: a changed Durable Object shape would
+      // have silently undercounted refusals to zero rather than recording that
+      // some happened for a reason we could not name.
+      refusalCause = REFUSAL_CAUSES.includes(cause) ? cause : UNRECOGNISED;
       // Deliberately does not touch `outcome`. A refusal is a fact about one
       // sub-request; whether the caller ended up with an answer is a fact
       // about the request, and `failed` is what knows it.
@@ -267,6 +285,7 @@ export function createRequestMetrics(options: RequestMetricsOptions): MetricsRec
       upstreamRetries,
       upstreamThrottled,
       staleServed,
+      subrequestFailures,
       budgetRemaining,
       budgetLimit,
       ownKey,
@@ -289,6 +308,7 @@ export const silentMetrics: MetricsRecorder = {
   upstreamRetry: () => {},
   upstreamThrottled: () => {},
   staleServed: () => {},
+  subrequestFailed: () => {},
   refused: () => {},
   failed: () => {},
   ownKey: () => {},
@@ -305,6 +325,7 @@ export const silentMetrics: MetricsRecorder = {
     upstreamRetries: 0,
     upstreamThrottled: 0,
     staleServed: 0,
+    subrequestFailures: 0,
     budgetRemaining: -1,
     budgetLimit: -1,
     ownKey: false,

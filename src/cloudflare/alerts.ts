@@ -35,15 +35,22 @@ export interface AlertState {
   since: number;
   /** Which condition fired, so a change of cause is reported rather than swallowed. */
   reason: AlertReason;
+  /** When the last message went out, so a flapping deployment cannot spam. */
+  alertedAt: number;
 }
 
-export type AlertReason = 'budget_exhausted' | 'limiter_unavailable' | 'none';
+export type AlertReason =
+  | 'budget_exhausted'
+  | 'limiter_unavailable'
+  | 'upstream_throttled'
+  | 'none';
 
 export const INITIAL_ALERT_STATE: AlertState = {
   firing: false,
   strikes: 0,
   since: 0,
-  reason: 'none'
+  reason: 'none',
+  alertedAt: 0
 };
 
 /**
@@ -64,6 +71,18 @@ const STRIKES_BEFORE_ALERTING = 2;
  * little left and somebody could act.
  */
 const EXHAUSTED_BELOW = 0.05;
+
+/**
+ * Floor on the gap between two firing alerts.
+ *
+ * The cause-change re-fire exists so a changed situation is not swallowed, but
+ * without a bound it is a lever: a caller cycling the budget across the
+ * threshold, or a coordinator flapping, produces a message on every check
+ * forever. Thirty minutes keeps a genuine escalation prompt while making the
+ * channel un-spammable. Recovery is never suppressed — the end of an incident
+ * is the one message an operator is owed.
+ */
+const MIN_ALERT_GAP_MS = 30 * 60 * 1000;
 
 export interface AlertPayload {
   /** `firing` when something is wrong, `resolved` when it has recovered. */
@@ -109,9 +128,9 @@ export function decideAlert(
       payload: {
         state: 'resolved',
         reason: previous.reason,
-        text: `Recovered: ${describe(previous.reason)} has cleared. Budget ${reading.globalRemaining} of ${reading.limit}.`,
-        budgetRemaining: reading.globalRemaining,
-        budgetLimit: reading.limit,
+        text: `Recovered: ${describe(previous.reason)} has cleared. Budget ${sane(reading.globalRemaining)} of ${sane(reading.limit)}.`,
+        budgetRemaining: sane(reading.globalRemaining),
+        budgetLimit: sane(reading.limit),
         at: new Date(now).toISOString()
       }
     };
@@ -129,7 +148,7 @@ export function decideAlert(
   // minutes is how a channel gets muted, and a muted channel is worse than no
   // channel because everyone believes it is working.
   if (previous.firing && previous.reason === reason) {
-    return { state: { firing: true, strikes, since, reason } };
+    return { state: { ...previous, strikes, since, reason } };
   }
 
   // Firing already, but on something else. The situation has changed under
@@ -138,21 +157,31 @@ export function decideAlert(
   // strike count again — which previously cleared `firing` silently and left
   // the original alert open forever.
   if (previous.firing) {
+    // Bounded: a deployment flapping between two causes would otherwise send
+    // on every check. Still firing, still the new cause — just quiet about it
+    // until the gap has passed.
+    if (now - previous.alertedAt < MIN_ALERT_GAP_MS) {
+      return { state: { ...previous, strikes, since, reason } };
+    }
     return {
-      state: { firing: true, strikes, since, reason },
+      state: { firing: true, strikes, since, reason, alertedAt: now },
       payload: fire(reason, reading, now, previous.reason)
     };
   }
 
   if (strikes < STRIKES_BEFORE_ALERTING) {
-    return { state: { firing: false, strikes, since, reason } };
+    return { state: { ...previous, firing: false, strikes, since, reason } };
   }
 
   return {
-    state: { firing: true, strikes, since, reason },
+    state: { firing: true, strikes, since, reason, alertedAt: now },
     payload: fire(reason, reading, now)
   };
 }
+
+/** The DO response is cast without validation upstream; this is the last guard. */
+const sane = (value: number): number =>
+  Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
 
 function fire(
   reason: AlertReason,
@@ -167,9 +196,9 @@ function fire(
   return {
     state: 'firing',
     reason,
-    text: `${changed}${describe(reason)} Budget ${reading.globalRemaining} of ${reading.limit}.`,
-    budgetRemaining: reading.globalRemaining,
-    budgetLimit: reading.limit,
+    text: `${changed}${describe(reason)} Budget ${sane(reading.globalRemaining)} of ${sane(reading.limit)}.`,
+    budgetRemaining: sane(reading.globalRemaining),
+    budgetLimit: sane(reading.limit),
     at: new Date(now).toISOString()
   };
 }
@@ -179,6 +208,14 @@ function classify(reading: BudgetOutcome): AlertReason {
   // which would otherwise be read as an exhausted budget and send the
   // operator looking at traffic when the coordinator is down.
   if (reading.boundBy === 'unavailable') return 'limiter_unavailable';
+
+  // A 429 hold, checked before the window is looked at. Companies House has
+  // throttled the key, so every caller is being refused — and the window is
+  // deliberately reported *full* during a hold, because a hold is not a
+  // spending problem. Judging this on `globalRemaining` alone reported perfect
+  // health while the deployment was completely down for everybody, which is
+  // the worst reading this check can produce.
+  if (reading.boundBy === 'penalty') return 'upstream_throttled';
 
   // `globalRemaining`, not `remaining`. The check peeks as an unseen client,
   // and an unseen client is guaranteed a reservation — 71 of 570 at the
@@ -199,6 +236,8 @@ function describe(reason: AlertReason): string {
       return 'The rate-limit Durable Object could not be reached, so requests are failing closed.';
     case 'budget_exhausted':
       return 'The shared Companies House budget is nearly spent and callers are being refused.';
+    case 'upstream_throttled':
+      return 'Companies House has rate-limited the key, so every caller is being refused until the hold expires.';
     case 'none':
       return 'Nothing is wrong.';
   }
@@ -213,9 +252,19 @@ export function isAlertState(value: unknown): value is AlertState {
     return false;
   }
   if (typeof candidate['since'] !== 'number' || !Number.isFinite(candidate['since'])) return false;
+  if (
+    typeof candidate['alertedAt'] !== 'number' ||
+    !Number.isFinite(candidate['alertedAt'])
+  ) {
+    return false;
+  }
+  // A corrupted count now delays the first alert by that many checks rather
+  // than by one, since strikes no longer reset on a change of cause.
+  if (!Number.isInteger(candidate['strikes']) || (candidate['strikes'] as number) < 0) return false;
   return (
     candidate['reason'] === 'budget_exhausted' ||
     candidate['reason'] === 'limiter_unavailable' ||
+    candidate['reason'] === 'upstream_throttled' ||
     candidate['reason'] === 'none'
   );
 }

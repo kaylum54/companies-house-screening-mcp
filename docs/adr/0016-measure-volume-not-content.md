@@ -48,8 +48,11 @@ Deliberately **not** recorded:
   company.
 - **Any per-caller identifier**, including the truncated fingerprint the
   limiter already computes. A hashed IP address is still pseudonymous personal
-  data, and the only question that wanted it — how many callers are competing —
-  is answered by a count.
+  data, and nothing operational needs it: contention shows up in the refusal
+  count and the budget column without anybody being named. (An earlier draft
+  claimed a caller *count* answered the question. There is no such column, and
+  saying there was would have been a justification for a capability that does
+  not exist.)
 - **API keys, URLs, request bodies, headers.**
 
 **The rule is enforced by an allowlist, not by a filter.** `MetricsRecorder`
@@ -97,10 +100,22 @@ authoritative counter every request already consults, so there is no read
 token anywhere. The only secret involved is the delivery address, which is
 optional and must be `https`.
 
-**Alerting waits for two consecutive bad checks.** A busy five minutes
-legitimately drains the window — that is the design working. Alerting that
-fires on it gets muted, and a muted channel is worse than none because it is
-still believed to work. Recovery is reported exactly once.
+**Alerting waits for two consecutive bad checks**, and no two messages come
+within half an hour of each other. A busy five minutes legitimately drains the
+window — that is the design working. Alerting that fires on it gets muted, and
+a muted channel is worse than none because it is still believed to work.
+
+The gap is not belt-and-braces: a first attempt at "report a change of cause
+rather than swallowing it" re-fired on every check when the cause flapped,
+which is caller-drivable and is precisely the outcome the rule exists to
+prevent. Recovery is reported once, and if that message fails to send it is
+retried rather than dropped.
+
+**A 429 hold is its own alert.** During one the window is deliberately
+reported full — a hold is not a spending problem — so a check that judges only
+the remaining budget reports perfect health while every caller is being
+refused. That was the state this reached after fixing an unrelated defect, and
+it is the worst reading the check can produce.
 
 ## Consequences
 
@@ -120,6 +135,21 @@ records `-1` rather than `0` while the Durable Object is unreachable, so a
 coordinator outage shows as a gap rather than as the budget collapsing, and it
 is written as an `error` row rather than a `refused` one because a `peek`
 turns nobody away.
+
+**A degraded answer is recorded as one.** The composite tools absorb a failed
+section rather than failing the whole snapshot, which is right for the caller
+and was invisible to everyone else: a Companies House wobble that degraded
+every answer on the server produced a dataset of clean `ok` rows.
+`subrequestFailures` is the column that shows it, and it is the most likely
+real incident here.
+
+**A caller can write rows.** Every `POST /mcp` produces one, including ones
+rejected for a bad origin or a bad body, so an unauthenticated client can
+drive data points into the operator's dataset at request rate. Accepted: data
+points are cheap, the row is what makes protocol-level abuse visible in the
+first place, and the alternative — measuring only requests that got past the
+gate — is the blindness this whole ADR is about. Cloudflare's own request
+limits are the bound.
 
 Analytics Engine columns are positional — `blob1..blob20`, `double1..double20`
 — and inserting one in the middle does not migrate old rows, it reinterprets

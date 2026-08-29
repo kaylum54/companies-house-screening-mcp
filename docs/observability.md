@@ -14,11 +14,19 @@ This page turns that on. Two parts, and the first is worth having on its own:
 
 Both are optional and both are off until you bind something.
 
-> **What is never recorded:** company numbers, search queries, caller
+> **What never reaches the dataset:** company numbers, search queries, caller
 > identifiers of any kind, API keys, URLs, request bodies. What a user looks up
 > is their commercial business, and this records volume and outcome only. The
-> guarantee is structural rather than careful — see
+> guarantee is structural — a label is emitted only if it is a value this
+> codebase defines — rather than careful. See
 > [ADR 16](adr/0016-measure-volume-not-content.md).
+>
+> Scoped to the dataset deliberately. Setting `CH_LOG_LEVEL=debug`, which the
+> deployment guide suggests while diagnosing, *does* log upstream URLs
+> including company numbers and search terms. Put it back to `info` afterwards.
+
+> **A JSON-RPC batch writes one row**, attributed to the last tool in it. Batches
+> are rare from MCP clients; if you use them, per-tool attribution will be off.
 
 ---
 
@@ -54,8 +62,8 @@ seeing.
 |---|---|
 | `index1` | Tool name. Also the sampling key, so a flood of one tool cannot hide the others |
 | `blob1` | Outcome: `ok`, `error`, or `refused` — see below |
-| `blob2` | Error code, when there was one |
-| `blob3` | Refusal cause: `none`, `client`, `global`, `penalty`, `unavailable` |
+| `blob2` | Error code, **lower-cased** — `rate_limited`, not `RATE_LIMITED`. Set on `refused` rows too |
+| `blob3` | Refusal cause: `none`, `client`, `global`, `penalty`, `unavailable`, or `other` if the coordinator sent something unrecognised |
 | `blob4` | Deployed version, for before-and-after comparisons |
 | `double1` | Upstream requests — what this cost the key |
 | `double2` | Cache hits |
@@ -63,11 +71,12 @@ seeing.
 | `double4` | Upstream retries |
 | `double5` | Upstream 429s from Companies House |
 | `double6` | Stale answers served |
-| `double7` | Budget remaining at the end, or `-1` if never consulted |
+| `double7` | The **whole window** remaining at the end, not this caller's share. `-1` if never consulted |
 | `double8` | Budget limit, or `-1` |
 | `double9` | Duration in milliseconds |
 | `double10` | `1` if the caller brought their own key |
 | `double11` | Sub-requests the limiter turned away |
+| `double12` | Sub-requests that failed and were absorbed into the answer |
 
 **`refused` is narrower than it sounds.** It means the request *failed* and
 the limiter had turned something away. A `screen_companies` run where one
@@ -76,10 +85,18 @@ company was skipped for budget but the table came back complete and correct is
 Counting `blob1 = 'refused'` as "callers turned away" would count successful
 responses as rejections.
 
-**Two values in `index1` are not tools.** `heartbeat` is the scheduled check
-(288 rows a day), and `unknown` is any request that never reached a handler —
-an `initialize` handshake, a `tools/list`, or a call the MCP SDK rejected on
-its schema before this server saw it. Exclude both when reading a tool mix.
+**Three values in `index1` are not tools.** `heartbeat` is the scheduled check
+(288 rows a day); `unknown` is any request that never reached a handler — an
+`initialize` handshake, a `tools/list`, or a call the MCP SDK rejected before
+this server saw it; and `other` is the allowlist's answer to a label it did
+not recognise, which should never appear and is worth investigating if it
+does. Exclude all three when reading a tool mix.
+
+**A degraded answer is still `ok`.** The composite tools deliberately do not
+fail a whole snapshot because one section 503ed — they mark the section
+unavailable and carry on, which is right for the caller. `double12` is how you
+see it: a rising count there with `outcome = 'ok'` is Companies House having a
+bad hour, and it is the most likely real incident on this server.
 
 **Rows are written for `POST /mcp` only.** Health checks, wrong paths and
 non-POST methods return before the recorder exists, deliberately: uptime
@@ -123,7 +140,7 @@ SELECT index1 AS tool,
        SUM(_sample_interval) AS calls
 FROM companies_house_mcp
 WHERE timestamp > NOW() - INTERVAL '1' DAY
-  AND index1 NOT IN ('heartbeat', 'unknown')
+  AND index1 NOT IN ('heartbeat', 'unknown', 'other')
 GROUP BY tool
 ORDER BY calls DESC
 ```
@@ -143,8 +160,14 @@ WHERE timestamp > NOW() - INTERVAL '1' DAY
 **Is anybody being refused, and why?** The four causes are four different
 problems: `client` means fair sharing is biting and somebody should bring
 their own key, `global` means the window is genuinely spent, `penalty` means
-Companies House returned a 429, and `unavailable` means the Durable Object
-could not be reached and this is not a budget problem at all.
+Companies House returned a 429 *with* a `Retry-After` and a hold is in force,
+and `unavailable` means the Durable Object could not be reached and this is
+not a budget problem at all.
+
+One caveat on the arithmetic: `blob3` is a single value per row while
+`double11` is a count, so a request refused for two different reasons
+attributes all of them to whichever came last. Rare, and it only affects the
+split between causes, not the total.
 
 Filtered on the count rather than on the outcome, so a batch that came back
 short but correct is included — that is the common case, and filtering on
@@ -159,6 +182,20 @@ WHERE timestamp > NOW() - INTERVAL '1' DAY
   AND double11 > 0
 GROUP BY cause
 ORDER BY refusals DESC
+```
+
+**Are the answers any good?** Degraded answers are the failure that looks like
+success — every one of these rows is an `ok`.
+
+```sql
+SELECT index1 AS tool,
+       SUM(_sample_interval * double12) AS absorbed_failures,
+       SUM(_sample_interval) AS requests
+FROM companies_house_mcp
+WHERE timestamp > NOW() - INTERVAL '1' DAY
+  AND double12 > 0
+GROUP BY tool
+ORDER BY absorbed_failures DESC
 ```
 
 **What is this costing the key?**
@@ -254,13 +291,24 @@ Two numbers and a state. No caller, no company, no key.
 |---|---|
 | `budget_exhausted` | The window is at or under 5% remaining, twice in a row |
 | `limiter_unavailable` | The Durable Object could not be reached, twice in a row |
+| `upstream_throttled` | Companies House has 429ed the key and a hold is in force, twice in a row |
+
+`upstream_throttled` is checked before the window is even looked at, because
+during a hold the window is deliberately reported *full* — a hold is not a
+spending problem. Judging it on the remaining budget alone reported perfect
+health while every caller was being refused.
 
 **Two consecutive checks, not one.** A busy five minutes legitimately drains
 the window; that is the design working, not a fault. Two means it failed to
 recover across a full period.
 
-**It repeats nothing.** While a problem continues you hear nothing further.
-When it clears you get one `"state": "resolved"` message and the count resets.
+**It barely repeats.** While the same problem continues you hear nothing
+further. If the *cause* changes — a drained window becomes an unreachable
+coordinator — you get one more message naming what it replaced, but no sooner
+than 30 minutes after the last one, so a flapping deployment cannot fill a
+channel. When it clears you get one `"state": "resolved"` and the count resets;
+if that message fails to send it is retried on the next check rather than
+lost.
 
 ### Reading the budget figure
 
@@ -276,10 +324,12 @@ against it sat 2.5× underneath a floor the number could not cross. One caller
 draining the window while everybody else was refused produced a steady 71 and
 no alert at all.
 
-**During a Durable Object outage the budget columns are `-1`, not `0`.**
-Nothing was read, so nothing is reported; the chart shows a gap rather than
-drawing an outage as the window collapsing. Those rows carry
-`blob1 = 'error'`, `blob2 = 'upstream_unavailable'`.
+**During a Durable Object outage the budget columns are `-1`, not `0`,** on
+every row — heartbeat and request alike. Nothing was read, so nothing is
+reported and the chart shows a gap rather than drawing an outage as the window
+collapsing. Heartbeat rows carry `blob1 = 'error'`; request rows carry
+`blob1 = 'refused'` with `blob3 = 'unavailable'`, because their callers really
+were turned away.
 
 ---
 

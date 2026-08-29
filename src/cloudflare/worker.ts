@@ -144,7 +144,9 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
           }));
 
     try {
-      return await handleMcp({ request, env, version, metrics, deps });
+      const response = await handleMcp({ request, env, version, metrics, deps });
+      await recordTransportFailure(response, metrics);
+      return response;
     } catch (error) {
       // An escaping throw is a bug in this server, and it used to flush a row
       // saying `ok` on its way out — the single most misleading thing the
@@ -167,6 +169,47 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
       }
     }
   };
+}
+
+/**
+ * Counts the failures the MCP SDK answers on our behalf.
+ *
+ * `guard` only wraps tool handlers, and the SDK rejects a malformed body, an
+ * unknown method, an unknown tool name and invalid arguments *above* it — as
+ * ordinary JSON-RPC error responses, not as exceptions. Nothing downstream
+ * ever saw them, so a client sending garbage in a loop was indistinguishable
+ * from healthy traffic in the one column an operator alerts on.
+ *
+ * Only inspected when the recorder still says the request succeeded and no
+ * tool was ever named, which is precisely the set of requests the SDK can
+ * have rejected. A successful `tools/call` has a tool, so its body — which for
+ * a fifty-company screen is large — is never parsed.
+ *
+ * Never throws. This runs after a good answer has been built.
+ */
+async function recordTransportFailure(
+  response: Response,
+  metrics: MetricsRecorder
+): Promise<void> {
+  try {
+    const snapshot = metrics.snapshot(0);
+    if (snapshot.outcome !== 'ok' || snapshot.tool !== 'unknown') return;
+
+    const body: unknown = await response.clone().json();
+    const failed = (message: unknown): boolean => {
+      if (typeof message !== 'object' || message === null) return false;
+      const record = message as { error?: unknown; result?: { isError?: unknown } };
+      return record.error !== undefined || record.result?.isError === true;
+    };
+
+    // A batch answers with an array; one bad member makes the request a
+    // failure, since the caller did not get what they asked for.
+    const anyFailed = Array.isArray(body) ? body.some(failed) : failed(body);
+    if (anyFailed) metrics.failed('protocol_error');
+  } catch {
+    // A body that will not parse is not worth failing a request over, and the
+    // response itself has already gone out unchanged.
+  }
 }
 
 interface McpRequest {
@@ -520,7 +563,14 @@ export function createScheduledHandler(deps: ScheduledDependencies = {}) {
       const delivered = await sendAlert({ url: endpoint, payload: decision.payload, fetchImpl });
       if (!delivered) {
         console.error('alert webhook did not accept the message; will retry on the next check');
-        state = { ...state, firing: false };
+        // The previous state, unchanged — not a patched version of the new
+        // one. Nothing was communicated, so nothing should be remembered as
+        // communicated, and recomputing from the same starting point next
+        // check retries whichever message this was. Forcing `firing: false`
+        // instead only retried the firing direction: a failed `resolved`
+        // landed on a state that was already reset, so the recovery was
+        // dropped for good and the operator kept an incident open forever.
+        state = previous;
       }
     }
 

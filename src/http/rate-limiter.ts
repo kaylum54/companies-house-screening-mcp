@@ -273,7 +273,19 @@ export class RateLimiter {
     // Every outcome passes through here, granted or not, so the figure
     // recorded is the state at the end of the request rather than at whichever
     // point somebody remembered to sample it.
-    this.#metrics.budget(outcome.remaining, outcome.limit);
+    //
+    // Except when nothing was read. An unreachable coordinator reports zero
+    // for everything as a fail-closed placeholder, and recording that as a
+    // real reading drew an outage as the budget collapsing — on request rows,
+    // which are the ones an operator charts. The heartbeat already skipped it;
+    // this is the same rule for the path that produces most of the data.
+    if (outcome.boundBy !== 'unavailable') {
+      // The window, not this caller's share of it — the same figure the
+      // heartbeat records, so one column means one thing. They disagreed by a
+      // whole reservation, and under a 429 hold a request row said "0 of 570"
+      // while the window was almost untouched.
+      this.#metrics.budget(outcome.globalRemaining, outcome.limit);
+    }
     return this.#lastKnown;
   }
 

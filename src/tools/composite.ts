@@ -26,6 +26,7 @@ import { CompaniesHouseError } from '../errors.js';
 import type { RequestMeta } from '../http/client.js';
 import { CompaniesHouseClient } from '../http/client.js';
 import { budgetUnavailable } from '../http/rate-limiter.js';
+import type { MetricsRecorder } from '../telemetry/metrics.js';
 import type { ToolContext } from './shared.js';
 import { companyNumberInput, fail, guard, mergeMeta, ok, resolveCompanyNumber, verboseInput, withRaw } from './shared.js';
 
@@ -69,7 +70,8 @@ async function fetchSections(
   client: CompaniesHouseClient,
   companyNumber: string,
   sections: SnapshotSection[],
-  now: number
+  now: number,
+  metrics?: MetricsRecorder | undefined
 ): Promise<SectionResults> {
   const profileResponse = await client.get<unknown>({
     path: `/company/${companyNumber}`,
@@ -152,6 +154,11 @@ async function fetchSections(
       continue;
     }
 
+    // Absorbed into the answer rather than failing the whole snapshot, which
+    // is right for the caller and invisible to everybody else. Counted so that
+    // an upstream wobble degrading every answer on the server does not produce
+    // a dataset of clean `ok` rows.
+    metrics?.subrequestFailed();
     results.unavailable.push({
       section,
       code: CompaniesHouseError.is(error) ? error.code : 'INTERNAL_ERROR',
@@ -270,7 +277,7 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         if (include_charges !== false) sections.push('charges');
         if (include_insolvency !== false) sections.push('insolvency');
 
-        const fetched = await fetchSections(client, number, sections, context.now());
+        const fetched = await fetchSections(client, number, sections, context.now(), context.metrics);
         const body: Body<CompanySnapshotResult> = buildSnapshot({
           profile: fetched.profile,
           officers: fetched.officers,
@@ -393,7 +400,16 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
           budget.resetInMs > 0
             ? `Retry in ${Math.ceil(budget.resetInMs / 1000)} seconds, or pass a shorter list.`
             : 'Pass a shorter list, or retry once the current five-minute window rolls over.';
-        const notScreened = resolved.slice(affordable).map((resolution) => ({
+        const skipped = resolved.slice(affordable);
+        // Counted here because nothing else will. The batch is sized from a
+        // `peek`, so the limiter is never *asked* about the companies that are
+        // dropped and its own refusal accounting never runs — which left the
+        // headline case for this column, a batch that came back short and said
+        // so, reading zero refusals.
+        for (let i = 0; i < skipped.length; i += 1) {
+          context.metrics?.refused(budget.boundBy ?? 'client');
+        }
+        const notScreened = skipped.map((resolution) => ({
           input: resolution.input,
           reason: `Not enough rate-limit budget left in this five-minute window. Screening this company needs ${perCompany} requests. ${retry}`
         }));
@@ -409,10 +425,12 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         const metas: RequestMeta[] = [];
         const rows = await mapWithConcurrency(toScreen, DEFAULT_CONCURRENCY, async (resolution) => {
           const outcome = await attempt(() =>
-            fetchSections(client, resolution.companyNumber, sections, context.now())
+            fetchSections(client, resolution.companyNumber, sections, context.now(), context.metrics)
           );
 
           if (!outcome.ok) {
+            // A whole company that could not be read, absorbed into the table.
+            context.metrics?.subrequestFailed();
             return {
               failed: {
                 input: resolution.input,

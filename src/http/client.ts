@@ -325,10 +325,15 @@ export class CompaniesHouseClient {
         // The leader failed. This request holds its own stale entry and is
         // entitled to the same fallback a leader would get — previously the
         // await sat outside every `try`, so a follower was rejected while the
-        // leader beside it was served an hour-old answer. Falling through
-        // rather than returning, so the one exit below stays the only one.
+        // leader beside it was served an hour-old answer.
         const fallback = this.#staleFallback<T>(staleEntry, error, url, startedAt);
-        if (fallback !== undefined) return fallback;
+        if (fallback !== undefined) {
+          // Still a hit: this request contacted nobody and spent nothing.
+          // Without it four of five coalesced requests served from cache
+          // appeared in neither cache column and the hit rate read zero.
+          this.#metrics.cacheHit();
+          return fallback;
+        }
         throw error;
       }
     }
@@ -420,7 +425,6 @@ export class CompaniesHouseClient {
 
     for (let attempt = 0; attempt <= this.#config.maxRetries; attempt += 1) {
       if (attempt > 0) {
-        this.#metrics.upstreamRetry();
         await this.#clock.sleep(this.#backoffMs(attempt, lastError));
       }
 
@@ -433,8 +437,12 @@ export class CompaniesHouseClient {
       try {
         // Counted here rather than around the whole attempt: this is the line
         // that spends a slot of the key's window, and it is the number every
-        // cost question comes back to.
+        // cost question comes back to. The retry is counted alongside it, and
+        // after `acquire` — an attempt the limiter refuses never reaches the
+        // network, and counting it made the retry rate read 100% for a request
+        // that retried nothing.
         this.#metrics.upstreamRequest();
+        if (attempt > 0) this.#metrics.upstreamRetry();
         response = await this.#fetch(url, {
           method: 'GET',
           headers: this.#headers(staleEntry),
