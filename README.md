@@ -84,7 +84,7 @@ your own key.
 Once it is live, [**docs/observability.md**](docs/observability.md) covers
 knowing what it is doing: one row per request in Workers Analytics Engine,
 the SQL to query it, and a five-minute check that alerts when the window is
-spent or the limiter is unreachable. It records volume and outcome and
+spent, the limiter is unreachable, or Companies House has throttled the key. It records volume and outcome and
 deliberately never records which companies anybody looked up.
 
 Before you make a deployment public, read the

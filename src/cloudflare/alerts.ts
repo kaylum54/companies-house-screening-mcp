@@ -33,8 +33,19 @@ export interface AlertState {
    * full period.
    */
   since: number;
-  /** Which condition fired, so a change of cause is reported rather than swallowed. */
+  /** The latest condition observed, whether or not anybody has been told yet. */
   reason: AlertReason;
+  /**
+   * The condition the operator was actually *told* about.
+   *
+   * Kept apart from `reason` because collapsing the two silently deleted a
+   * change of cause: the suppression branch wrote the new cause into state
+   * without sending anything, so the next check saw "same cause, already
+   * firing" and stayed quiet for good. The operator was never told the
+   * coordinator had gone down, and then received a `resolved` naming an
+   * incident that had never been announced.
+   */
+  announced: AlertReason;
   /** When the last message went out, so a flapping deployment cannot spam. */
   alertedAt: number;
 }
@@ -50,6 +61,7 @@ export const INITIAL_ALERT_STATE: AlertState = {
   strikes: 0,
   since: 0,
   reason: 'none',
+  announced: 'none',
   alertedAt: 0
 };
 
@@ -73,14 +85,19 @@ const STRIKES_BEFORE_ALERTING = 2;
 const EXHAUSTED_BELOW = 0.05;
 
 /**
- * Floor on the gap between two firing alerts.
+ * Floor on the gap between two *firing* alerts.
  *
- * The cause-change re-fire exists so a changed situation is not swallowed, but
- * without a bound it is a lever: a caller cycling the budget across the
+ * Without a bound this is a lever: a caller cycling the budget across the
  * threshold, or a coordinator flapping, produces a message on every check
- * forever. Thirty minutes keeps a genuine escalation prompt while making the
- * channel un-spammable. Recovery is never suppressed — the end of an incident
- * is the one message an operator is owed.
+ * forever. It has to cover the first message of an incident as well as a
+ * change of cause, and it has to survive a recovery — applying it only to the
+ * cause change left the front door open, and a budget oscillating around the
+ * threshold fired, resolved and re-fired at a pair of messages every ten
+ * minutes indefinitely.
+ *
+ * Recovery itself is never suppressed: the end of an incident is the one
+ * message an operator is owed, and because a `resolved` can only follow a
+ * `firing`, bounding the firing direction bounds both.
  */
 const MIN_ALERT_GAP_MS = 30 * 60 * 1000;
 
@@ -92,6 +109,15 @@ export interface AlertPayload {
   text: string;
   budgetRemaining: number;
   budgetLimit: number;
+  /**
+   * When the trouble started, ISO-8601.
+   *
+   * `since` was computed, persisted and validated but reached no message, no
+   * log and no query — so the field justified its own onset-not-firing timing
+   * in a comment that nothing could observe. It is in the payload now, which
+   * is what makes that argument true.
+   */
+  since: string;
   at: string;
 }
 
@@ -118,19 +144,26 @@ export function decideAlert(
   const healthy = reason === 'none';
 
   if (healthy) {
-    if (!previous.firing) {
-      return { state: { ...INITIAL_ALERT_STATE } };
-    }
+    // `alertedAt` survives a recovery; everything else resets. The gap between
+    // firing messages has to span incidents or it bounds nothing — zeroing the
+    // clock here let a budget oscillating around the threshold fire, resolve
+    // and fire again at a pair of messages every ten minutes, forever.
+    const cleared: AlertState = { ...INITIAL_ALERT_STATE, alertedAt: previous.alertedAt };
+    if (!previous.firing) return { state: cleared };
+
     // Recovery is reported exactly once, then the state resets. An operator
-    // who was told about a problem is owed the end of it.
+    // who was told about a problem is owed the end of it — and is owed it
+    // under the name they were given, which is `announced` rather than
+    // whatever the last check happened to observe.
     return {
-      state: { ...INITIAL_ALERT_STATE },
+      state: cleared,
       payload: {
         state: 'resolved',
-        reason: previous.reason,
-        text: `Recovered: ${describe(previous.reason)} has cleared. Budget ${sane(reading.globalRemaining)} of ${sane(reading.limit)}.`,
+        reason: previous.announced,
+        text: `Recovered: ${summarise(previous.announced)} has cleared. Budget ${sane(reading.globalRemaining)} of ${sane(reading.limit)}.`,
         budgetRemaining: sane(reading.globalRemaining),
         budgetLimit: sane(reading.limit),
+        since: new Date(previous.since).toISOString(),
         at: new Date(now).toISOString()
       }
     };
@@ -144,38 +177,43 @@ export function decideAlert(
   const strikes = bad ? previous.strikes + 1 : 1;
   const since = previous.strikes > 0 ? previous.since : now;
 
-  // Already alerting on this same cause: stay quiet. Repeating every five
-  // minutes is how a channel gets muted, and a muted channel is worse than no
-  // channel because everyone believes it is working.
-  if (previous.firing && previous.reason === reason) {
-    return { state: { ...previous, strikes, since, reason } };
-  }
+  // Note what was seen; `announced` is untouched, so a cause change that is
+  // held back here is still outstanding on the next check rather than being
+  // mistaken for something already sent.
+  const pending: AlertState = { ...previous, strikes, since, reason };
+
+  // Nothing new to say: this exact cause is already out with the operator.
+  // Repeating it every five minutes is how a channel gets muted, and a muted
+  // channel is worse than none because everyone believes it is working.
+  if (previous.firing && previous.announced === reason) return { state: pending };
+
+  // Everything past here wants to send something, so this is the one place
+  // the gap needs to be enforced. `alertedAt === 0` means nothing has ever
+  // been sent, and a clock that has gone backwards is treated as elapsed
+  // rather than as a suppression that would never lift.
+  const sinceLast = now - previous.alertedAt;
+  const gapElapsed =
+    previous.alertedAt === 0 || sinceLast < 0 || sinceLast >= MIN_ALERT_GAP_MS;
+  if (!gapElapsed) return { state: pending };
 
   // Firing already, but on something else. The situation has changed under
   // the operator and they are still owed the end of the first incident, so
-  // this re-fires immediately under the new cause rather than waiting out the
-  // strike count again — which previously cleared `firing` silently and left
-  // the original alert open forever.
+  // this re-fires under the new cause rather than clearing `firing` silently
+  // and leaving the original alert open forever.
   if (previous.firing) {
-    // Bounded: a deployment flapping between two causes would otherwise send
-    // on every check. Still firing, still the new cause — just quiet about it
-    // until the gap has passed.
-    if (now - previous.alertedAt < MIN_ALERT_GAP_MS) {
-      return { state: { ...previous, strikes, since, reason } };
-    }
     return {
-      state: { firing: true, strikes, since, reason, alertedAt: now },
-      payload: fire(reason, reading, now, previous.reason)
+      state: { firing: true, strikes, since, reason, announced: reason, alertedAt: now },
+      payload: fire(reason, reading, since, now, previous.announced)
     };
   }
 
   if (strikes < STRIKES_BEFORE_ALERTING) {
-    return { state: { ...previous, firing: false, strikes, since, reason } };
+    return { state: { ...pending, firing: false } };
   }
 
   return {
-    state: { firing: true, strikes, since, reason, alertedAt: now },
-    payload: fire(reason, reading, now)
+    state: { firing: true, strikes, since, reason, announced: reason, alertedAt: now },
+    payload: fire(reason, reading, since, now)
   };
 }
 
@@ -186,6 +224,7 @@ const sane = (value: number): number =>
 function fire(
   reason: AlertReason,
   reading: BudgetOutcome,
+  since: number,
   now: number,
   replacing?: AlertReason
 ): AlertPayload {
@@ -199,6 +238,7 @@ function fire(
     text: `${changed}${describe(reason)} Budget ${sane(reading.globalRemaining)} of ${sane(reading.limit)}.`,
     budgetRemaining: sane(reading.globalRemaining),
     budgetLimit: sane(reading.limit),
+    since: new Date(since).toISOString(),
     at: new Date(now).toISOString()
   };
 }
@@ -217,6 +257,15 @@ function classify(reading: BudgetOutcome): AlertReason {
   // the worst reading this check can produce.
   if (reading.boundBy === 'penalty') return 'upstream_throttled';
 
+  // A reading that is not a number at all is a coordinator you cannot trust,
+  // not a healthy window. `sane()` was applied to the message and not to the
+  // branch that decides whether to send one, so `NaN <= NaN * 0.05` and
+  // `NaN > 0` both came out false and a corrupt reading classified as perfect
+  // health — clearing a firing alert with a spurious `resolved` on the way.
+  if (!Number.isFinite(reading.globalRemaining) || !Number.isFinite(reading.limit)) {
+    return 'limiter_unavailable';
+  }
+
   // `globalRemaining`, not `remaining`. The check peeks as an unseen client,
   // and an unseen client is guaranteed a reservation — 71 of 570 at the
   // defaults — so its share cannot fall below that until the window is
@@ -228,6 +277,27 @@ function classify(reading: BudgetOutcome): AlertReason {
     return 'budget_exhausted';
   }
   return 'none';
+}
+
+/**
+ * A noun phrase, for slotting into a sentence.
+ *
+ * `describe` returns a complete sentence ending in a full stop, so building
+ * the recovery line from it produced "Recovered: The shared Companies House
+ * budget is nearly spent and callers are being refused. has cleared." — the
+ * one message an operator is guaranteed to read, malformed.
+ */
+function summarise(reason: AlertReason): string {
+  switch (reason) {
+    case 'limiter_unavailable':
+      return 'the rate-limit coordinator outage';
+    case 'budget_exhausted':
+      return 'the exhausted Companies House budget';
+    case 'upstream_throttled':
+      return 'the Companies House rate-limit hold';
+    case 'none':
+      return 'the alert';
+  }
 }
 
 function describe(reason: AlertReason): string {
@@ -248,25 +318,43 @@ export function isAlertState(value: unknown): value is AlertState {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
   if (typeof candidate['firing'] !== 'boolean') return false;
-  if (typeof candidate['strikes'] !== 'number' || !Number.isFinite(candidate['strikes'])) {
+  // A corrupted count delays the first alert by that many checks rather than
+  // by one, since strikes no longer reset on a change of cause.
+  if (!Number.isInteger(candidate['strikes']) || (candidate['strikes'] as number) < 0) {
     return false;
   }
   if (typeof candidate['since'] !== 'number' || !Number.isFinite(candidate['since'])) return false;
-  if (
-    typeof candidate['alertedAt'] !== 'number' ||
-    !Number.isFinite(candidate['alertedAt'])
-  ) {
+  if (typeof candidate['alertedAt'] !== 'number' || !Number.isFinite(candidate['alertedAt'])) {
     return false;
   }
-  // A corrupted count now delays the first alert by that many checks rather
-  // than by one, since strikes no longer reset on a change of cause.
-  if (!Number.isInteger(candidate['strikes']) || (candidate['strikes'] as number) < 0) return false;
-  return (
-    candidate['reason'] === 'budget_exhausted' ||
-    candidate['reason'] === 'limiter_unavailable' ||
-    candidate['reason'] === 'upstream_throttled' ||
-    candidate['reason'] === 'none'
-  );
+  return isReason(candidate['reason']) && isReason(candidate['announced']);
+}
+
+const isReason = (value: unknown): value is AlertReason =>
+  value === 'budget_exhausted' ||
+  value === 'limiter_unavailable' ||
+  value === 'upstream_throttled' ||
+  value === 'none';
+
+/**
+ * Reads a stored state, filling in fields a previous release did not write.
+ *
+ * A strict guard is the right thing for a corrupted record and the wrong thing
+ * for an old one: rejecting a state merely because it predates a new field
+ * drops `firing`, which loses the `resolved` message for an incident that was
+ * open across the deploy — the exact failure the recovery path exists to
+ * close, arriving through the upgrade instead. Anything that is present is
+ * still validated; only absence is forgiven.
+ */
+export function parseAlertState(value: unknown): AlertState | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const candidate = value as Record<string, unknown>;
+  const filled = {
+    ...candidate,
+    alertedAt: candidate['alertedAt'] ?? 0,
+    announced: candidate['announced'] ?? candidate['reason'] ?? 'none'
+  };
+  return isAlertState(filled) ? filled : undefined;
 }
 
 /**

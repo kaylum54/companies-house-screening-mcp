@@ -100,16 +100,28 @@ authoritative counter every request already consults, so there is no read
 token anywhere. The only secret involved is the delivery address, which is
 optional and must be `https`.
 
-**Alerting waits for two consecutive bad checks**, and no two messages come
-within half an hour of each other. A busy five minutes legitimately drains the
-window — that is the design working. Alerting that fires on it gets muted, and
-a muted channel is worse than none because it is still believed to work.
+**Alerting waits for two consecutive bad checks**, and no two *firing*
+messages come within half an hour of each other. A busy five minutes
+legitimately drains the window — that is the design working. Alerting that
+fires on it gets muted, and a muted channel is worse than none because it is
+still believed to work.
 
-The gap is not belt-and-braces: a first attempt at "report a change of cause
-rather than swallowing it" re-fired on every check when the cause flapped,
-which is caller-drivable and is precisely the outcome the rule exists to
-prevent. Recovery is reported once, and if that message fails to send it is
-retried rather than dropped.
+The gap is not belt-and-braces, and it took three attempts to place correctly.
+A first version re-fired on every check when the cause flapped. A second
+applied the gap only to the cause change, which left two holes: the first
+message of an incident was unbounded, and a recovery reset the clock — so a
+budget oscillating around the threshold fired, resolved and re-fired forever,
+measured at sixteen messages in two hours. A third wrote the new cause into
+state while suppressing the message, so the next check read "same cause,
+already firing" and went silent permanently: the operator was told about a
+drained window, never told the coordinator had gone down, and then handed a
+`resolved` naming an incident that had never been announced.
+
+The rule that survives all three: the state distinguishes the condition
+*observed* from the condition *announced*, the gap is checked once on the way
+to sending anything, and it survives a recovery. Recovery itself is never held
+back — it can only follow a firing, so bounding the firing direction bounds
+both — and if a message fails to send it is retried rather than dropped.
 
 **A 429 hold is its own alert.** During one the window is deliberately
 reported full — a hold is not a spending problem — so a check that judges only
@@ -181,6 +193,21 @@ received the recorder and the deployed path recorded no budget and no refusals
 at all. And the flush was guarded only inside one sink implementation, so any
 other sink throwing in the `finally` would have turned a good response into a
 500 — measurement taking down the thing it measures.
+
+**A `-32601` is a capability probe, not a fault.** This server registers tools
+and nothing else, and many MCP clients ask for `resources/list` and
+`prompts/list` unconditionally after `initialize`. Counting the SDK's "method
+not found" answers as protocol errors put two or three error rows on every
+client connection — into the single column an operator alerts on — and made the
+error rate a function of how many clients had connected rather than of anything
+being wrong.
+
+**`durationMs` measures up to the last piece of I/O.** Workers freezes
+`Date.now()` between I/O operations as a side-channel mitigation, so the CPU
+spent after the final `fetch` is invisible and a request that did no I/O at all
+records exactly zero. Neither test runtime emulates the freeze, so no test can
+show it. Recorded here because the column looks like wall-clock time and is
+not.
 
 A later audit found a third of the same kind, and it is the reason the tests
 now reuse one handler across invocations: the recorder could be hoisted out of

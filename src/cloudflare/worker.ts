@@ -16,7 +16,7 @@ import { fingerprint, NoAuthProvider } from '../transport/identity.js';
 import type { AuthProvider } from '../transport/identity.js';
 import { createSession, defaultClientReservation } from '../transport/sessions.js';
 import { BudgetDurableObject } from './budget-do.js';
-import { alertEndpoint, decideAlert, INITIAL_ALERT_STATE, isAlertState, sendAlert } from './alerts.js';
+import { alertEndpoint, decideAlert, INITIAL_ALERT_STATE, parseAlertState, sendAlert } from './alerts.js';
 import type { AlertState } from './alerts.js';
 import { AnalyticsEngineSink } from './analytics-metrics.js';
 import { DurableObjectBudgetStore } from './do-budget-store.js';
@@ -187,6 +187,9 @@ export function createFetchHandler(deps: WorkerDependencies = {}) {
  *
  * Never throws. This runs after a good answer has been built.
  */
+/** JSON-RPC's code for a method this server does not implement. */
+const METHOD_NOT_FOUND = -32601;
+
 async function recordTransportFailure(
   response: Response,
   metrics: MetricsRecorder
@@ -198,8 +201,19 @@ async function recordTransportFailure(
     const body: unknown = await response.clone().json();
     const failed = (message: unknown): boolean => {
       if (typeof message !== 'object' || message === null) return false;
-      const record = message as { error?: unknown; result?: { isError?: unknown } };
-      return record.error !== undefined || record.result?.isError === true;
+      const record = message as {
+        error?: { code?: unknown };
+        result?: { isError?: unknown };
+      };
+      // `-32601 Method not found` is ordinary traffic, not a fault. This
+      // server registers tools and nothing else, so an SDK client probing
+      // `resources/list` and `prompts/list` after `initialize` — which many
+      // send unconditionally — gets one each. Counting those would have put
+      // two or three error rows on every client connection, into the single
+      // column an operator alerts on, and made the error rate a function of
+      // how many clients connected rather than of anything being wrong.
+      if (record.error !== undefined) return record.error.code !== METHOD_NOT_FOUND;
+      return record.result?.isError === true;
     };
 
     // A batch answers with an array; one bad member makes the request a
@@ -254,6 +268,31 @@ async function handleMcp({ request, env, version, metrics, deps }: McpRequest): 
   if (!originAllowed(request, config.allowedOrigins)) {
     metrics.failed('origin_rejected');
     return json(jsonRpcError(-32600, 'Origin not allowed.'), 403);
+  }
+
+  // `CH_MAX_REQUEST_BYTES` is parsed by `loadConfig` and was read only by the
+  // Node entry point, so the one deployment that is authless and reachable by
+  // anybody had no body limit at all — while the deployment guide listed the
+  // setting without saying it did not apply here.
+  //
+  // The declared length when there is one — Cloudflare sets it on an ordinary
+  // POST — and the measured length otherwise, because a chunked body declares
+  // nothing and a dishonest one declares whatever it likes. The body is read
+  // here and handed on as a new `Request`; the SDK was going to buffer it
+  // anyway, so this costs one copy and gains a bound on everything downstream
+  // that echoes caller input back — `unresolved[].input` and
+  // `not_screened[].input` are each serialised twice, once as text and once
+  // as structured content.
+  const declared = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > config.maxRequestBytes) {
+    metrics.failed('protocol_error');
+    return json(jsonRpcError(-32600, 'Request body is too large.'), 413);
+  }
+
+  const body = await request.text();
+  if (new TextEncoder().encode(body).byteLength > config.maxRequestBytes) {
+    metrics.failed('protocol_error');
+    return json(jsonRpcError(-32600, 'Request body is too large.'), 413);
   }
 
   const authProvider =
@@ -375,7 +414,9 @@ async function handleMcp({ request, env, version, metrics, deps }: McpRequest): 
     await session.server.connect(
       transport as unknown as Parameters<typeof session.server.connect>[0]
     );
-    return await transport.handleRequest(request);
+    return await transport.handleRequest(
+      new Request(request.url, { method: request.method, headers: request.headers, body })
+    );
   } finally {
     // Nothing survives the request, so nothing may be left holding a socket.
     await session.server.close().catch(() => undefined);
@@ -485,13 +526,14 @@ export function createScheduledHandler(deps: ScheduledDependencies = {}) {
     // A check every five minutes that took a slot would consume 288 requests a
     // day of the very allowance it exists to protect.
     //
-    // Read under a client id of its own, so the figure is what an arriving
-    // caller would be allowed right now rather than the raw global remainder.
-    // That is the number worth alerting on — it answers "is the next person
-    // through the door going to be refused" — and since a share is bounded by
-    // what is globally available, it can only fall near zero when the window
-    // genuinely is. `peek` records nothing, so this does not itself count as a
-    // caller or inflate anybody else's crowd.
+    // Read under a client id of its own so that it cannot disturb anybody
+    // else's share. What is *alerted on* is the window rather than this
+    // synthetic caller's slice of it: an unseen client is guaranteed a
+    // reservation, so its share cannot fall below that floor until the window
+    // is nearly gone, and comparing the share against a fraction of the same
+    // window put the threshold underneath a number the reading could never
+    // reach. `peek` records nothing, so this does not itself count as a caller
+    // or inflate anybody else's crowd.
     const reading = await store.peek('scheduled-check', now());
 
     const metrics = createRequestMetrics(RECORDABLE);
@@ -509,11 +551,22 @@ export function createScheduledHandler(deps: ScheduledDependencies = {}) {
       metrics.budget(reading.globalRemaining, reading.limit);
     }
 
+    // `onError` matters more here than on the request path. `write` catches
+    // internally and never rethrows, so without it the surrounding `catch` is
+    // unreachable and a heartbeat that stopped being written would say
+    // nothing anywhere — in the one row whose entire job is to make a quiet
+    // period and an outage look different.
     const sink =
       deps.metricsSink ??
       (env.ANALYTICS === undefined
         ? undefined
-        : new AnalyticsEngineSink({ dataset: env.ANALYTICS, version }));
+        : new AnalyticsEngineSink({
+            dataset: env.ANALYTICS,
+            version,
+            onError: (error) => {
+              console.error(`heartbeat write failed: ${String(error)}`);
+            }
+          }));
     try {
       sink?.write(metrics.snapshot(0));
     } catch (error) {
@@ -590,7 +643,8 @@ async function readAlertState(cache: NonNullable<WorkerEnv['CACHE']>): Promise<A
     // A stored value that is not a state is treated as absent rather than
     // trusted: a malformed `strikes` would otherwise latch the alerting
     // permanently on or permanently off.
-    if (isAlertState(parsed)) return parsed;
+    const state = parseAlertState(parsed);
+    if (state !== undefined) return state;
     console.error('stored alert state was unreadable and has been reset');
     return { ...INITIAL_ALERT_STATE };
   } catch (error) {

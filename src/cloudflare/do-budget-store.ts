@@ -29,14 +29,6 @@ export interface DurableObjectBudgetStoreOptions {
    * it). See the note in `budget-do.ts`.
    */
   budgetOptions: SlidingWindowBudgetOptions;
-  /**
-   * What to do when the Durable Object cannot be reached.
-   *
-   * Defaults to failing closed: an unreachable limiter means an unknown
-   * window, and guessing optimistically is how a rate limit gets blown through
-   * during exactly the incident that made it unreachable.
-   */
-  failOpen?: boolean;
 }
 
 /** Only the host matters; Durable Object stubs ignore it. */
@@ -45,14 +37,12 @@ const STUB_URL = 'https://budget.invalid/';
 export class DurableObjectBudgetStore implements BudgetStore {
   readonly #namespace: DurableObjectNamespace;
   readonly #budgetName: string;
-  readonly #failOpen: boolean;
   readonly #budgetOptions: SlidingWindowBudgetOptions;
 
   constructor(options: DurableObjectBudgetStoreOptions) {
     this.#namespace = options.namespace;
     this.#budgetName = options.budgetName;
     this.#budgetOptions = options.budgetOptions;
-    this.#failOpen = options.failOpen ?? false;
   }
 
   async acquire(clientId: string, now: number): Promise<BudgetOutcome> {
@@ -90,7 +80,16 @@ export class DurableObjectBudgetStore implements BudgetStore {
     try {
       const response = await this.#send(operation);
       if (response === undefined) return this.#unavailable();
-      return (await response.json()) as BudgetOutcome;
+      const parsed: unknown = await response.json();
+      // Validated rather than cast. This crosses a process boundary, and every
+      // consumer downstream was left guarding the same values individually:
+      // `sane()` in the alerting, the refusal-cause allowlist in the metrics,
+      // and nothing at all in the retry loop — where a non-finite `retryInMs`
+      // makes `now + retryInMs > deadline` false, `Math.max(NaN, 1)` NaN and
+      // `sleep(NaN)` immediate, turning a refusal into sixty-four round trips
+      // to the coordinator as fast as they will go.
+      if (!isBudgetOutcome(parsed)) return this.#unavailable();
+      return parsed;
     } catch {
       return this.#unavailable();
     }
@@ -113,11 +112,15 @@ export class DurableObjectBudgetStore implements BudgetStore {
    * had a full allowance — the precise failure this whole design removed. The
    * retry hint is deliberately short: this is a transient fault, not an
    * exhausted budget, and the caller should come back promptly.
+   *
+   * There used to be a `failOpen` option here. Nothing set it, the ADR argues
+   * against it, and the placeholder it returned carried no `boundBy` — so the
+   * fabricated "1 of 1" was charted as a real reading, drawing a coordinator
+   * outage as a window 100% consumed. An unreachable switch that would defeat
+   * the system's central guarantee if anybody ever found it is worse than no
+   * switch.
    */
   #unavailable(): BudgetOutcome {
-    if (this.#failOpen) {
-      return { granted: true, remaining: 1, retryInMs: 0, limit: 1, globalRemaining: 1 };
-    }
     return {
       granted: false,
       remaining: 0,
@@ -131,4 +134,28 @@ export class DurableObjectBudgetStore implements BudgetStore {
       boundBy: 'unavailable'
     };
   }
+}
+
+/**
+ * The shape the Durable Object promises, checked rather than assumed.
+ *
+ * A reading whose numbers are not numbers is not a reading; treating it as one
+ * is worse than treating the coordinator as unreachable, because every caller
+ * downstream then makes its own arithmetic out of `NaN`.
+ */
+function isBudgetOutcome(value: unknown): value is BudgetOutcome {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate['granted'] !== 'boolean') return false;
+  for (const field of ['remaining', 'retryInMs', 'limit', 'globalRemaining']) {
+    if (typeof candidate[field] !== 'number' || !Number.isFinite(candidate[field])) return false;
+  }
+  const bound = candidate['boundBy'];
+  return (
+    bound === undefined ||
+    bound === 'client' ||
+    bound === 'global' ||
+    bound === 'penalty' ||
+    bound === 'unavailable'
+  );
 }

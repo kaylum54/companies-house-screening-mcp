@@ -427,7 +427,13 @@ describe('DurableObjectBudgetStore', () => {
     expect(outcome.granted).toBe(true);
   });
 
-  it('can be told to fail open, for an operator who would rather risk the key', async () => {
+  it('has no way to be told to fail open', async () => {
+    // There was a `failOpen` option. Nothing in the codebase set it, and the
+    // placeholder it returned — granted, 1 of 1, no `boundBy` — was charted as
+    // a real reading, so a coordinator outage drew as a window fully spent.
+    // A switch that would hand every isolate its own full allowance, defeating
+    // the guarantee this store exists to provide, is not worth keeping for a
+    // caller who does not exist.
     const store = new DurableObjectBudgetStore({
       namespace: {
         idFromName: (name) => ({ toString: () => name }),
@@ -436,11 +442,12 @@ describe('DurableObjectBudgetStore', () => {
         })
       },
       budgetName: 'key-pooled',
-      budgetOptions: OPTIONS,
-      failOpen: true
+      budgetOptions: OPTIONS
     });
 
-    expect((await store.acquire('a', 1000)).granted).toBe(true);
+    const outcome = await store.acquire('a', 1000);
+    expect(outcome.granted).toBe(false);
+    expect(outcome.boundBy).toBe('unavailable');
   });
 });
 
@@ -733,6 +740,116 @@ describe('what the Worker measures', () => {
     params: { name, arguments: args }
   });
 
+  it('counts a truncated screen in sub-requests, and names the right bound', async () => {
+    // Two defects in one loop. It counted one refusal per *company* while
+    // every other writer of the column counts sub-requests, so the figure
+    // summed two units. And it read `budget.boundBy ?? 'client'` — but a
+    // successful `peek` carries no `boundBy` at all, which is exactly the
+    // truncation case, so the default fired almost every time and sent an
+    // operator looking at fair sharing while the window itself was spent.
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) },
+      fetchImpl: async () =>
+        new Response(PROFILE, { status: 200, headers: { 'content-type': 'application/json' } })
+    });
+
+    // A window with almost nothing left in it, and a client share equal to
+    // what is left — which is what "the window is the binding constraint"
+    // looks like from inside a `peek`.
+    const tight: WorkerEnv = {
+      COMPANIES_HOUSE_API_KEY: 'pooled-test-key',
+      CH_CACHE_ENABLED: 'false',
+      RATE_LIMIT: {
+        idFromName: (name: string) => ({ toString: () => name }),
+        get: () => ({
+          fetch: async () =>
+            new Response(
+              JSON.stringify({
+                granted: true,
+                remaining: 2,
+                globalRemaining: 2,
+                retryInMs: 0,
+                limit: 570
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } }
+            )
+        })
+      }
+    };
+
+    const response = await handler(
+      new Request('https://worker.test/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream'
+        },
+        body: JSON.stringify(
+          call('screen_companies', { companies: ['04138203', '00445790', '02627406'] })
+        )
+      }),
+      tight,
+      ctx
+    );
+
+    const payload = (await response.json()) as {
+      result?: { structuredContent?: { sections_used?: string[]; not_screened?: unknown[] } };
+    };
+    const perCompany = payload.result?.structuredContent?.sections_used?.length ?? 0;
+    const skipped = payload.result?.structuredContent?.not_screened?.length ?? 0;
+
+    expect(perCompany).toBeGreaterThan(0);
+    expect(skipped).toBeGreaterThan(0);
+    expect(rows[0]).toMatchObject({
+      tool: 'screen_companies',
+      outcome: 'ok',
+      refusals: skipped * perCompany,
+      refusalCause: 'global'
+    });
+  });
+
+  it('counts a failed name search as a degraded answer', async () => {
+    // `fetchSections` counted its absorbed failures; `resolveInput` did not.
+    // So an upstream outage during the resolution half of a batch returned an
+    // empty table under a clean `ok` row with zero in the one column that
+    // exists to reveal exactly that.
+    const [row] = await rowsFor(
+      call('screen_companies', { companies: ['Some Company Ltd', 'Another Company Ltd'] }),
+      { fetchImpl: async () => new Response('upstream is down', { status: 503 }) }
+    );
+
+    expect(row).toMatchObject({ tool: 'screen_companies', outcome: 'ok' });
+    expect(row?.subrequestFailures).toBe(2);
+  });
+
+  it('refuses a body larger than the configured limit', async () => {
+    // `CH_MAX_REQUEST_BYTES` was parsed by the config and read only by the
+    // Node entry point, so the one deployment that is authless and reachable
+    // by anybody had no body limit at all.
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) },
+      fetchImpl: async () => new Response(PROFILE, { status: 200 })
+    });
+
+    const response = await handler(
+      new Request('https://worker.test/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream'
+        },
+        body: JSON.stringify(call('get_company', { company_number: '04138203' }))
+      }),
+      env({ CH_MAX_REQUEST_BYTES: '10' }),
+      ctx
+    );
+
+    expect(response.status).toBe(413);
+    expect(rows[0]).toMatchObject({ outcome: 'error', errorCode: 'protocol_error' });
+  });
+
   it('writes exactly one row per invocation', async () => {
     // Not one per upstream call. The platform caps `writeDataPoint` at 250 per
     // invocation and a fifty-company screen makes roughly 150 upstream
@@ -1013,7 +1130,6 @@ describe('what the Worker measures', () => {
   it.each([
     ['a malformed body', 'not json at all'],
     ['an unknown tool', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'no_such_tool', arguments: {} } })],
-    ['an unknown method', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'nope/at/all', params: {} })],
     ['arguments that fail the schema', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_company', arguments: { company_number: 12345 } } })]
   ])('records %s as a protocol error, not as a healthy request', async (_what, body) => {
     // The MCP SDK answers all of these itself, above `guard`, as ordinary
@@ -1041,6 +1157,38 @@ describe('what the Worker measures', () => {
 
     expect(rows[0]).toMatchObject({ outcome: 'error', errorCode: 'protocol_error' });
   });
+
+  it.each([['resources/list'], ['prompts/list'], ['resources/templates/list'], ['nope/at/all']])(
+    'treats %s as ordinary traffic, not as a server error',
+    async (method) => {
+      // `-32601 Method not found` is a capability probe, not a fault. This
+      // server registers tools and nothing else, and many MCP clients send
+      // these unconditionally after `initialize` — so counting them put two or
+      // three error rows on every client connection, into the single column an
+      // operator alerts on, and made the error rate a function of how many
+      // clients had connected rather than of anything being wrong.
+      const rows: RequestSnapshot[] = [];
+      const handler = createFetchHandler({
+        metricsSink: { write: (snapshot) => rows.push(snapshot) },
+        fetchImpl: async () => new Response(PROFILE, { status: 200 })
+      });
+
+      await handler(
+        new Request('https://worker.test/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream'
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: {} })
+        }),
+        env(),
+        ctx
+      );
+
+      expect(rows[0]).toMatchObject({ outcome: 'ok', errorCode: '' });
+    }
+  );
 
   it('leaves a healthy handshake alone', async () => {
     // The inspection must not turn ordinary traffic into errors.

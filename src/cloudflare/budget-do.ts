@@ -46,6 +46,14 @@ export interface BudgetDurableObjectOptions {
  * Options are sent rather than stored because they are derived from
  * configuration the caller already holds, and a given object name is always
  * addressed with the same ones.
+ *
+ * They are read **once**, on first contact, and memoised for the lifetime of
+ * the object. Changing `CH_RATE_LIMIT`, `CH_RATE_SAFETY_MARGIN` or
+ * `CH_CLIENT_RESERVATION` and redeploying therefore has no effect until the
+ * platform evicts the object, which on a busy pooled key may be a long time.
+ * Documented rather than fixed: re-reading them per call would let two
+ * isolates mid-deploy disagree about the size of the window they are both
+ * spending, which is worse than a stale one they agree on.
  */
 type Operation =
   | { op: 'acquire'; clientId: string; now: number; options: BudgetDurableObjectOptions }

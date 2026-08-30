@@ -14,23 +14,25 @@ every five minutes, the Durable Object has a bad hour, the cache stops hitting
 and upstream cost triples. The operator found out by trying it.
 
 - **One row per request in Workers Analytics Engine**, carrying the tool, the
-  outcome, upstream calls, cache hits and misses, retries, 429s, stale answers,
-  refusals split by cause, the budget at the end, and whether the caller
-  brought their own key. Optional: without the binding the Worker runs exactly
-  as before.
+  outcome, the error code, upstream calls, cache hits and misses, retries,
+  429s, stale answers, refusals split by cause, absorbed sub-request failures,
+  the budget at the end, whether the caller brought their own key, the duration
+  and the deployed version. Optional: without the binding the Worker runs
+  exactly as before.
 - **A five-minute scheduled check** that reads the Durable Object, writes a
   heartbeat row so the budget can be charted through quiet periods, and alerts
-  when the window is nearly spent or the limiter is unreachable. Two
-  consecutive bad checks before it fires, one message when it recovers, and
-  nothing in between — alerting that cries wolf gets muted, and a muted channel
-  is worse than none.
+  when the window is nearly spent, the limiter is unreachable, or Companies
+  House has throttled the key. Two consecutive bad checks before it fires, at
+  most one firing message every thirty minutes, and one message when it
+  recovers — alerting that cries wolf gets muted, and a muted channel is worse
+  than none.
 - **No new credential in the Worker.** The obvious alerting design queries the
   Analytics Engine SQL API on a schedule, which needs an account API token
   inside a Worker anybody on the internet can reach. Reading the Durable Object
   — the same counter every request already consults — avoids it entirely. The
   only secret is the optional `CH_ALERT_WEBHOOK_URL`, which must be `https`.
 - **[docs/observability.md](docs/observability.md)** with the column layout,
-  the five queries worth running, and the alerting setup;
+  the queries worth running, and the alerting setup;
   [ADR 16](docs/adr/0016-measure-volume-not-content.md) on what is measured and
   what is deliberately not.
 
@@ -41,7 +43,8 @@ and upstream cost triples. The operator found out by trying it.
   server. Nothing operational needs it.
 - **No per-caller identifier**, including the truncated fingerprint the limiter
   already computes — a hashed address is still pseudonymous personal data, and
-  the only question that wanted it is answered by a count.
+  nothing operational needs it: contention shows up in the refusal count and
+  the budget column without anybody being named.
 - **Enforced by an allowlist.** `MetricsRecorder` exposes counters and two
   label methods rather than a general `record(name, value)`, and a label is
   emitted only if it is a value this codebase defines — a registered tool name,
@@ -156,6 +159,99 @@ round introduced. It found some.
   so five requests served from cache reported a 0% hit rate.
 - **An unrecognised refusal cause was dropped rather than counted**, which is
   the undercount the guard was written to prevent.
+
+### Fixed — found by a third audit, run against the second audit's fixes
+
+Three agents in fresh contexts: a regression hunt scoped to the previous
+round's diff, a full audit with no knowledge of either earlier round, and a
+documentation-and-coherence pass. Every finding was checked against the source
+before being accepted, and two were rejected on inspection.
+
+- **A change of cause was deleted rather than deferred.** While an alert was
+  firing and the thirty-minute gap had not passed, the new cause was written
+  into the persisted state and no message was sent — so the next check read
+  "same cause, already firing" and stayed silent permanently. An operator told
+  about a drained budget was never told the coordinator had gone down, then
+  received a `resolved` naming an incident that had never been announced. The
+  state now distinguishes the condition observed from the condition announced.
+- **The alert gap bounded only the cause change.** The first message of an
+  incident had no gap at all, and a recovery reset the clock, so a budget
+  oscillating around the 5% threshold fired, resolved and re-fired forever —
+  measured at sixteen messages in two hours, in the code whose own header
+  warns that alerting which cries wolf gets muted. The gap is now checked once
+  on the way to sending anything and survives a recovery.
+- **Routine capability probes were recorded as protocol errors.** This server
+  registers tools and nothing else, and many MCP clients ask for
+  `resources/list` and `prompts/list` unconditionally after `initialize`.
+  Counting the SDK's `-32601` answers put two or three error rows on every
+  client connection, into the single column an operator alerts on.
+- **A failed name search counted as nothing at all.** `fetchSections` recorded
+  its absorbed failures; `resolveInput` did not. An upstream outage during the
+  resolution half of a `screen_companies` batch returned an empty table under a
+  clean `ok` row with zero in the column that exists to reveal exactly that.
+- **`refusals` mixed two units and named the wrong cause.** A truncated batch
+  counted one refusal per company while every other writer of the column counts
+  sub-requests; and it read `boundBy ?? 'client'`, but a successful `peek`
+  carries no `boundBy`, so the default fired almost every time and sent an
+  operator looking at fair sharing while the window itself was spent.
+- **A corrupt reading classified as perfect health.** The sanitiser guarded the
+  alert message and not the branch that decides whether to send one:
+  `NaN <= NaN * 0.05` and `NaN > 0` are both false, so a garbled Durable Object
+  response cleared a firing alert with a spurious `resolved`. The response is
+  now validated where it crosses the process boundary, which also closes a
+  non-finite `retryInMs` turning a refusal into sixty-four round trips to the
+  coordinator as fast as they will go.
+- **The recovery message was malformed.** Built from a helper that returns a
+  complete sentence, it read "Recovered: The shared Companies House budget is
+  nearly spent and callers are being refused. has cleared." — in the one
+  message an operator is guaranteed to read.
+- **An unrecognised refusal cause overwrote a recognised one.** Last-write-wins
+  is right between real causes; letting `other` win erased a cause that had
+  been correctly identified.
+- **`since` was persisted, validated and never shown.** The field justified its
+  own onset-not-firing timing in a comment nothing could observe. It is in the
+  payload now.
+- **A comment still argued for the bug.** The rationale for reading a caller's
+  share rather than the window survived, four lines above the code that had
+  been rewritten to do the opposite, contradicting the fix, the ADR and three
+  other comments. A maintainer reading top-to-bottom would have put it back.
+
+### Security
+
+- **The request body is now bounded on Workers.** `CH_MAX_REQUEST_BYTES` was
+  parsed by the config and read only by the Node entry point, so the one
+  deployment that is authless and reachable by anybody had no body limit at
+  all — while the deployment guide listed the setting with no hint that it did
+  not apply. Search strings are bounded too: a registered company name is
+  capped at 160 characters by statute, and unbounded input was echoed back in
+  both `content[0].text` and `structuredContent`, amplifying an attacker's own
+  payload through the isolate more than twice over.
+- **`failOpen` is gone.** Nothing in the codebase set it, the ADR argues
+  against it, and the placeholder it returned carried no `boundBy` — so a
+  fabricated "1 of 1" was charted as a real reading and drew a coordinator
+  outage as a window fully consumed. A switch that would hand every isolate its
+  own full allowance, defeating the guarantee the Durable Object exists to
+  provide, is not worth keeping for a caller who does not exist.
+
+### Changed — documentation
+
+- The alerting is described as three conditions rather than two, in every
+  place that summarises it; `upstream_throttled` had been added without the
+  summaries following.
+- The heartbeat query filters `double7 >= 0`, so a Durable Object outage leaves
+  a gap in the chart rather than a line diving to −1 — which is what the prose
+  had been claiming all along.
+- `double9` is documented as measuring up to the last piece of I/O rather than
+  to the end of the request. Workers freezes `Date.now()` between I/O as a
+  side-channel mitigation, so a request that did no I/O records exactly zero,
+  and neither test runtime emulates the freeze.
+- `CH_MAX_TRACKED_CLIENTS` is described as the backstop it is. An identity
+  exists only while it holds a timestamp in the window, so the real bound is
+  the effective limit — 570 at the defaults — and the eviction never runs.
+- Durable Object options are read once, on first contact, and kept for the
+  object's lifetime; changing the window size and redeploying does not take
+  effect until the platform evicts it. Now said out loud in the deployment
+  guide.
 
 ### Added — documentation
 

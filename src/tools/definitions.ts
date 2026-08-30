@@ -33,8 +33,7 @@ import {
   resolveCompanyNumber,
   startIndexInput,
   verboseInput,
-  withRaw
-} from './shared.js';
+  withRaw, MAX_QUERY_LENGTH} from './shared.js';
 
 /**
  * The nine primitive tools.
@@ -71,7 +70,11 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       description:
         'Search Companies House for a UK company by name, trading name or number. Start here whenever you have a name rather than a number, because every other tool in this server needs the number. Returns a shortlist with status, type and incorporation date so that companies with similar names can be told apart. When `disambiguation_needed` is true, ask the user which one they meant instead of taking the first result — dozens of live companies share a name, and picking the wrong one produces a confident answer about the wrong business.',
       inputSchema: {
-        query: z.string().min(1).describe('Company name, partial name, or company number.'),
+        query: z
+          .string()
+          .min(1)
+          .max(MAX_QUERY_LENGTH)
+          .describe('Company name, partial name, or company number.'),
         items_per_page: itemsPerPageInput,
         start_index: startIndexInput,
         verbose: verboseInput
@@ -99,7 +102,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       description:
         'Search Companies House for a company officer — a director, secretary or LLP member — by name. Returns candidate officer IDs with how many appointments each holds. Use it when you have a person and want the companies they are involved in; feed the officer_id to get_officer_appointments. Officer records are per-appointment-identity rather than per-person, so a common name returns many candidates and the appointment count and date of birth are usually what separates them.',
       inputSchema: {
-        query: z.string().min(1).describe("The officer's name."),
+        query: z.string().min(1).max(MAX_QUERY_LENGTH).describe("The officer's name."),
         items_per_page: itemsPerPageInput,
         start_index: startIndexInput,
         verbose: verboseInput

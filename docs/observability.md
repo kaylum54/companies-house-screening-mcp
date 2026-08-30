@@ -9,8 +9,8 @@ This page turns that on. Two parts, and the first is worth having on its own:
 
 1. **Measurement** — one row per request in Workers Analytics Engine, queried
    with SQL.
-2. **Alerting** — a scheduled check that tells you when the window is spent or
-   the limiter is unreachable.
+2. **Alerting** — a scheduled check that tells you when the window is spent,
+   the limiter is unreachable, or Companies House has throttled the key.
 
 Both are optional and both are off until you bind something.
 
@@ -98,10 +98,20 @@ unavailable and carry on, which is right for the caller. `double12` is how you
 see it: a rising count there with `outcome = 'ok'` is Companies House having a
 bad hour, and it is the most likely real incident on this server.
 
-**Rows are written for `POST /mcp` only.** Health checks, wrong paths and
-non-POST methods return before the recorder exists, deliberately: uptime
-probes would otherwise bury everything that says something. So the row count
-is not the request count.
+**Request rows are written for `POST /mcp` only.** Health checks, wrong paths
+and non-POST methods return before the recorder exists, deliberately: uptime
+probes would otherwise bury everything that says something. So the row count is
+not the request count. The scheduled check writes the one other kind of row,
+`index1 = 'heartbeat'`, which is why every query below that means "traffic"
+excludes it explicitly.
+
+**`double9` measures up to the last piece of I/O, not to the end of the
+request.** Workers freezes `Date.now()` between I/O operations as a
+side-channel mitigation, so the CPU spent after the final `fetch` — building
+the snapshot, evaluating signals, serialising the answer twice — is invisible
+here, and a request that did no I/O at all reads exactly `0`. Use it to
+compare like with like over time, not as a wall-clock truth. Neither test
+runtime emulates the freeze, so no test will ever show you this.
 
 **Columns are positional and permanent.** Analytics Engine stores these as
 `blob1..blob20` and `double1..double20`; the names above exist only in
@@ -131,7 +141,7 @@ load, and a plain `COUNT(*)` undercounts silently once it does. `SUM(_sample_int
 is the correct row count; `SUM(_sample_interval * doubleN)` is the correct
 total.
 
-### The five questions worth asking
+### The six questions worth asking
 
 **Is it being used, and for what?**
 
@@ -157,17 +167,26 @@ FROM companies_house_mcp
 WHERE timestamp > NOW() - INTERVAL '1' DAY
 ```
 
-**Is anybody being refused, and why?** The four causes are four different
-problems: `client` means fair sharing is biting and somebody should bring
-their own key, `global` means the window is genuinely spent, `penalty` means
-Companies House returned a 429 *with* a `Retry-After` and a hold is in force,
-and `unavailable` means the Durable Object could not be reached and this is
-not a budget problem at all.
+**Is anybody being refused, and why?** The causes are different problems:
+`client` means fair sharing is biting and somebody should bring their own key,
+`global` means the window is genuinely spent, `penalty` means Companies House
+returned a 429 *with* a `Retry-After` and a hold is in force, `unavailable`
+means the Durable Object could not be reached and this is not a budget problem
+at all, and `other` means the coordinator returned a cause this build does not
+recognise — which is a version skew, not a traffic condition.
 
-One caveat on the arithmetic: `blob3` is a single value per row while
+`double11` counts **sub-requests**, always: one skipped company in a
+`screen_companies` batch is `sections_used` of them, not one. That is the same
+unit the limiter itself counts in, so the column sums.
+
+Two caveats on the arithmetic. `blob3` is a single value per row while
 `double11` is a count, so a request refused for two different reasons
-attributes all of them to whichever came last. Rare, and it only affects the
-split between causes, not the total.
+attributes all of them to whichever came last — rare, and it only affects the
+split between causes, not the total. And a batch truncated by `screen_companies`
+is sized from a `peek`, which reports no bound when it grants; the cause there
+is derived by comparing the window against the caller's share, so it is
+`global` when the two agree and `client` when the share is the tighter of the
+two.
 
 Filtered on the count rather than on the outcome, so a batch that came back
 short but correct is included — that is the common case, and filtering on
@@ -221,6 +240,7 @@ SELECT timestamp,
 FROM companies_house_mcp
 WHERE timestamp > NOW() - INTERVAL '1' DAY
   AND index1 = 'heartbeat'
+  AND double7 >= 0
 ORDER BY timestamp
 ```
 
@@ -304,11 +324,20 @@ recover across a full period.
 
 **It barely repeats.** While the same problem continues you hear nothing
 further. If the *cause* changes — a drained window becomes an unreachable
-coordinator — you get one more message naming what it replaced, but no sooner
-than 30 minutes after the last one, so a flapping deployment cannot fill a
-channel. When it clears you get one `"state": "resolved"` and the count resets;
-if that message fails to send it is retried on the next check rather than
-lost.
+coordinator — you get one more message naming what it replaced, held until
+30 minutes have passed since the last one rather than dropped. That gap is
+the only bound on how often a `firing` message can be sent, and it covers the
+first message of an incident too: without that, a budget oscillating around
+the threshold fired, resolved and re-fired at a pair of messages every ten
+minutes indefinitely.
+
+When it clears you get one `"state": "resolved"`, naming the cause you were
+actually told about, and the count resets; if that message fails to send it is
+retried on the next check rather than lost. A recovery is never held back — it
+can only follow a firing, so bounding the firing direction bounds both.
+
+Each message carries `since`, the first bad check of the incident rather than
+the moment the alert went out.
 
 ### Reading the budget figure
 
@@ -324,12 +353,14 @@ against it sat 2.5× underneath a floor the number could not cross. One caller
 draining the window while everybody else was refused produced a steady 71 and
 no alert at all.
 
-**During a Durable Object outage the budget columns are `-1`, not `0`,** on
-every row — heartbeat and request alike. Nothing was read, so nothing is
-reported and the chart shows a gap rather than drawing an outage as the window
-collapsing. Heartbeat rows carry `blob1 = 'error'`; request rows carry
-`blob1 = 'refused'` with `blob3 = 'unavailable'`, because their callers really
-were turned away.
+**During a Durable Object outage the budget columns read `-1`, not `0`.**
+Nothing was read, so nothing is reported — which is why the heartbeat query
+above filters `double7 >= 0`, so an outage leaves a gap in the chart instead
+of a line diving to −1. Heartbeat rows carry `blob1 = 'error'`; request rows
+carry `blob1 = 'refused'` with `blob3 = 'unavailable'`, because their callers
+really were turned away. A request whose first budget check succeeded and
+whose second failed keeps the earlier reading rather than the sentinel, so the
+gap is not perfectly clean at the edges of an outage.
 
 ---
 

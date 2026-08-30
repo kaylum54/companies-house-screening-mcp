@@ -12,6 +12,20 @@ import type { MetricsRecorder } from '../telemetry/metrics.js';
 import { silentMetrics } from '../telemetry/metrics.js';
 
 /** What every tool handler needs. Passed explicitly rather than reached for. */
+/**
+ * Longest search string accepted.
+ *
+ * A registered company name is capped at 160 characters by the Companies Act,
+ * so 256 is generous for every legitimate input. The bound exists because this
+ * server can be deployed authless: without it, `screen_companies` accepts
+ * fifty unbounded strings, each of which is trimmed into a Set, URL-encoded
+ * into a query, hashed for a cache key, and then echoed back in both
+ * `content[0].text` and `structuredContent` — so an attacker's own input is
+ * amplified through the isolate more than twice over, bounded only by the
+ * platform's body limit.
+ */
+export const MAX_QUERY_LENGTH = 256;
+
 export interface ToolContext {
   client: CompaniesHouseClient;
   logger: Logger;

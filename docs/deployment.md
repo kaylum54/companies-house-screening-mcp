@@ -202,10 +202,10 @@ every transport alike.
 | `CH_HTTP_HOST` | `127.0.0.1` | Set to `0.0.0.0` to accept external connections |
 | `CH_HTTP_PORT` | `8787` | |
 | `CH_ALLOWED_ORIGINS` | empty | Comma-separated. Only affects browsers; MCP clients send no Origin |
-| `CH_MAX_REQUEST_BYTES` | `1048576` | Body ceiling |
+| `CH_MAX_REQUEST_BYTES` | `1048576` | Body ceiling. Enforced on both entry points |
 | `CH_CLIENT_RESERVATION` | effective limit ÷ 8 | Requests each caller is always guaranteed |
 | `CH_NEWCOMER_ALLOWANCE` | `1` | How many unseen callers to hold a reservation for |
-| `CH_MAX_TRACKED_CLIENTS` | `10000` | Bound on identities tracked for fair sharing |
+| `CH_MAX_TRACKED_CLIENTS` | `10000` | Backstop only. Identities are already bounded by the window itself — an identity exists only while it holds a timestamp, and the window holds at most `CH_RATE_LIMIT` × margin of them, so the real ceiling is 570 at the defaults and this eviction never runs |
 | `CH_ALLOW_CLIENT_KEYS` | `true` | Whether callers may bring their own key |
 | `CH_ALERT_WEBHOOK_URL` | — | **Workers only.** A secret, not a var. `https` only. Where the scheduled check sends alerts; unset means none. See [observability.md](observability.md) |
 | `CH_TRUST_PROXY_HEADERS` | `false` | Believe `X-Forwarded-For` / `CF-Connecting-IP` when identifying callers. Turn on **only** behind a proxy you control |
@@ -213,6 +213,11 @@ every transport alike.
 | `CH_SESSION_IDLE_MS` | `1800000` | How long a session may idle before being swept |
 | `CH_MAX_WAIT_MS` | `60000` (hosted only) | How long a request waits for budget before `RATE_LIMITED`. Unset on stdio, which waits for the window |
 | `CH_RATE_LIMIT` | `600` | Lower it if the key is shared with something else |
+
+> Changing `CH_RATE_LIMIT`, `CH_RATE_SAFETY_MARGIN` or `CH_CLIENT_RESERVATION`
+> on Workers does not take effect immediately. The Durable Object reads them
+> on first contact and keeps them for its lifetime, so a busy pooled key can
+> run on the old numbers for some time after a deploy.
 | `CH_CACHE_ENABLED` | `true` | |
 | `CH_LOG_LEVEL` | `info` | |
 

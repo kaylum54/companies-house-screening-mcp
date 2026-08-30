@@ -82,6 +82,15 @@ export interface RateLimitSnapshot {
   /** The effective ceiling after the safety margin. */
   limit: number;
   /**
+   * What is left in the whole window, as opposed to this caller's share.
+   *
+   * Carried so that a caller sizing a batch can tell which of the two bounds
+   * is biting. `boundBy` cannot answer that on its own: it is set only when
+   * something was actually refused, so a successful `peek` leaves it absent
+   * and everything downstream had to guess.
+   */
+  globalRemaining: number;
+  /**
    * Why the budget is zero, when it is.
    *
    * Carried through because `remaining: 0` has two very different meanings: a
@@ -134,7 +143,8 @@ export class RateLimiter {
     this.#lastKnown = {
       remaining: this.#effectiveLimit,
       resetInMs: 0,
-      limit: this.#effectiveLimit
+      limit: this.#effectiveLimit,
+      globalRemaining: this.#effectiveLimit
     };
   }
 
@@ -268,6 +278,7 @@ export class RateLimiter {
       remaining: outcome.remaining,
       resetInMs: outcome.granted ? 0 : outcome.retryInMs,
       limit: outcome.limit,
+      globalRemaining: outcome.globalRemaining,
       boundBy: outcome.boundBy
     };
     // Every outcome passes through here, granted or not, so the figure

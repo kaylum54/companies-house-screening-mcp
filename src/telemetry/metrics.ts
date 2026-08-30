@@ -14,18 +14,20 @@
  * can prove a data point was accepted but never what was in it. If the shaping
  * were done in the Cloudflare adapter it would be effectively untestable.
  *
- * **It counts, it does not describe.** Every label it accepts is passed
- * through `label()`, which strips anything that is not a lowercase word
- * character. A company number survives that; but nothing here is ever *given*
- * one, and the two call sites take a tool name and an error code, both drawn
- * from closed sets in this codebase. The sanitiser is the belt to that
- * braces: it means a later change that carelessly passes a URL, a query
- * string or a key emits a mangled label rather than leaking one.
+ * **It counts, it does not describe.** Every label it accepts is checked
+ * against an allowlist of values this codebase defines — a registered tool
+ * name, a typed error code, one of a handful of literals in `recordable.ts` —
+ * and anything else records `other`. That membership test is the control.
+ * `label()` normalises case and strips punctuation on the way in, and is
+ * explicitly *not* a redaction step: a company number is eight characters
+ * drawn from exactly the set it permits, so it would pass one through intact.
+ * Only knowing the permitted set can tell `get_company` from `sc123456`.
  *
- * **It cannot fail a request.** Every method returns void and swallows
- * nothing, because there is nothing here that can throw: no allocation that
+ * **It cannot fail a request.** Nothing here can throw: no allocation that
  * grows, no parsing, no formatting. Counters are clamped, so a pathological
- * caller cannot drive a field to `Infinity` and poison a numeric column.
+ * caller cannot drive a field to `Infinity` and poison a numeric column, and
+ * `snapshot()` — the one method that returns anything — builds a flat object
+ * from primitives that are already bounded.
  */
 
 import type { BudgetBound } from '../http/budget.js';
@@ -150,7 +152,12 @@ export interface RequestSnapshot {
    * produces a dataset of clean `ok` rows.
    */
   subrequestFailures: number;
-  /** Budget left for this caller at the end, or -1 if never observed. */
+  /**
+   * Budget left in the whole window at the end, or -1 if never observed.
+   *
+   * The window, not this caller's share of it: the heartbeat has no share to
+   * report, and one column has to mean one thing or the chart mixes two.
+   */
   budgetRemaining: number;
   /** The effective window, or -1 if never observed. */
   budgetLimit: number;
@@ -252,7 +259,12 @@ export function createRequestMetrics(options: RequestMetricsOptions): MetricsRec
       // defeated the guard's own purpose: a changed Durable Object shape would
       // have silently undercounted refusals to zero rather than recording that
       // some happened for a reason we could not name.
-      refusalCause = REFUSAL_CAUSES.includes(cause) ? cause : UNRECOGNISED;
+      // A recognised cause is never overwritten by an unrecognised one. This
+      // is last-write-wins between real causes, which is fine — they are all
+      // true of the request — but letting `other` win meant a single garbled
+      // value erased a cause that had been correctly identified.
+      const named = REFUSAL_CAUSES.includes(cause) ? cause : UNRECOGNISED;
+      if (named !== UNRECOGNISED || refusalCause === 'none') refusalCause = named;
       // Deliberately does not touch `outcome`. A refusal is a fact about one
       // sub-request; whether the caller ended up with an answer is a fact
       // about the request, and `failed` is what knows it.

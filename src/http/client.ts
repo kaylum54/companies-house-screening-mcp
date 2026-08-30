@@ -214,7 +214,8 @@ export class CompaniesHouseClient {
     this.#lastRateLimit = {
       remaining: this.#limiter.effectiveLimit,
       resetInMs: 0,
-      limit: this.#limiter.effectiveLimit
+      limit: this.#limiter.effectiveLimit,
+      globalRemaining: this.#limiter.effectiveLimit
     };
   }
 

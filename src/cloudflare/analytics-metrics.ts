@@ -27,7 +27,7 @@ import type { AnalyticsEngineDataset } from './types.js';
  *                         cannot hide the others
  *   blob1   outcome       ok | error | refused
  *   blob2   errorCode     '' unless the request failed; set on `refused` too
- *   blob3   refusalCause  none | client | global | penalty | unavailable
+ *   blob3   refusalCause  none | client | global | penalty | unavailable | other
  *   blob4   version       the deployed version, for before/after comparisons
  *
  *   double1  upstreamRequests   what this cost the key
@@ -36,13 +36,15 @@ import type { AnalyticsEngineDataset } from './types.js';
  *   double4  upstreamRetries
  *   double5  upstreamThrottled  429s from Companies House
  *   double6  staleServed
- *   double7  budgetRemaining    -1 when the budget was never consulted
+ *   double7  budgetRemaining    the whole window, not this caller's share;
+ *                               -1 when the budget was never consulted
  *   double8  budgetLimit        -1 likewise
  *   double9  durationMs
  *   double10 ownKey             1 when the caller brought their own key
- *   double11 refusals           sub-requests the limiter turned away; non-zero
- *                               with outcome `ok` is a batch that came back
- *                               short and said so
+ *   double11 refusals           sub-requests turned away for budget — always
+ *                               sub-requests, never companies or requests;
+ *                               non-zero with outcome `ok` is a batch that
+ *                               came back short and said so
  *   double12 subrequestFailures sub-requests that failed and were absorbed
  *                               into the answer — a degraded snapshot, which
  *                               is otherwise indistinguishable from a clean one

@@ -116,7 +116,10 @@ describe('decideAlert', () => {
 
     const recovered = decideAlert(state, reading(), 3_000);
     expect(recovered.payload).toMatchObject({ state: 'resolved', reason: 'budget_exhausted' });
-    expect(recovered.state).toEqual(INITIAL_ALERT_STATE);
+    // Everything resets except the clock. Zeroing `alertedAt` here is what let
+    // a budget oscillating around the threshold fire, resolve and fire again
+    // forever: the gap between firing messages has to span incidents.
+    expect(recovered.state).toEqual({ ...INITIAL_ALERT_STATE, alertedAt: 2_000 });
 
     expect(decideAlert(recovered.state, reading(), 4_000).payload).toBeUndefined();
   });
@@ -287,9 +290,84 @@ describe('decideAlert', () => {
       'budgetLimit',
       'budgetRemaining',
       'reason',
+      'since',
       'state',
       'text'
     ]);
+  });
+
+  it('holds a change of cause for the gap rather than swallowing it', () => {
+    // The suppression branch used to write the *new* cause into state while
+    // sending nothing, so the next check read "same cause, already firing" and
+    // stayed quiet permanently. The operator was told about a drained budget,
+    // never told the coordinator had gone down, and then handed a `resolved`
+    // naming an incident that had never been announced.
+    let state = decideAlert(INITIAL_ALERT_STATE, EXHAUSTED, 0).state;
+    state = decideAlert(state, EXHAUSTED, 300_000).state;
+    expect(state.firing).toBe(true);
+    expect(state.announced).toBe('budget_exhausted');
+
+    // Cause changes well inside the 30-minute gap: held, not dropped.
+    const held = decideAlert(state, UNAVAILABLE, 600_000);
+    expect(held.payload).toBeUndefined();
+    expect(held.state.reason).toBe('limiter_unavailable');
+    expect(held.state.announced).toBe('budget_exhausted');
+
+    // Once the gap has passed it is still outstanding, and it is sent.
+    const sent = decideAlert(held.state, UNAVAILABLE, 2_400_000);
+    expect(sent.payload).toMatchObject({ state: 'firing', reason: 'limiter_unavailable' });
+    expect(sent.state.announced).toBe('limiter_unavailable');
+  });
+
+  it('bounds a deployment flapping across the threshold', () => {
+    // Measured before the fix: a budget oscillating around 5% produced eight
+    // firing and eight resolved messages in two hours, because the gap was
+    // consulted only on the cause-change branch and a recovery zeroed the
+    // clock on its way past.
+    let state = INITIAL_ALERT_STATE;
+    let sent = 0;
+    for (let minute = 0; minute <= 120; minute += 5) {
+      // bad, bad, good — a busy ten minutes then a quiet five, all day.
+      const busy = (minute / 5) % 3 !== 2;
+      const decision = decideAlert(state, busy ? EXHAUSTED : reading(), minute * 60_000);
+      if (decision.payload !== undefined) sent += 1;
+      state = decision.state;
+    }
+    expect(sent).toBeLessThanOrEqual(9);
+  });
+
+  it('treats a reading that is not a number as a coordinator fault', () => {
+    // The Durable Object response is cast without validation, and `sane()`
+    // guarded the message rather than the branch that decides whether to send
+    // one: `NaN <= NaN * 0.05` and `NaN > 0` are both false, so a corrupt
+    // reading classified as perfect health and cleared a firing alert with a
+    // spurious `resolved`.
+    const corrupt = reading({ globalRemaining: Number.NaN, limit: Number.NaN });
+    const first = decideAlert(INITIAL_ALERT_STATE, corrupt, 0);
+    const second = decideAlert(first.state, corrupt, 300_000);
+    expect(second.payload).toMatchObject({ state: 'firing', reason: 'limiter_unavailable' });
+  });
+
+  it('writes a recovery line that reads as a sentence', () => {
+    // Built from `describe()`, which returns a complete sentence, this said
+    // "Recovered: The shared Companies House budget is nearly spent and
+    // callers are being refused. has cleared." — in the one message an
+    // operator is guaranteed to read.
+    let state = decideAlert(INITIAL_ALERT_STATE, EXHAUSTED, 0).state;
+    state = decideAlert(state, EXHAUSTED, 300_000).state;
+    const recovered = decideAlert(state, reading(), 600_000);
+    expect(recovered.payload?.text).toBe(
+      'Recovered: the exhausted Companies House budget has cleared. Budget 400 of 570.'
+    );
+  });
+
+  it('dates the payload from the first bad check', () => {
+    // `since` was computed, persisted and validated but reached no message,
+    // no log and no query, so the timing argument in its own doc comment was
+    // unobservable.
+    let state = decideAlert(INITIAL_ALERT_STATE, EXHAUSTED, 300_000).state;
+    const decision = decideAlert(state, EXHAUSTED, 600_000);
+    expect(decision.payload?.since).toBe(new Date(300_000).toISOString());
   });
 });
 
@@ -299,6 +377,7 @@ describe('isAlertState', () => {
     strikes: 2,
     since: 1,
     reason: 'budget_exhausted',
+    announced: 'budget_exhausted',
     alertedAt: 1
   };
 
@@ -310,7 +389,7 @@ describe('isAlertState', () => {
     ['null', null],
     ['a string', 'firing'],
     ['a missing field', { firing: true, strikes: 1, since: 0 }],
-    ['a missing alertedAt', { firing: true, strikes: 1, since: 0, reason: 'none' }],
+    ['an unknown announced cause', { ...valid, announced: 'something_else' }],
     ['a negative strike count', { ...valid, strikes: -20 }],
     ['a fractional strike count', { ...valid, strikes: 1.5 }],
     ['a non-finite strike count', { ...valid, strikes: Number.NaN }],
@@ -350,6 +429,7 @@ describe('sendAlert', () => {
     text: 'x',
     budgetRemaining: 0,
     budgetLimit: 570,
+    since: '2026-08-25T00:00:00.000Z',
     at: '2026-08-25T00:00:00.000Z'
   };
 
