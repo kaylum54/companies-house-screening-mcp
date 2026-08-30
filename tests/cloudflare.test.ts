@@ -13,6 +13,7 @@ import type {
   KVNamespace
 } from '../src/cloudflare/types.js';
 import type { BudgetOutcome } from '../src/http/budget.js';
+import type { RequestSnapshot } from '../src/telemetry/metrics.js';
 import type { WorkerEnv, ExecutionContext } from '../src/cloudflare/types.js';
 
 /**
@@ -426,7 +427,13 @@ describe('DurableObjectBudgetStore', () => {
     expect(outcome.granted).toBe(true);
   });
 
-  it('can be told to fail open, for an operator who would rather risk the key', async () => {
+  it('has no way to be told to fail open', async () => {
+    // There was a `failOpen` option. Nothing in the codebase set it, and the
+    // placeholder it returned — granted, 1 of 1, no `boundBy` — was charted as
+    // a real reading, so a coordinator outage drew as a window fully spent.
+    // A switch that would hand every isolate its own full allowance, defeating
+    // the guarantee this store exists to provide, is not worth keeping for a
+    // caller who does not exist.
     const store = new DurableObjectBudgetStore({
       namespace: {
         idFromName: (name) => ({ toString: () => name }),
@@ -435,11 +442,12 @@ describe('DurableObjectBudgetStore', () => {
         })
       },
       budgetName: 'key-pooled',
-      budgetOptions: OPTIONS,
-      failOpen: true
+      budgetOptions: OPTIONS
     });
 
-    expect((await store.acquire('a', 1000)).granted).toBe(true);
+    const outcome = await store.acquire('a', 1000);
+    expect(outcome.granted).toBe(false);
+    expect(outcome.boundBy).toBe('unavailable');
   });
 });
 
@@ -653,5 +661,580 @@ describe('the Worker fetch handler', () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { result?: { serverInfo?: { name?: string } } };
     expect(body.result?.serverInfo?.name).toBe('companies-house');
+  });
+});
+
+describe('what the Worker measures', () => {
+  const ctx: ExecutionContext = { waitUntil: () => undefined };
+  const PROFILE = readFileSync('tests/fixtures/company/profile-active.json', 'utf8');
+
+  function env(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
+    const objects = new Map<string, BudgetDurableObject>();
+    return {
+      COMPANIES_HOUSE_API_KEY: 'pooled-test-key',
+      CH_CACHE_ENABLED: 'false',
+      RATE_LIMIT: {
+        idFromName: (name: string) => ({ toString: () => name }),
+        get: (id) => ({
+          fetch: async (_input, init) => {
+            const name = id.toString();
+            let object = objects.get(name);
+            if (object === undefined) {
+              object = new BudgetDurableObject(fakeState());
+              objects.set(name, object);
+            }
+            return object.fetch(
+              new Request('https://budget.invalid/', { method: 'POST', body: init?.body ?? '{}' })
+            );
+          }
+        })
+      },
+      ...overrides
+    };
+  }
+
+  /**
+   * Drives a real request through the Worker and returns the rows it wrote.
+   *
+   * The sink is injected rather than read back off a dataset because there is
+   * nothing to read it back from: Miniflare's Analytics Engine binding is a
+   * no-op, and the real one is write-only from inside a Worker. This is the
+   * only place the whole path — tool call, cache, limiter, flush — can be
+   * asserted end to end.
+   */
+  async function rowsFor(
+    body: unknown,
+    options: { fetchImpl?: typeof fetch; headers?: Record<string, string> } = {}
+  ): Promise<RequestSnapshot[]> {
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) },
+      version: '9.9.9',
+      fetchImpl:
+        options.fetchImpl ??
+        (async () =>
+          new Response(PROFILE, { status: 200, headers: { 'content-type': 'application/json' } }))
+    });
+
+    await handler(
+      new Request('https://worker.test/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+          ...options.headers
+        },
+        body: JSON.stringify(body)
+      }),
+      env(),
+      ctx
+    );
+
+    return rows;
+  }
+
+  const call = (name: string, args: Record<string, unknown>): unknown => ({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name, arguments: args }
+  });
+
+  it('counts a truncated screen in sub-requests, and names the right bound', async () => {
+    // Two defects in one loop. It counted one refusal per *company* while
+    // every other writer of the column counts sub-requests, so the figure
+    // summed two units. And it read `budget.boundBy ?? 'client'` — but a
+    // successful `peek` carries no `boundBy` at all, which is exactly the
+    // truncation case, so the default fired almost every time and sent an
+    // operator looking at fair sharing while the window itself was spent.
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) },
+      fetchImpl: async () =>
+        new Response(PROFILE, { status: 200, headers: { 'content-type': 'application/json' } })
+    });
+
+    // A window with almost nothing left in it, and a client share equal to
+    // what is left — which is what "the window is the binding constraint"
+    // looks like from inside a `peek`.
+    const tight: WorkerEnv = {
+      COMPANIES_HOUSE_API_KEY: 'pooled-test-key',
+      CH_CACHE_ENABLED: 'false',
+      RATE_LIMIT: {
+        idFromName: (name: string) => ({ toString: () => name }),
+        get: () => ({
+          fetch: async () =>
+            new Response(
+              JSON.stringify({
+                granted: true,
+                remaining: 2,
+                globalRemaining: 2,
+                retryInMs: 0,
+                limit: 570
+              }),
+              { status: 200, headers: { 'content-type': 'application/json' } }
+            )
+        })
+      }
+    };
+
+    const response = await handler(
+      new Request('https://worker.test/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream'
+        },
+        body: JSON.stringify(
+          call('screen_companies', { companies: ['04138203', '00445790', '02627406'] })
+        )
+      }),
+      tight,
+      ctx
+    );
+
+    const payload = (await response.json()) as {
+      result?: { structuredContent?: { sections_used?: string[]; not_screened?: unknown[] } };
+    };
+    const perCompany = payload.result?.structuredContent?.sections_used?.length ?? 0;
+    const skipped = payload.result?.structuredContent?.not_screened?.length ?? 0;
+
+    expect(perCompany).toBeGreaterThan(0);
+    expect(skipped).toBeGreaterThan(0);
+    expect(rows[0]).toMatchObject({
+      tool: 'screen_companies',
+      outcome: 'ok',
+      refusals: skipped * perCompany,
+      refusalCause: 'global'
+    });
+  });
+
+  it('counts a failed name search as a degraded answer', async () => {
+    // `fetchSections` counted its absorbed failures; `resolveInput` did not.
+    // So an upstream outage during the resolution half of a batch returned an
+    // empty table under a clean `ok` row with zero in the one column that
+    // exists to reveal exactly that.
+    const [row] = await rowsFor(
+      call('screen_companies', { companies: ['Some Company Ltd', 'Another Company Ltd'] }),
+      { fetchImpl: async () => new Response('upstream is down', { status: 503 }) }
+    );
+
+    expect(row).toMatchObject({ tool: 'screen_companies', outcome: 'ok' });
+    expect(row?.subrequestFailures).toBe(2);
+  });
+
+  it('refuses a body larger than the configured limit', async () => {
+    // `CH_MAX_REQUEST_BYTES` was parsed by the config and read only by the
+    // Node entry point, so the one deployment that is authless and reachable
+    // by anybody had no body limit at all.
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) },
+      fetchImpl: async () => new Response(PROFILE, { status: 200 })
+    });
+
+    const response = await handler(
+      new Request('https://worker.test/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream'
+        },
+        body: JSON.stringify(call('get_company', { company_number: '04138203' }))
+      }),
+      env({ CH_MAX_REQUEST_BYTES: '10' }),
+      ctx
+    );
+
+    expect(response.status).toBe(413);
+    expect(rows[0]).toMatchObject({ outcome: 'error', errorCode: 'protocol_error' });
+  });
+
+  it('writes exactly one row per invocation', async () => {
+    // Not one per upstream call. The platform caps `writeDataPoint` at 250 per
+    // invocation and a fifty-company screen makes roughly 150 upstream
+    // requests, so per-call writes would drop the tail of the biggest runs.
+    const rows = await rowsFor(call('get_company', { company_number: '04138203' }));
+    expect(rows).toHaveLength(1);
+  });
+
+  it('records the tool, the outcome and what the call cost', async () => {
+    const [row] = await rowsFor(call('get_company', { company_number: '04138203' }));
+
+    expect(row).toMatchObject({
+      tool: 'get_company',
+      outcome: 'ok',
+      upstreamRequests: 1,
+      cacheMisses: 1,
+      cacheHits: 0
+    });
+    expect(row?.budgetRemaining).toBeGreaterThan(0);
+  });
+
+  it('counts a composite call as the four requests it really makes', async () => {
+    const [row] = await rowsFor(call('company_snapshot', { company_number: '04138203' }));
+
+    expect(row?.tool).toBe('company_snapshot');
+    expect(row?.upstreamRequests).toBe(4);
+  });
+
+  it('does not carry the query or the company number into a successful row', async () => {
+    const rows = await rowsFor(call('find_company', { query: 'GREGGS PLC' }));
+    const written = JSON.stringify(rows);
+
+    expect(written).not.toContain('GREGGS');
+    expect(written).not.toContain('greggs');
+    expect(written).not.toContain('pooled-test-key');
+  });
+
+  it('does not carry them into a FAILING row either', async () => {
+    // The path that could actually leak, and the one the first version of this
+    // test missed by firing at a success. Error *messages* in this codebase do
+    // embed the caller's input — `errors.ts` interpolates the identifier into
+    // "Companies House has no company 04138203" — so a change recording
+    // `error.message` instead of `error.code` would publish it. Only the code
+    // is recorded, and only if it is in the allowlist.
+    const rows = await rowsFor(call('get_company', { company_number: '04138203' }), {
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ errors: [{ error: 'company-profile-not-found' }] }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' }
+        })
+    });
+
+    expect(rows[0]).toMatchObject({ outcome: 'error', errorCode: 'resource_not_found' });
+    const written = JSON.stringify(rows);
+    expect(written).not.toContain('04138203');
+    expect(written).not.toContain('company-profile-not-found');
+    expect(written).not.toContain('company-information');
+  });
+
+  it('records a failure as an error with its code, not as a success', async () => {
+    const [row] = await rowsFor(call('get_company', { company_number: '04138203' }), {
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ errors: [{ error: 'not-found' }] }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' }
+        })
+    });
+
+    expect(row).toMatchObject({ outcome: 'error', errorCode: 'resource_not_found' });
+  });
+
+  it('records a caller who brought their own key', async () => {
+    const [row] = await rowsFor(call('get_company', { company_number: '04138203' }), {
+      headers: { 'x-companies-house-api-key': 'a-caller-supplied-key' }
+    });
+
+    expect(row?.ownKey).toBe(true);
+    expect(JSON.stringify(row)).not.toContain('a-caller-supplied-key');
+  });
+
+  it('writes a row even when the request never reaches a tool', async () => {
+    // A handshake is still a request, and a deployment answering nothing but
+    // handshakes is a fact worth being able to see.
+    const rows = await rowsFor({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } }
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.tool).toBe('unknown');
+  });
+
+  it('writes nothing for a health check or a wrong path', async () => {
+    // Otherwise uptime probes bury every row that says something.
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) }
+    });
+
+    await handler(new Request('https://worker.test/health'), env(), ctx);
+    await handler(new Request('https://worker.test/'), env(), ctx);
+    await handler(new Request('https://worker.test/mcp', { method: 'GET' }), env(), ctx);
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it('keeps each invocation independent, on one handler', async () => {
+    // Deliberately reuses a single handler and a single env, because that is
+    // the deployed shape: `export default { fetch: createFetchHandler() }`
+    // builds the handler once and every request in the isolate runs through
+    // it. Building a fresh handler per call — which the first version of this
+    // test did — manufactures the independence it claims to observe, and a
+    // recorder hoisted out of the request function passed the whole suite.
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) },
+      fetchImpl: async () =>
+        new Response(PROFILE, { status: 200, headers: { 'content-type': 'application/json' } })
+    });
+    const shared = env();
+
+    for (const number of ['08880001', '08880002', '08880003']) {
+      await handler(
+        new Request('https://worker.test/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream'
+          },
+          body: JSON.stringify(call('get_company', { company_number: number }))
+        }),
+        shared,
+        ctx
+      );
+    }
+
+    expect(rows).toHaveLength(3);
+    // One each, not 1/2/3. A shared recorder would accumulate.
+    expect(rows.map((row) => row.upstreamRequests)).toEqual([1, 1, 1]);
+    expect(rows.map((row) => row.cacheMisses)).toEqual([1, 1, 1]);
+  });
+
+  it('does not let a caller\'s own key latch on for every later request', async () => {
+    // The other half of the same hazard: `ownKey` is a boolean, so a recorder
+    // shared across the isolate would report every subsequent caller as
+    // bringing a key after the first one did.
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) },
+      fetchImpl: async () =>
+        new Response(PROFILE, { status: 200, headers: { 'content-type': 'application/json' } })
+    });
+    const shared = env();
+
+    const send = async (headers: Record<string, string>): Promise<void> => {
+      await handler(
+        new Request('https://worker.test/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            ...headers
+          },
+          body: JSON.stringify(call('get_company', { company_number: '08880010' }))
+        }),
+        shared,
+        ctx
+      );
+    };
+
+    await send({ 'x-companies-house-api-key': 'a-caller-supplied-key' });
+    await send({});
+
+    expect(rows.map((row) => row.ownKey)).toEqual([true, false]);
+  });
+
+  it.each(['client', 'global', 'penalty', 'unavailable'] as const)(
+    'records a refusal bound by %s, with its cause',
+    async (boundBy) => {
+      // The four causes are four different operational problems, and the
+      // refusal query groups by exactly this column. Before this test,
+      // deleting `metrics.refused(...)` from the limiter entirely passed the
+      // whole suite — the refusal half of the wiring was never observed.
+      const rows: RequestSnapshot[] = [];
+      const refusing: WorkerEnv = {
+        COMPANIES_HOUSE_API_KEY: 'pooled-test-key',
+        CH_CACHE_ENABLED: 'false',
+        CH_MAX_WAIT_MS: '1',
+        RATE_LIMIT: {
+          idFromName: (name: string) => ({ toString: () => name }),
+          get: () => ({
+            fetch: async () =>
+              new Response(
+                JSON.stringify({
+                  granted: false,
+                  remaining: 0,
+                  globalRemaining: 0,
+                  retryInMs: 60_000,
+                  limit: 570,
+                  boundBy
+                }),
+                { status: 200, headers: { 'content-type': 'application/json' } }
+              )
+          })
+        }
+      };
+
+      const handler = createFetchHandler({
+        metricsSink: { write: (snapshot) => rows.push(snapshot) },
+        fetchImpl: async () => new Response(PROFILE, { status: 200 })
+      });
+
+      await handler(
+        new Request('https://worker.test/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream'
+          },
+          body: JSON.stringify(call('get_company', { company_number: '04138203' }))
+        }),
+        refusing,
+        ctx
+      );
+
+      expect(rows[0]).toMatchObject({
+        tool: 'get_company',
+        outcome: 'refused',
+        refusalCause: boundBy,
+        upstreamRequests: 0
+      });
+      expect(rows[0]?.refusals).toBeGreaterThan(0);
+    }
+  );
+
+  it('records a deployment failure as an error, not as a success', async () => {
+    // Every early exit used to flush a row saying `ok`, so a wholly broken
+    // deployment charted as 100% healthy — the exact blindness this feature
+    // exists to remove.
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) }
+    });
+    const post = (body: unknown, env2: WorkerEnv, headers: Record<string, string> = {}) =>
+      handler(
+        new Request('https://worker.test/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            ...headers
+          },
+          body: JSON.stringify(body)
+        }),
+        env2,
+        ctx
+      );
+
+    // A missing key: 500, and it must not read as a healthy request.
+    await post({}, { CH_CACHE_ENABLED: 'false' } as WorkerEnv);
+    // A missing Durable Object binding.
+    await post({}, { COMPANIES_HOUSE_API_KEY: 'k' } as WorkerEnv);
+    // A browser origin nobody allow-listed.
+    await post({}, env({ CH_ALLOWED_ORIGINS: 'https://good.test' }), {
+      origin: 'https://evil.test'
+    });
+
+    expect(rows.map((row) => row.outcome)).toEqual(['error', 'error', 'error']);
+    expect(rows.map((row) => row.errorCode)).toEqual([
+      'misconfigured',
+      'misconfigured',
+      'origin_rejected'
+    ]);
+  });
+
+  it.each([
+    ['a malformed body', 'not json at all'],
+    ['an unknown tool', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'no_such_tool', arguments: {} } })],
+    ['arguments that fail the schema', JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_company', arguments: { company_number: 12345 } } })]
+  ])('records %s as a protocol error, not as a healthy request', async (_what, body) => {
+    // The MCP SDK answers all of these itself, above `guard`, as ordinary
+    // JSON-RPC error responses rather than exceptions. Nothing downstream ever
+    // saw them, so a client sending garbage in a loop charted as healthy
+    // traffic in the one column an operator alerts on.
+    const rows: RequestSnapshot[] = [];
+    const handler = createFetchHandler({
+      metricsSink: { write: (snapshot) => rows.push(snapshot) },
+      fetchImpl: async () => new Response(PROFILE, { status: 200 })
+    });
+
+    await handler(
+      new Request('https://worker.test/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream'
+        },
+        body
+      }),
+      env(),
+      ctx
+    );
+
+    expect(rows[0]).toMatchObject({ outcome: 'error', errorCode: 'protocol_error' });
+  });
+
+  it.each([['resources/list'], ['prompts/list'], ['resources/templates/list'], ['nope/at/all']])(
+    'treats %s as ordinary traffic, not as a server error',
+    async (method) => {
+      // `-32601 Method not found` is a capability probe, not a fault. This
+      // server registers tools and nothing else, and many MCP clients send
+      // these unconditionally after `initialize` — so counting them put two or
+      // three error rows on every client connection, into the single column an
+      // operator alerts on, and made the error rate a function of how many
+      // clients had connected rather than of anything being wrong.
+      const rows: RequestSnapshot[] = [];
+      const handler = createFetchHandler({
+        metricsSink: { write: (snapshot) => rows.push(snapshot) },
+        fetchImpl: async () => new Response(PROFILE, { status: 200 })
+      });
+
+      await handler(
+        new Request('https://worker.test/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream'
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: {} })
+        }),
+        env(),
+        ctx
+      );
+
+      expect(rows[0]).toMatchObject({ outcome: 'ok', errorCode: '' });
+    }
+  );
+
+  it('leaves a healthy handshake alone', async () => {
+    // The inspection must not turn ordinary traffic into errors.
+    const rows = await rowsFor({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } }
+    });
+
+    expect(rows[0]).toMatchObject({ tool: 'unknown', outcome: 'ok', errorCode: '' });
+  });
+
+  it('does not re-read the body of a successful tool call', async () => {
+    // Guarded on `tool === 'unknown'` so a fifty-company screen is never
+    // parsed twice just to find out it succeeded.
+    const [row] = await rowsFor(call('get_company', { company_number: '04138203' }));
+    expect(row).toMatchObject({ tool: 'get_company', outcome: 'ok', errorCode: '' });
+  });
+
+  it('does not fail a request when the sink throws', async () => {
+    // The sink runs in a `finally` after the answer is built. A throw there
+    // would turn a good response into a 500.
+    const handler = createFetchHandler({
+      metricsSink: {
+        write: () => {
+          throw new Error('analytics is down');
+        }
+      },
+      fetchImpl: async () =>
+        new Response(PROFILE, { status: 200, headers: { 'content-type': 'application/json' } })
+    });
+
+    const response = await handler(
+      new Request('https://worker.test/mcp', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream'
+        },
+        body: JSON.stringify(call('get_company', { company_number: '04138203' }))
+      }),
+      env(),
+      ctx
+    );
+
+    expect(response.status).toBe(200);
   });
 });

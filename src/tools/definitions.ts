@@ -33,8 +33,7 @@ import {
   resolveCompanyNumber,
   startIndexInput,
   verboseInput,
-  withRaw
-} from './shared.js';
+  withRaw, MAX_QUERY_LENGTH} from './shared.js';
 
 /**
  * The nine primitive tools.
@@ -62,7 +61,7 @@ const READ_ONLY = {
 } as const;
 
 export function registerTools(server: McpServer, context: ToolContext): void {
-  const { client, logger } = context;
+  const { client } = context;
 
   server.registerTool(
     'find_company',
@@ -71,7 +70,11 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       description:
         'Search Companies House for a UK company by name, trading name or number. Start here whenever you have a name rather than a number, because every other tool in this server needs the number. Returns a shortlist with status, type and incorporation date so that companies with similar names can be told apart. When `disambiguation_needed` is true, ask the user which one they meant instead of taking the first result — dozens of live companies share a name, and picking the wrong one produces a confident answer about the wrong business.',
       inputSchema: {
-        query: z.string().min(1).describe('Company name, partial name, or company number.'),
+        query: z
+          .string()
+          .min(1)
+          .max(MAX_QUERY_LENGTH)
+          .describe('Company name, partial name, or company number.'),
         items_per_page: itemsPerPageInput,
         start_index: startIndexInput,
         verbose: verboseInput
@@ -80,7 +83,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       annotations: READ_ONLY
     },
     async ({ query, items_per_page, start_index, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'find_company', async () => {
         const { data, meta } = await client.get<unknown>({
           path: '/search/companies',
           query: { q: query, items_per_page, start_index },
@@ -99,7 +102,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       description:
         'Search Companies House for a company officer — a director, secretary or LLP member — by name. Returns candidate officer IDs with how many appointments each holds. Use it when you have a person and want the companies they are involved in; feed the officer_id to get_officer_appointments. Officer records are per-appointment-identity rather than per-person, so a common name returns many candidates and the appointment count and date of birth are usually what separates them.',
       inputSchema: {
-        query: z.string().min(1).describe("The officer's name."),
+        query: z.string().min(1).max(MAX_QUERY_LENGTH).describe("The officer's name."),
         items_per_page: itemsPerPageInput,
         start_index: startIndexInput,
         verbose: verboseInput
@@ -108,7 +111,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       annotations: READ_ONLY
     },
     async ({ query, items_per_page, start_index, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'find_officer', async () => {
         const { data, meta } = await client.get<unknown>({
           path: '/search/officers',
           query: { q: query, items_per_page, start_index },
@@ -131,7 +134,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       annotations: READ_ONLY
     },
     async ({ company_number, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'get_company', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
           path: `/company/${number}`,
@@ -160,7 +163,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       annotations: READ_ONLY
     },
     async ({ company_number, items_per_page, start_index, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'get_officers', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
           path: `/company/${number}/officers`,
@@ -196,7 +199,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       annotations: READ_ONLY
     },
     async ({ company_number, category, items_per_page, start_index, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'get_filing_history', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
           path: `/company/${number}/filing-history`,
@@ -221,7 +224,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       annotations: READ_ONLY
     },
     async ({ company_number, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'get_charges', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
           path: `/company/${number}/charges`,
@@ -250,7 +253,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       annotations: READ_ONLY
     },
     async ({ company_number, items_per_page, start_index, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'get_psc', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
           path: `/company/${number}/persons-with-significant-control`,
@@ -275,7 +278,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       annotations: READ_ONLY
     },
     async ({ company_number, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'get_insolvency', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
           path: `/company/${number}/insolvency`,
@@ -307,7 +310,7 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       annotations: READ_ONLY
     },
     async ({ officer_id, items_per_page, start_index, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'get_officer_appointments', async () => {
         const { data, meta } = await client.get<unknown>({
           path: `/officers/${encodeURIComponent(officer_id)}/appointments`,
           query: { items_per_page, start_index },

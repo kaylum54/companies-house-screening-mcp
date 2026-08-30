@@ -176,9 +176,16 @@ describe('RateLimiter — exhausting the retry bound', () => {
           remaining: 0,
           retryInMs: 1,
           limit: 10,
+          globalRemaining: 5,
           boundBy: 'client' as const
         }),
-        peek: async () => ({ granted: false, remaining: 0, retryInMs: 1, limit: 10 }),
+        peek: async () => ({
+          granted: false,
+          remaining: 0,
+          retryInMs: 1,
+          limit: 10,
+          globalRemaining: 5
+        }),
         penalise: async () => undefined,
         observe: async () => undefined
       }

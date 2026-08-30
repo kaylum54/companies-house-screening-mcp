@@ -338,7 +338,7 @@ budget, your own cache, and no shared ceiling at all. See the
 | `CH_RATE_SAFETY_MARGIN` | `0.95` | Lower it if you touch the key outside this server |
 | `CH_CLIENT_RESERVATION` | effective ÷ 8 (71) | See below |
 | `CH_NEWCOMER_ALLOWANCE` | `1` | Raise it if callers arrive in bursts and being met with an empty window matters more than throughput |
-| `CH_MAX_TRACKED_CLIENTS` | `10000` | Bound on identities held for fair sharing. An open endpoint cannot grow memory without limit |
+| `CH_MAX_TRACKED_CLIENTS` | `10000` | Backstop only. An identity exists only while it holds a timestamp in the window, and the window holds at most the effective limit of them, so the real bound is 570 at the defaults and this never binds |
 | `CH_ALLOW_CLIENT_KEYS` | `true` | Set `false` to refuse caller-supplied keys entirely |
 | `CH_MAX_WAIT_MS` | `60000` hosted | How long a request waits before `RATE_LIMITED` |
 | `CH_TRUST_PROXY_HEADERS` | `false` | **Only** behind a proxy you control — see below |
@@ -411,3 +411,5 @@ people to self-host over stdio.
 - [ADR 2 — the sliding-window limiter](adr/0002-sliding-window-rate-limiter.md) — the original single-process design and what was wrong with it
 - [ADR 15 — authless now, OAuth-ready](adr/0015-authless-now-oauth-ready.md) — what identity does and does not mean here
 - [docs/deployment.md](deployment.md) — running one
+- [docs/observability.md](observability.md) — seeing what a running one is doing
+- [ADR 16 — measure volume and outcome, never content](adr/0016-measure-volume-not-content.md) — what the analytics deliberately cannot tell you

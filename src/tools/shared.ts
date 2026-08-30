@@ -8,12 +8,33 @@ import type { RequestMeta } from '../http/client.js';
 import { CompaniesHouseClient } from '../http/client.js';
 import type { RateLimitSnapshot } from '../http/rate-limiter.js';
 import type { Logger } from '../telemetry/logger.js';
+import type { MetricsRecorder } from '../telemetry/metrics.js';
+import { silentMetrics } from '../telemetry/metrics.js';
 
 /** What every tool handler needs. Passed explicitly rather than reached for. */
+/**
+ * Longest search string accepted.
+ *
+ * A registered company name is capped at 160 characters by the Companies Act,
+ * so 256 is generous for every legitimate input. The bound exists because this
+ * server can be deployed authless: without it, `screen_companies` accepts
+ * fifty unbounded strings, each of which is trimmed into a Set, URL-encoded
+ * into a query, hashed for a cache key, and then echoed back in both
+ * `content[0].text` and `structuredContent` — so an attacker's own input is
+ * amplified through the isolate more than twice over, bounded only by the
+ * platform's body limit.
+ */
+export const MAX_QUERY_LENGTH = 256;
+
 export interface ToolContext {
   client: CompaniesHouseClient;
   logger: Logger;
   now: () => number;
+  /**
+   * Where this request is counted. Optional, defaulting to counting nothing,
+   * so stdio and every existing test carry no measurement machinery.
+   */
+  metrics?: MetricsRecorder | undefined;
 }
 
 /**
@@ -146,9 +167,10 @@ export function ok(structured: Record<string, unknown>): ToolResult {
  * result does not have to pretend to be a successful one. The payload carries
  * the code, the sentence and the next step.
  */
-export function fail(error: unknown, logger: Logger): ToolResult {
+export function fail(error: unknown, logger: Logger, metrics: MetricsRecorder = silentMetrics): ToolResult {
   if (CompaniesHouseError.is(error)) {
     logger.debug('tool returned an error', { code: error.code, status: error.status });
+    metrics.failed(error.code);
     return {
       content: [{ type: 'text', text: JSON.stringify(error.toPayload()) }],
       isError: true
@@ -159,6 +181,7 @@ export function fail(error: unknown, logger: Logger): ToolResult {
   // problem, and it should read as one rather than being dressed up as an
   // upstream fault.
   logger.error('unexpected error in tool handler', { error });
+  metrics.failed('internal_error');
   return {
     content: [
       {
@@ -178,12 +201,26 @@ export function fail(error: unknown, logger: Logger): ToolResult {
   };
 }
 
-/** Wraps a handler so no exception escapes into the transport. */
-export async function guard(logger: Logger, run: () => Promise<ToolResult>): Promise<ToolResult> {
+/**
+ * Wraps a handler so no exception escapes into the transport, and counts it.
+ *
+ * Every tool goes through here, which is why the measurement lives here too:
+ * the name and the outcome are recorded by the wrapper rather than by each
+ * handler, so a tool added next year is counted without anybody remembering
+ * to count it. The signature takes the whole context rather than a logger
+ * precisely so that it cannot be called without the recorder in reach.
+ */
+export async function guard(
+  context: ToolContext,
+  tool: string,
+  run: () => Promise<ToolResult>
+): Promise<ToolResult> {
+  const metrics = context.metrics ?? silentMetrics;
+  metrics.tool(tool);
   try {
     return await run();
   } catch (error) {
-    return fail(error, logger);
+    return fail(error, context.logger, metrics);
   }
 }
 

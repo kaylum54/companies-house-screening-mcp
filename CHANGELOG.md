@@ -6,6 +6,253 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added — you can now see what a deployment is doing
+
+Running an authless server on a shared key with no observability meant every
+failure mode was silent: the key gets throttled, one caller drains the window
+every five minutes, the Durable Object has a bad hour, the cache stops hitting
+and upstream cost triples. The operator found out by trying it.
+
+- **One row per request in Workers Analytics Engine**, carrying the tool, the
+  outcome, the error code, upstream calls, cache hits and misses, retries,
+  429s, stale answers, refusals split by cause, absorbed sub-request failures,
+  the budget at the end, whether the caller brought their own key, the duration
+  and the deployed version. Optional: without the binding the Worker runs
+  exactly as before.
+- **A five-minute scheduled check** that reads the Durable Object, writes a
+  heartbeat row so the budget can be charted through quiet periods, and alerts
+  when the window is nearly spent, the limiter is unreachable, or Companies
+  House has throttled the key. Two consecutive bad checks before it fires, at
+  most one firing message every thirty minutes, and one message when it
+  recovers — alerting that cries wolf gets muted, and a muted channel is worse
+  than none.
+- **No new credential in the Worker.** The obvious alerting design queries the
+  Analytics Engine SQL API on a schedule, which needs an account API token
+  inside a Worker anybody on the internet can reach. Reading the Durable Object
+  — the same counter every request already consults — avoids it entirely. The
+  only secret is the optional `CH_ALERT_WEBHOOK_URL`, which must be `https`.
+- **[docs/observability.md](docs/observability.md)** with the column layout,
+  the queries worth running, and the alerting setup;
+  [ADR 16](docs/adr/0016-measure-volume-not-content.md) on what is measured and
+  what is deliberately not.
+
+### Security — what the measurement deliberately cannot see
+
+- **No company numbers and no search queries.** What a user looks up is their
+  commercial business, and it is the most sensitive thing flowing through this
+  server. Nothing operational needs it.
+- **No per-caller identifier**, including the truncated fingerprint the limiter
+  already computes — a hashed address is still pseudonymous personal data, and
+  nothing operational needs it: contention shows up in the refusal count and
+  the budget column without anybody being named.
+- **Enforced by an allowlist.** `MetricsRecorder` exposes counters and two
+  label methods rather than a general `record(name, value)`, and a label is
+  emitted only if it is a value this codebase defines — a registered tool name,
+  a typed error code, or one of the handful of literals in
+  `src/telemetry/recordable.ts`. Anything else records `other`.
+
+### Fixed — found by a five-agent audit of the observability work
+
+Each of these was verified against the code before being accepted, and each is
+covered by a test that fails without the fix.
+
+- **The alert could not fire for the failure it was built for.** The scheduled
+  check peeks as an unseen client, and an unseen client is guaranteed a
+  reservation — 71 of 570 — so its share cannot fall below that until the
+  window is nearly gone. That share was being compared against 5% of the same
+  570, a threshold 2.5× underneath a floor the number could not cross. One
+  caller draining the window while everybody else was refused produced a steady
+  71 and silence. `BudgetOutcome` now carries `globalRemaining` and the
+  threshold reads that.
+- **Every hard failure was recorded as a success.** A missing key, a missing
+  Durable Object binding, a rejected origin, a refused credential and an
+  escaping exception all flushed a row saying `ok`, so a wholly broken
+  deployment charted as 100% healthy.
+- **A change of cause while firing silently cleared the alert.** The first
+  incident was never resolved and sat open forever; and two bad checks of
+  *different* kinds reset the strike count, so a deployment failing every
+  single check — a flaky coordinator alternating between timing out and
+  reporting a drained window — never alerted at all.
+- **`firing` was persisted before delivery.** A webhook down for one check
+  swallowed the whole incident: the next run saw `firing`, stayed quiet, and
+  the operator eventually received a "resolved" for an alert they were never
+  sent.
+- **The sanitiser was described as redaction and is not.** A company number is
+  eight characters of `[a-z0-9_]`, so `label('SC123456')` returned
+  `'sc123456'`, intact. Replaced with the allowlist above; the filter stays as
+  a normaliser and a test now pins that it does *not* redact.
+- **A partial refusal marked a successful response as refused.** A
+  `screen_companies` run that skipped one company for budget and returned a
+  complete, honest table was recorded as a rejection. Refusals are now counted
+  in their own column and `outcome` reports what the caller actually got.
+- **A coalesced request was denied the stale fallback its leader received.**
+  The `await` sat outside every `try`, so a follower waiting on a failed fetch
+  was rejected while the leader beside it was served an hour-old answer — and
+  it was counted as a cache hit despite being served nothing.
+- **The heartbeat drew a coordinator outage as the budget collapsing to zero**
+  and injected a synthetic `refused` row every five minutes into the query that
+  counts callers turned away.
+- **An unreadable stored alert state was swallowed with no log at all**, which
+  disables alerting silently: the strike count resets every run and nothing can
+  ever reach the bound.
+- **`sendAlert` followed redirects**, so an endpoint answering `302 → http://`
+  would have replayed the POST in clear text and defeated the https-only check.
+- **Roughly fifteen tests proved less than they claimed.** The worst: the
+  recorder could be hoisted from per-invocation to per-isolate — which is
+  exactly the deployed shape — and the whole suite passed, because the test
+  meant to catch it built a fresh handler for each call and observed
+  independence it had manufactured. Also fixed: a redaction test fired at a
+  path that could not leak, a precedence test whose fixture excluded the branch
+  it was contesting, and assertions comparing two literals.
+
+### Fixed — found by the new tests rather than by review
+
+- **The pooled limiter never received the recorder.** It is constructed
+  explicitly in `worker.ts` rather than by the client, so the fallback that
+  wired it never ran and the deployed path recorded no budget readings and no
+  refusals at all — the two numbers the whole exercise existed for.
+- **A throwing metrics sink took the response down with it.** The flush runs in
+  a `finally` after the answer is built, and was guarded only inside one sink
+  implementation, so any other sink would have turned a good response into a
+  500. Measurement taking down the thing it measures.
+
+### Fixed — found by a second audit, of the first audit's fixes
+
+Three more agents, one of them tasked only with finding defects the previous
+round introduced. It found some.
+
+- **A 429 hold from Companies House became invisible.** Reading the whole
+  window rather than one caller's share was the right fix for the alert
+  threshold, but during a hold the window is deliberately reported *full* — a
+  hold is not a spending problem — so the check reported perfect health while
+  every caller was being refused. Before the fix it at least alerted, wrongly
+  labelled. There is now an `upstream_throttled` condition, checked before the
+  window is looked at.
+- **A changed cause re-fired on every check.** The round-one fix for "a change
+  of cause is swallowed" had no bound, so a flapping coordinator produced an
+  alert every five minutes forever — caller-drivable, and the exact outcome the
+  hysteresis exists to prevent. Two messages are now at least half an hour
+  apart.
+- **A failed recovery message was still lost.** The delivery-failure fixup only
+  helped the firing direction; a `resolved` that failed to send landed on a
+  state that had already been reset. A failed send now persists the previous
+  state unchanged, so either direction retries.
+- **`double11` was never incremented for the case it was added for.**
+  `screen_companies` sizes its batch from a `peek` and never asks the limiter
+  about the companies it drops, so the documented headline shape — a batch that
+  came back short and said so — recorded zero refusals.
+- **A degraded answer was indistinguishable from a clean one.** The composite
+  tools absorb a failed section rather than failing the whole snapshot; a
+  Companies House wobble degrading every answer on the server produced a
+  dataset of clean `ok` rows. New `subrequestFailures` column.
+- **Protocol-level failures still charted as successes.** A malformed body, an
+  unknown method, an unknown tool and arguments that fail the schema are all
+  answered by the MCP SDK above `guard`, so nothing saw them. The response is
+  now inspected — only when no tool was named, so a successful call is never
+  re-parsed — and recorded as `protocol_error`.
+- **`budgetRemaining` meant two things in one column.** Request rows carried
+  one caller's share, heartbeat rows the whole window; under a hold a request
+  row read "0 of 570" while the window was almost untouched.
+- **A retry was counted for an attempt that never reached the network**, so the
+  retry rate read 100% for a request that retried nothing.
+- **A coalesced request served a stale answer was counted in no cache column**,
+  so five requests served from cache reported a 0% hit rate.
+- **An unrecognised refusal cause was dropped rather than counted**, which is
+  the undercount the guard was written to prevent.
+
+### Fixed — found by a third audit, run against the second audit's fixes
+
+Three agents in fresh contexts: a regression hunt scoped to the previous
+round's diff, a full audit with no knowledge of either earlier round, and a
+documentation-and-coherence pass. Every finding was checked against the source
+before being accepted, and two were rejected on inspection.
+
+- **A change of cause was deleted rather than deferred.** While an alert was
+  firing and the thirty-minute gap had not passed, the new cause was written
+  into the persisted state and no message was sent — so the next check read
+  "same cause, already firing" and stayed silent permanently. An operator told
+  about a drained budget was never told the coordinator had gone down, then
+  received a `resolved` naming an incident that had never been announced. The
+  state now distinguishes the condition observed from the condition announced.
+- **The alert gap bounded only the cause change.** The first message of an
+  incident had no gap at all, and a recovery reset the clock, so a budget
+  oscillating around the 5% threshold fired, resolved and re-fired forever —
+  measured at sixteen messages in two hours, in the code whose own header
+  warns that alerting which cries wolf gets muted. The gap is now checked once
+  on the way to sending anything and survives a recovery.
+- **Routine capability probes were recorded as protocol errors.** This server
+  registers tools and nothing else, and many MCP clients ask for
+  `resources/list` and `prompts/list` unconditionally after `initialize`.
+  Counting the SDK's `-32601` answers put two or three error rows on every
+  client connection, into the single column an operator alerts on.
+- **A failed name search counted as nothing at all.** `fetchSections` recorded
+  its absorbed failures; `resolveInput` did not. An upstream outage during the
+  resolution half of a `screen_companies` batch returned an empty table under a
+  clean `ok` row with zero in the column that exists to reveal exactly that.
+- **`refusals` mixed two units and named the wrong cause.** A truncated batch
+  counted one refusal per company while every other writer of the column counts
+  sub-requests; and it read `boundBy ?? 'client'`, but a successful `peek`
+  carries no `boundBy`, so the default fired almost every time and sent an
+  operator looking at fair sharing while the window itself was spent.
+- **A corrupt reading classified as perfect health.** The sanitiser guarded the
+  alert message and not the branch that decides whether to send one:
+  `NaN <= NaN * 0.05` and `NaN > 0` are both false, so a garbled Durable Object
+  response cleared a firing alert with a spurious `resolved`. The response is
+  now validated where it crosses the process boundary, which also closes a
+  non-finite `retryInMs` turning a refusal into sixty-four round trips to the
+  coordinator as fast as they will go.
+- **The recovery message was malformed.** Built from a helper that returns a
+  complete sentence, it read "Recovered: The shared Companies House budget is
+  nearly spent and callers are being refused. has cleared." — in the one
+  message an operator is guaranteed to read.
+- **An unrecognised refusal cause overwrote a recognised one.** Last-write-wins
+  is right between real causes; letting `other` win erased a cause that had
+  been correctly identified.
+- **`since` was persisted, validated and never shown.** The field justified its
+  own onset-not-firing timing in a comment nothing could observe. It is in the
+  payload now.
+- **A comment still argued for the bug.** The rationale for reading a caller's
+  share rather than the window survived, four lines above the code that had
+  been rewritten to do the opposite, contradicting the fix, the ADR and three
+  other comments. A maintainer reading top-to-bottom would have put it back.
+
+### Security
+
+- **The request body is now bounded on Workers.** `CH_MAX_REQUEST_BYTES` was
+  parsed by the config and read only by the Node entry point, so the one
+  deployment that is authless and reachable by anybody had no body limit at
+  all — while the deployment guide listed the setting with no hint that it did
+  not apply. Search strings are bounded too: a registered company name is
+  capped at 160 characters by statute, and unbounded input was echoed back in
+  both `content[0].text` and `structuredContent`, amplifying an attacker's own
+  payload through the isolate more than twice over.
+- **`failOpen` is gone.** Nothing in the codebase set it, the ADR argues
+  against it, and the placeholder it returned carried no `boundBy` — so a
+  fabricated "1 of 1" was charted as a real reading and drew a coordinator
+  outage as a window fully consumed. A switch that would hand every isolate its
+  own full allowance, defeating the guarantee the Durable Object exists to
+  provide, is not worth keeping for a caller who does not exist.
+
+### Changed — documentation
+
+- The alerting is described as three conditions rather than two, in every
+  place that summarises it; `upstream_throttled` had been added without the
+  summaries following.
+- The heartbeat query filters `double7 >= 0`, so a Durable Object outage leaves
+  a gap in the chart rather than a line diving to −1 — which is what the prose
+  had been claiming all along.
+- `double9` is documented as measuring up to the last piece of I/O rather than
+  to the end of the request. Workers freezes `Date.now()` between I/O as a
+  side-channel mitigation, so a request that did no I/O records exactly zero,
+  and neither test runtime emulates the freeze.
+- `CH_MAX_TRACKED_CLIENTS` is described as the backstop it is. An identity
+  exists only while it holds a timestamp in the window, so the real bound is
+  the effective limit — 570 at the defaults — and the eviction never runs.
+- Durable Object options are read once, on first contact, and kept for the
+  object's lifetime; changing the window size and redeploying does not take
+  effect until the platform evicts it. Now said out loud in the deployment
+  guide.
+
 ### Added — documentation
 
 - **[docs/rate-limits.md](docs/rate-limits.md)**, the missing page. The shared
@@ -42,7 +289,7 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed — documentation
 
-- The README claimed 284 tests. It is 438 under Node plus 12 inside `workerd`.
+- The README claimed 284 tests. It is 562 under Node plus 16 inside `workerd`.
 - Corrected against the code while writing the page above: the rate-limit
   error field is `retry_after_ms`, not `retry_in_ms`; an unreachable limiter
   reports `UPSTREAM_UNAVAILABLE` rather than `RATE_LIMITED`, deliberately, so a

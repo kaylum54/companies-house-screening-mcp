@@ -9,6 +9,7 @@ import { CompaniesHouseClient } from '../http/client.js';
 import { RateLimiter, SERVER_MAX_WAIT_MS } from '../http/rate-limiter.js';
 import { createServer } from '../server.js';
 import type { Logger } from '../telemetry/logger.js';
+import type { MetricsRecorder } from '../telemetry/metrics.js';
 import type { ClientIdentity } from './identity.js';
 
 /**
@@ -56,6 +57,16 @@ export interface SessionFactoryOptions {
    * ends up untested and then untrue.
    */
   fetchImpl?: typeof fetch | undefined;
+  /**
+   * Where this request is counted.
+   *
+   * Request-scoped, so whatever holds it must be too. That is true on the
+   * Worker, where the client, the limiter and the session are all built inside
+   * the invocation; it is deliberately left unset on the long-lived Node
+   * server, where one recorder would blend every caller into one row. See
+   * ADR 16.
+   */
+  metrics?: MetricsRecorder | undefined;
 }
 
 export interface Session {
@@ -87,7 +98,12 @@ export function createSession(options: SessionFactoryOptions, identity: ClientId
       options.pooledClient.withClientId(identity.clientId);
 
   const server = createServer(
-    { client, logger: options.logger, now: () => options.clock.now() },
+    {
+      client,
+      logger: options.logger,
+      now: () => options.clock.now(),
+      ...(options.metrics === undefined ? {} : { metrics: options.metrics })
+    },
     options.version
   );
 
@@ -114,6 +130,7 @@ function buildPrivateClient(
     clock: options.clock,
     maxWaitMs: config.maxWaitMs ?? SERVER_MAX_WAIT_MS,
     store: options.createBudgetStore(clientId),
+    ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
     limit: config.rateLimit,
     windowMs: config.rateWindowMs,
     safetyMargin: config.rateSafetyMargin
@@ -126,6 +143,7 @@ function buildPrivateClient(
     cache: options.cache,
     limiter,
     clientId,
+    ...(options.metrics === undefined ? {} : { metrics: options.metrics }),
     ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl })
   });
 }

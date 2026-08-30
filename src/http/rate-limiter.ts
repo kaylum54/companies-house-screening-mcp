@@ -1,6 +1,8 @@
 import type { Clock } from '../clock.js';
 import { systemClock } from '../clock.js';
 import { CompaniesHouseError } from '../errors.js';
+import type { MetricsRecorder } from '../telemetry/metrics.js';
+import { silentMetrics } from '../telemetry/metrics.js';
 import type { BudgetBound, BudgetOutcome, SlidingWindowBudgetOptions } from './budget.js';
 import type { BudgetStore } from './budget-store.js';
 import { MemoryBudgetStore } from './budget-store.js';
@@ -59,6 +61,17 @@ export interface RateLimiterOptions extends SlidingWindowBudgetOptions {
    * what the stdio server had always done.
    */
   maxWaitMs?: number;
+  /**
+   * Where refusals and budget readings are counted.
+   *
+   * The limiter is the only place that knows *why* a request was turned away
+   * — a spent share, a spent window, a 429 penalty, or a coordinator that
+   * could not be reached are four different operational problems that all
+   * look like "rate limited" from outside. Recording it anywhere else would
+   * mean inferring it back from an error code that deliberately does not
+   * carry the distinction. Defaults to recording nothing.
+   */
+  metrics?: MetricsRecorder;
 }
 
 export interface RateLimitSnapshot {
@@ -68,6 +81,15 @@ export interface RateLimitSnapshot {
   resetInMs: number;
   /** The effective ceiling after the safety margin. */
   limit: number;
+  /**
+   * What is left in the whole window, as opposed to this caller's share.
+   *
+   * Carried so that a caller sizing a batch can tell which of the two bounds
+   * is biting. `boundBy` cannot answer that on its own: it is set only when
+   * something was actually refused, so a successful `peek` leaves it absent
+   * and everything downstream had to guess.
+   */
+  globalRemaining: number;
   /**
    * Why the budget is zero, when it is.
    *
@@ -96,6 +118,7 @@ export class RateLimiter {
   readonly #store: BudgetStore;
   readonly #maxWaitMs: number;
   readonly #effectiveLimit: number;
+  readonly #metrics: MetricsRecorder;
 
   /**
    * Last outcome seen, so that response metadata can report the budget without
@@ -108,6 +131,7 @@ export class RateLimiter {
     this.#jitterMs = options.jitterMs ?? 50;
     this.#random = options.random ?? Math.random;
     this.#maxWaitMs = options.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
+    this.#metrics = options.metrics ?? silentMetrics;
 
     const store = options.store ?? new MemoryBudgetStore(options);
     this.#store = store;
@@ -119,7 +143,8 @@ export class RateLimiter {
     this.#lastKnown = {
       remaining: this.#effectiveLimit,
       resetInMs: 0,
-      limit: this.#effectiveLimit
+      limit: this.#effectiveLimit,
+      globalRemaining: this.#effectiveLimit
     };
   }
 
@@ -152,10 +177,10 @@ export class RateLimiter {
       // A window that cannot be consulted will not become consultable by being
       // asked sixty more times. Fail now, with a reason that says so, rather
       // than after a minute of round trips to something that is down.
-      if (outcome.boundBy === 'unavailable') throw rateLimited(outcome);
+      if (outcome.boundBy === 'unavailable') throw this.#refuse(outcome);
 
       const now = this.#clock.now();
-      if (now + outcome.retryInMs > deadline) throw rateLimited(outcome);
+      if (now + outcome.retryInMs > deadline) throw this.#refuse(outcome);
 
       await this.#clock.sleep(Math.max(outcome.retryInMs, 1) + this.#jitter());
     }
@@ -165,7 +190,7 @@ export class RateLimiter {
     // times inside the wait window. That is congestion, and reporting it as an
     // internal error would tell the caller their request is a server bug and
     // not retryable, when it is neither.
-    if (last !== undefined && this.#clock.now() > startedAt) throw rateLimited(last);
+    if (last !== undefined && this.#clock.now() > startedAt) throw this.#refuse(last);
 
     throw new Error('RateLimiter.acquire exceeded its retry bound; the injected clock is not advancing.');
   }
@@ -235,13 +260,43 @@ export class RateLimiter {
     return this.#effectiveLimit;
   }
 
+  /**
+   * Builds the refusal error, counting it on the way past.
+   *
+   * All three give-up paths route through here so that none of them can be
+   * added later without being counted — which is the failure mode for
+   * instrumentation generally: it is correct on the day it is written and
+   * quietly incomplete a month later.
+   */
+  #refuse(outcome: BudgetOutcome): CompaniesHouseError {
+    this.#metrics.refused(outcome.boundBy ?? 'global');
+    return rateLimited(outcome);
+  }
+
   #remember(outcome: BudgetOutcome): RateLimitSnapshot {
     this.#lastKnown = {
       remaining: outcome.remaining,
       resetInMs: outcome.granted ? 0 : outcome.retryInMs,
       limit: outcome.limit,
+      globalRemaining: outcome.globalRemaining,
       boundBy: outcome.boundBy
     };
+    // Every outcome passes through here, granted or not, so the figure
+    // recorded is the state at the end of the request rather than at whichever
+    // point somebody remembered to sample it.
+    //
+    // Except when nothing was read. An unreachable coordinator reports zero
+    // for everything as a fail-closed placeholder, and recording that as a
+    // real reading drew an outage as the budget collapsing — on request rows,
+    // which are the ones an operator charts. The heartbeat already skipped it;
+    // this is the same rule for the path that produces most of the data.
+    if (outcome.boundBy !== 'unavailable') {
+      // The window, not this caller's share of it — the same figure the
+      // heartbeat records, so one column means one thing. They disagreed by a
+      // whole reservation, and under a 429 hold a request row said "0 of 570"
+      // while the window was almost untouched.
+      this.#metrics.budget(outcome.globalRemaining, outcome.limit);
+    }
     return this.#lastKnown;
   }
 
@@ -256,6 +311,7 @@ export function budgetUnavailable(retryInMs: number): CompaniesHouseError {
     remaining: 0,
     retryInMs,
     limit: 0,
+    globalRemaining: 0,
     boundBy: 'unavailable'
   });
 }

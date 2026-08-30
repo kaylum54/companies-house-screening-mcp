@@ -26,8 +26,9 @@ import { CompaniesHouseError } from '../errors.js';
 import type { RequestMeta } from '../http/client.js';
 import { CompaniesHouseClient } from '../http/client.js';
 import { budgetUnavailable } from '../http/rate-limiter.js';
+import type { MetricsRecorder } from '../telemetry/metrics.js';
 import type { ToolContext } from './shared.js';
-import { companyNumberInput, fail, guard, mergeMeta, ok, resolveCompanyNumber, verboseInput, withRaw } from './shared.js';
+import { companyNumberInput, fail, guard, mergeMeta, ok, resolveCompanyNumber, verboseInput, withRaw, MAX_QUERY_LENGTH} from './shared.js';
 
 /**
  * The composite tools.
@@ -69,7 +70,8 @@ async function fetchSections(
   client: CompaniesHouseClient,
   companyNumber: string,
   sections: SnapshotSection[],
-  now: number
+  now: number,
+  metrics?: MetricsRecorder | undefined
 ): Promise<SectionResults> {
   const profileResponse = await client.get<unknown>({
     path: `/company/${companyNumber}`,
@@ -152,6 +154,11 @@ async function fetchSections(
       continue;
     }
 
+    // Absorbed into the answer rather than failing the whole snapshot, which
+    // is right for the caller and invisible to everybody else. Counted so that
+    // an upstream wobble degrading every answer on the server does not produce
+    // a dataset of clean `ok` rows.
+    metrics?.subrequestFailed();
     results.unavailable.push({
       section,
       code: CompaniesHouseError.is(error) ? error.code : 'INTERNAL_ERROR',
@@ -180,7 +187,11 @@ type Resolution =
  * nineteen. So a name that matches several companies becomes an unresolved
  * row with its candidates attached, never a best guess.
  */
-async function resolveInput(client: CompaniesHouseClient, input: string): Promise<Resolution> {
+async function resolveInput(
+  client: CompaniesHouseClient,
+  input: string,
+  metrics?: MetricsRecorder
+): Promise<Resolution> {
   const trimmed = input.trim();
   if (trimmed === '') return { kind: 'unresolved', input, reason: 'The entry is empty.' };
 
@@ -198,6 +209,12 @@ async function resolveInput(client: CompaniesHouseClient, input: string): Promis
   );
 
   if (!outcome.ok) {
+    // The same absorption `fetchSections` performs, and for a while the only
+    // one that went uncounted: a name search that fails becomes an unresolved
+    // row, so an upstream outage during the resolution half of a batch
+    // returned an empty table under a clean `ok` — which is precisely the
+    // silent degradation this column exists to reveal.
+    metrics?.subrequestFailed();
     return {
       kind: 'unresolved',
       input,
@@ -263,14 +280,14 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
       annotations: READ_ONLY
     },
     async ({ company_number, include_officers, include_charges, include_insolvency, verbose }) =>
-      guard(logger, async () => {
+      guard(context, 'company_snapshot', async () => {
         const number = resolveCompanyNumber(company_number);
         const sections: SnapshotSection[] = ['profile'];
         if (include_officers !== false) sections.push('officers');
         if (include_charges !== false) sections.push('charges');
         if (include_insolvency !== false) sections.push('insolvency');
 
-        const fetched = await fetchSections(client, number, sections, context.now());
+        const fetched = await fetchSections(client, number, sections, context.now(), context.metrics);
         const body: Body<CompanySnapshotResult> = buildSnapshot({
           profile: fetched.profile,
           officers: fetched.officers,
@@ -304,7 +321,7 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         'Use this whenever the question is about MORE THAN ONE company — a list, a comparison, "which of these", a batch from procurement, anything with several names or numbers in it. Prefer it over calling company_snapshot repeatedly: it costs a quarter of the requests and returns a table you can read at a glance. Screens up to 50 companies and returns one row each: status, age, and which signals were found. Names that match more than one company are never guessed at; they come back under `unresolved` with their candidates so you can ask which was meant. Anything skipped for want of rate-limit budget comes back under `not_screened` with the reason, so the table is never quietly shorter than the list you passed in. Rows carry signal codes only — call company_snapshot on one company number for the detail behind them. Officers are excluded by default because they cost an extra request per company; sections_used says what the signals could see.',
       inputSchema: {
         companies: z
-          .array(z.string().min(1))
+          .array(z.string().min(1).max(MAX_QUERY_LENGTH))
           .min(1)
           .max(MAX_SCREEN_INPUTS)
           .describe('Company names or numbers. Mixed input is fine. Maximum 50 per call.'),
@@ -321,7 +338,7 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
       annotations: READ_ONLY
     },
     async ({ companies, include_officers, include_charges, include_insolvency }) =>
-      guard(logger, async () => {
+      guard(context, 'screen_companies', async () => {
         const sections: SnapshotSection[] = ['profile'];
         if (include_officers === true) sections.push('officers');
         if (include_charges !== false) sections.push('charges');
@@ -339,7 +356,7 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         });
 
         const resolutions = await mapWithConcurrency(inputs, DEFAULT_CONCURRENCY, (entry) =>
-          resolveInput(client, entry)
+          resolveInput(client, entry, context.metrics)
         );
 
         const resolved = resolutions.filter(
@@ -374,7 +391,13 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         // confident wrong diagnosis of an outage in this server, so say what
         // actually happened instead.
         if (budget.boundBy === 'unavailable') {
-          return fail(budgetUnavailable(budget.resetInMs), logger);
+          // Recorded here because this path never reaches the limiter's own
+          // refusal accounting: the batch is sized from a `peek`, so the
+          // coordinator being down is discovered before anything is acquired.
+          // Without this the row said `refusalCause: 'none'` and the one query
+          // that groups refusals by cause dropped it silently.
+          context.metrics?.refused('unavailable');
+          return fail(budgetUnavailable(budget.resetInMs), logger, context.metrics);
         }
 
         const affordable = Math.max(Math.floor(budget.remaining / perCompany), 0);
@@ -387,7 +410,30 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
           budget.resetInMs > 0
             ? `Retry in ${Math.ceil(budget.resetInMs / 1000)} seconds, or pass a shorter list.`
             : 'Pass a shorter list, or retry once the current five-minute window rolls over.';
-        const notScreened = resolved.slice(affordable).map((resolution) => ({
+        const skipped = resolved.slice(affordable);
+        // Counted here because nothing else will. The batch is sized from a
+        // `peek`, so the limiter is never *asked* about the companies that are
+        // dropped and its own refusal accounting never runs — which left the
+        // headline case for this column, a batch that came back short and said
+        // so, reading zero refusals.
+        //
+        // Counted in sub-requests, not companies: every other writer of this
+        // column counts sub-requests, and one skipped company is `perCompany`
+        // of them. Recording one per company summed two different units into
+        // the same figure.
+        //
+        // The cause is derived rather than read off `boundBy`, because a
+        // successful `peek` carries no `boundBy` at all — it is set only when
+        // something was actually refused. Defaulting the absent case to
+        // `client` therefore fired almost every time and sent an operator
+        // looking at fair sharing while the window itself was the thing that
+        // was nearly spent.
+        const cause = budget.globalRemaining <= budget.remaining ? 'global' : 'client';
+        const refusedSubrequests = skipped.length * perCompany;
+        for (let i = 0; i < refusedSubrequests; i += 1) {
+          context.metrics?.refused(budget.boundBy ?? cause);
+        }
+        const notScreened = skipped.map((resolution) => ({
           input: resolution.input,
           reason: `Not enough rate-limit budget left in this five-minute window. Screening this company needs ${perCompany} requests. ${retry}`
         }));
@@ -403,10 +449,12 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         const metas: RequestMeta[] = [];
         const rows = await mapWithConcurrency(toScreen, DEFAULT_CONCURRENCY, async (resolution) => {
           const outcome = await attempt(() =>
-            fetchSections(client, resolution.companyNumber, sections, context.now())
+            fetchSections(client, resolution.companyNumber, sections, context.now(), context.metrics)
           );
 
           if (!outcome.ok) {
+            // A whole company that could not be read, absorbed into the table.
+            context.metrics?.subrequestFailed();
             return {
               failed: {
                 input: resolution.input,

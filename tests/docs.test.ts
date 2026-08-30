@@ -115,11 +115,17 @@ describe('documentation links', () => {
       .replace(/\s/g, '-');
 
   async function handWritten(): Promise<string[]> {
-    const pages = ['README.md', 'CHANGELOG.md', 'docs/deployment.md', 'docs/rate-limits.md', 'docs/mcp-surface.md'];
+    // Discovered rather than listed, so a page added next year is checked
+    // without anybody remembering to add it here. `docs/tools` and
+    // `docs/recipes` are excluded because they are generated — a link in one
+    // is as correct as the schema it was rendered from.
+    const top = (await readdir(DOCS, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+      .map((entry) => join('docs', entry.name));
     const adrs = (await readdir(join(DOCS, 'adr')))
       .filter((name) => name.endsWith('.md'))
       .map((name) => join('docs', 'adr', name));
-    return [...pages, ...adrs];
+    return ['README.md', 'CHANGELOG.md', ...top, ...adrs];
   }
 
   it('resolves every relative link to a file that exists', async () => {

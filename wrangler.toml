@@ -48,6 +48,25 @@ new_sqlite_classes = ["RateLimitDurableObject"]
 binding = "CACHE"
 id = "replace-with-your-kv-namespace-id"
 
+# The health check. Every five minutes, matching the length of the rate-limit
+# window: one check per window is enough to see a window that failed to
+# recover, and more often would only add noise. It reads the Durable Object and
+# never spends budget. Delete this block to stop the check and its heartbeat
+# rows; request rows keep being written. See src/cloudflare/worker.ts.
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Where each request is counted: one row per invocation carrying volume, cache
+# effectiveness, refusals and budget. Optional — delete this block and the
+# Worker runs exactly as before and measures nothing.
+#
+# The dataset holds no caller identity and no company numbers by construction;
+# see docs/adr/0016-measure-volume-not-content.md for what is deliberately
+# absent and why.
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "companies_house_mcp"
+
 [vars]
 # Non-secret configuration. The API key is a secret and must NOT go here:
 #   npx wrangler secret put COMPANIES_HOUSE_API_KEY
@@ -58,3 +77,8 @@ CH_LOG_LEVEL = "info"
 CH_CACHE_ENABLED = "true"
 # Callers may supply their own key to get a private budget. See docs/deployment.md.
 CH_ALLOW_CLIENT_KEYS = "true"
+
+# Alerting is off unless you set a webhook. It is a secret, not a var:
+#   npx wrangler secret put CH_ALERT_WEBHOOK_URL
+# Must be https. Requires the CACHE binding above, which is where the strike
+# count that stops it crying wolf is kept. See docs/observability.md.
