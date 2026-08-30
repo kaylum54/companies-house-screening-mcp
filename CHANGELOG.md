@@ -6,6 +6,10 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] — 2026-08-30
+
 ### Added — you can now see what a deployment is doing
 
 Running an authless server on a shared key with no observability meant every
