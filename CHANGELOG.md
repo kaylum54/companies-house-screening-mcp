@@ -6,7 +6,41 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed — found by running the deployed server against the live register
+
+- **A dissolved company reported officers as serving.** `is_active` was
+  inferred from the absence of a `resigned_on` date, and nobody resigns from a
+  company that was dissolved out from under them — so the field stays empty
+  forever and three officers of a company dissolved in 2018 came back as
+  active, directly underneath `active_count: 0` in the same object. Companies
+  House counts them a third way (`active_count: 0, resigned_count: 49,
+  inactive_count: 3`) and its count is now the authority. Only the zero case is
+  reconciled: a non-zero count above a shorter list is one page of many, not a
+  contradiction.
+- **The same mistake, worse, in officer appointments.** A director of a
+  dissolved company was reported as currently serving there, and it was counted
+  as his one active appointment — in the tool whose entire purpose is mapping
+  who is running what. `is_active` is now checked against the company's status
+  as well as the appointment's. Liquidation, administration and receivership
+  are deliberately not treated as ended: those companies still exist and their
+  officers are still serving, which is exactly when somebody screening them
+  wants the name.
+- **The same mistake again in the PSC projection**, where a controller of a
+  dissolved company was reported as a current one.
+- **`no_active_officers` claimed people had resigned when they had not.** The
+  wording is now chosen from the records rather than assumed, so a dissolved
+  company reads "The register shows no serving officers." — the previous text
+  was a confident false statement about named individuals.
+- **The officer counts did not add up.** `active_count` and `resigned_count`
+  fall short of the total on a dissolved company, and the missing records were
+  exactly the ones the old inference got wrong. `inactive_count` is now
+  reported alongside them.
+
+Found by pointing an MCP client at the live 0.3.0 deployment and reading the
+answer, not by a test. Every fixture in the repository was of a live company,
+where the two definitions of "active" happen to agree, so nothing failed.
+`officers/officers-dissolved.json` and `officers/appointments-dissolved.json`
+are recorded from the register and close that gap.
 
 ## [0.3.0] — 2026-08-30
 

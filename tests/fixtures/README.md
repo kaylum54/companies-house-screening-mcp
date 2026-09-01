@@ -9,7 +9,8 @@ of the documented shape.
 | Fixture | Company | Why this one |
 |---|---|---|
 | `company/profile-active.json`, `officers/`, `charges/`, `psc/`, `filing-history/` | Royal Mail Group Limited (04138203) | Every section is populated — five officers, fifteen charges of which two are outstanding, two PSC entries — so no fixture is an empty list. |
-| `company/profile-dissolved.json` | Marine and General Mutual Life Assurance Society (00000006) | Incorporated 1862, dissolved 2018. The Companies House documentation's own example company. |
+| `company/profile-dissolved.json`, `officers/officers-dissolved.json` | Marine and General Mutual Life Assurance Society (00000006) | Incorporated 1862, dissolved 2018. The Companies House documentation's own example company. The officers list is the case that breaks a naive reading of "active": three of them have no `resigned_on` because the company was dissolved out from under them, so Companies House reports `active_count: 0` alongside `inactive_count: 3`. |
+| `officers/appointments-dissolved.json` | A director of 00000006 | One person's appointments spanning live and dissolved companies, so `is_active` can be checked against the company as well as the appointment. Found because the deployed server called him a serving director of a company that has not existed since 2018. |
 | `company/profile-insolvent.json`, `insolvency/` | Carillion PLC (03782379) | In compulsory liquidation since 2018. |
 | `officers/appointments.json` | Derived at record time | The recorder picks whichever officer on the page holds the most appointments, so the fixture actually demonstrates the tool that follows a person across companies. |
 

@@ -24,6 +24,7 @@ This tool reads only and changes nothing, and calls an external service (the Com
 | `company_number` | string | yes | — |
 | `active_count` | number | no | — |
 | `resigned_count` | number | no | — |
+| `inactive_count` | number | no | Appointments that ended because the company did, rather than by resignation. Non-zero on a dissolved company, and the reason active + resigned can fall short of the total. |
 | `officers` | object[] | yes | — |
 | `officers[].officer_id` | string | no | Pass to get_officer_appointments to see every other company this person runs. |
 | `officers[].name` | string | yes | — |
