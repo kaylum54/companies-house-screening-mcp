@@ -1,0 +1,136 @@
+{
+  "active_count": 0,
+  "date_of_birth": {
+    "month": 3,
+    "year": 1963
+  },
+  "etag": "3dc24465eb9f4f65cb75ed6fbe63df9599205289",
+  "inactive_count": 1,
+  "is_corporate_officer": false,
+  "items": [
+    {
+      "address": {
+        "address_line_1": "Cannon Place",
+        "address_line_2": "78 Cannon Street",
+        "country": "England",
+        "locality": "London",
+        "postal_code": "EC4N 6AF",
+        "premises": "Cms Cameron Mckenna Llp"
+      },
+      "appointed_on": "2015-03-01",
+      "appointed_to": {
+        "company_name": "MARINE AND GENERAL MUTUAL LIFE ASSURANCE SOCIETY",
+        "company_number": "00000006",
+        "company_status": "dissolved"
+      },
+      "name": "James GALBRAITH",
+      "country_of_residence": "United Kingdom",
+      "is_pre_1992_appointment": false,
+      "links": {
+        "company": "/company/00000006"
+      },
+      "name_elements": {
+        "forename": "James",
+        "title": "Mr",
+        "surname": "GALBRAITH"
+      },
+      "nationality": "British",
+      "officer_role": "director"
+    },
+    {
+      "address": {
+        "address_line_1": "Cannon House",
+        "address_line_2": "78 Cannon Street",
+        "country": "England",
+        "locality": "London",
+        "postal_code": "EC4N 6AF",
+        "premises": "Cms Cameron Mckenna Llp"
+      },
+      "appointed_on": "2015-06-01",
+      "appointed_to": {
+        "company_name": "MGM ASSURANCE (TRUSTEES) LIMITED",
+        "company_number": "01279948",
+        "company_status": "active"
+      },
+      "name": "James GALBRAITH",
+      "country_of_residence": "United Kingdom",
+      "is_pre_1992_appointment": false,
+      "links": {
+        "company": "/company/01279948"
+      },
+      "name_elements": {
+        "forename": "James",
+        "title": "Mr",
+        "surname": "GALBRAITH"
+      },
+      "nationality": "British",
+      "officer_role": "director",
+      "resigned_on": "2021-04-07"
+    },
+    {
+      "address": {
+        "address_line_1": "16 Blythswood Square",
+        "country": "Scotland",
+        "locality": "Glasgow",
+        "postal_code": "G2 4HJ",
+        "premises": "Scottish Friendly House"
+      },
+      "appointed_on": "2011-04-11",
+      "appointed_to": {
+        "company_name": "SFIS (NOMINEES) LIMITED",
+        "company_number": "SC397351",
+        "company_status": "active"
+      },
+      "name": "James GALBRAITH",
+      "country_of_residence": "United Kingdom",
+      "is_pre_1992_appointment": false,
+      "links": {
+        "company": "/company/SC397351"
+      },
+      "name_elements": {
+        "forename": "James",
+        "title": "Mr",
+        "surname": "GALBRAITH"
+      },
+      "nationality": "British",
+      "officer_role": "director",
+      "resigned_on": "2021-04-07"
+    },
+    {
+      "address": {
+        "address_line_1": "16 Blythswood Square",
+        "address_line_2": "Glasgow",
+        "postal_code": "G2 4HJ"
+      },
+      "appointed_on": "2008-10-31",
+      "appointed_to": {
+        "company_name": "S.L. INSURANCE SERVICES LIMITED",
+        "company_number": "SC107952",
+        "company_status": "dissolved"
+      },
+      "name": "James GALBRAITH",
+      "country_of_residence": "United Kingdom",
+      "is_pre_1992_appointment": false,
+      "links": {
+        "company": "/company/SC107952"
+      },
+      "name_elements": {
+        "forename": "James",
+        "title": "Mr",
+        "surname": "GALBRAITH"
+      },
+      "nationality": "British",
+      "officer_role": "director",
+      "resigned_on": "2021-04-07"
+    }
+  ],
+  "items_per_page": 4,
+  "kind": "personal-appointment",
+  "links": {
+    "self": "/officers/I-4OI1Rt7bqjbeWflGDl_s6KG6s/appointments"
+  },
+  "name": "James GALBRAITH",
+  "resigned_count": 6,
+  "start_index": 0,
+  "total_results": 7
+}

@@ -39,6 +39,7 @@ List the board. Resigned officers come back too, which is usually what you want 
   "company_number": "04138203",
   "active_count": 10,
   "resigned_count": 54,
+  "inactive_count": 0,
   "officers": [
     {
       "officer_id": "vKBmO0VKB84EFn2fjjCSWgLFHbY",

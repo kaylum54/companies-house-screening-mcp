@@ -1,0 +1,138 @@
+{
+  "active_count": 0,
+  "etag": "f11c09bf8e8ae28145416c31a15a2548f53b62df",
+  "items": [
+    {
+      "etag": "f11c09bf8e8ae28145416c31a15a2548f53b62df",
+      "address": {
+        "address_line_1": "Cannon Place",
+        "address_line_2": "78 Cannon Street",
+        "country": "England",
+        "locality": "London",
+        "postal_code": "EC4N 6AF",
+        "premises": "Cms Cameron Mckenna Llp"
+      },
+      "appointed_on": "2016-09-13",
+      "is_pre_1992_appointment": false,
+      "links": {
+        "self": "/company/00000006/appointments/XOgtPRCRE8PPQnrxSg_ccYmmR7Y",
+        "officer": {
+          "appointments": "/officers/1UUfj2gDv9ZVoykvoy9hhEhXDcY/appointments"
+        }
+      },
+      "name": "PRINGLE, Martin",
+      "officer_role": "secretary",
+      "person_number": "214162780001"
+    },
+    {
+      "etag": "96290a487cbd10f1dee3e40079a84dcbddc3ed8d",
+      "address": {
+        "address_line_1": "Cannon Place",
+        "address_line_2": "78 Cannon Street",
+        "country": "England",
+        "locality": "London",
+        "postal_code": "EC4N 6AF",
+        "premises": "Cms Cameron Mckenna Llp"
+      },
+      "appointed_on": "2015-03-01",
+      "is_pre_1992_appointment": false,
+      "country_of_residence": "United Kingdom",
+      "date_of_birth": {
+        "month": 3,
+        "year": 1963
+      },
+      "links": {
+        "self": "/company/00000006/appointments/CR_QWwLTxder5dMIY4_HEhjnm_I",
+        "officer": {
+          "appointments": "/officers/I-4OI1Rt7bqjbeWflGDl_s6KG6s/appointments"
+        }
+      },
+      "name": "GALBRAITH, James",
+      "nationality": "British",
+      "officer_role": "director",
+      "person_number": "115149590001"
+    },
+    {
+      "etag": "54d9dd3db274dc06ec337dd725d207f5ad0877fa",
+      "address": {
+        "address_line_1": "Cannon Place",
+        "address_line_2": "78 Cannon Street",
+        "country": "England",
+        "locality": "London",
+        "postal_code": "EC4N 6AF",
+        "premises": "Cms Cameron Mckenna Llp"
+      },
+      "appointed_on": "2015-06-01",
+      "is_pre_1992_appointment": false,
+      "country_of_residence": "United Kingdom",
+      "date_of_birth": {
+        "month": 10,
+        "year": 1952
+      },
+      "links": {
+        "self": "/company/00000006/appointments/4J3sH3OZauKahUq52Hfsy7e7_6U",
+        "officer": {
+          "appointments": "/officers/Z7im4wk4V9mVRJ06XtXntHRjihI/appointments"
+        }
+      },
+      "name": "WALKER, Michael John",
+      "nationality": "British",
+      "officer_role": "director",
+      "person_number": "1198700002"
+    },
+    {
+      "etag": "55c5ae7c332b182ce5760704983bab48eda17c9d",
+      "address": {
+        "address_line_1": "Byewood",
+        "address_line_2": "Bolney Road",
+        "locality": "Ansty",
+        "postal_code": "RH17 5AW",
+        "region": "West Sussex"
+      },
+      "appointed_on": "1997-04-01",
+      "is_pre_1992_appointment": false,
+      "links": {
+        "self": "/company/00000006/appointments/UUXhTGPSEmb_5-UCCzEaB6n2Mkg",
+        "officer": {
+          "appointments": "/officers/hNUQLeH2UwFsrvlRkX1fDE07xIY/appointments"
+        }
+      },
+      "name": "CARR, Ann",
+      "nationality": "British",
+      "officer_role": "secretary",
+      "resigned_on": "2001-06-29",
+      "person_number": "115622880001"
+    },
+    {
+      "etag": "536c005d123cd8d91edfabddd3bed4916b76eb2e",
+      "address": {
+        "address_line_1": "Heene Road",
+        "locality": "Worthing",
+        "postal_code": "BN11 3AT",
+        "premises": "Mgm House",
+        "region": "West Sussex"
+      },
+      "appointed_on": "2011-01-10",
+      "is_pre_1992_appointment": false,
+      "links": {
+        "self": "/company/00000006/appointments/6WeCN0ckc7Eglygj86L64_4z_dQ",
+        "officer": {
+          "appointments": "/officers/gBFQ6UWJMaHElmlyjzI-f1wH5dA/appointments"
+        }
+      },
+      "name": "ELLIS, Robert Gordon",
+      "officer_role": "secretary",
+      "resigned_on": "2015-06-01",
+      "person_number": "156848420002"
+    }
+  ],
+  "items_per_page": 5,
+  "kind": "officer-list",
+  "links": {
+    "self": "/company/00000006/officers"
+  },
+  "resigned_count": 49,
+  "inactive_count": 3,
+  "start_index": 0,
+  "total_results": 52
+}

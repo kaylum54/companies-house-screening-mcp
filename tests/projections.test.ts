@@ -272,6 +272,56 @@ describe('projectOfficers', () => {
   });
 });
 
+describe('projectOfficers on a dissolved company', () => {
+  // Recorded from Marine and General Mutual Life Assurance Society (00000006),
+  // dissolved 2018. Found by running the deployed server against the live
+  // register: the shaped answer said `active_count: 0` and then listed three
+  // active officers underneath it.
+  const raw = loadFixture('officers/officers-dissolved.json');
+
+  it('trusts the register\'s own count over the absence of a resignation date', () => {
+    // Nobody resigns from a company that was dissolved out from under them, so
+    // `resigned_on` stays empty forever and the inference says they are still
+    // serving. Companies House counts them a third way -- 0 active, 49
+    // resigned, 3 inactive of 52 -- and its count is the authority.
+    const result = projectOfficers(raw, '00000006', false);
+
+    expect(result.active_count).toBe(0);
+    expect(result.officers.filter((officer) => officer.is_active)).toHaveLength(0);
+  });
+
+  it('still reports the officers themselves, and when they resigned', () => {
+    // The fix is about the `is_active` claim, not about hiding anybody. Three
+    // of these five never resigned; two did, and those dates are still right.
+    const result = projectOfficers(raw, '00000006', false);
+
+    expect(result.officers).toHaveLength(5);
+    expect(result.officers.filter((o) => o.resigned_on !== undefined)).toHaveLength(2);
+  });
+
+  it('reports inactive_count, so the numbers add up', () => {
+    // Without it a caller sees 0 active and 49 resigned out of 52 results and
+    // has no way to account for the missing three -- which are exactly the
+    // records that made the old inference wrong.
+    const result = projectOfficers(raw, '00000006', false);
+
+    expect(result.inactive_count).toBe(3);
+    expect((result.active_count ?? 0) + (result.resigned_count ?? 0) + (result.inactive_count ?? 0))
+      .toBe(result.pagination.total_results);
+  });
+
+  it('leaves a live company alone', () => {
+    // The reconciliation applies only to a zero count. A non-zero count above a
+    // shorter list is not a contradiction -- the list is one page of many -- and
+    // treating it as one would silently blank the officers of every company
+    // whose board does not fit on the first page.
+    const live = projectOfficers(loadFixture('officers/officers-list.json'), '04138203', false);
+
+    expect(live.active_count).toBe(10);
+    expect(live.officers.filter((officer) => officer.is_active).length).toBeGreaterThan(0);
+  });
+});
+
 describe('projectCharges', () => {
   const raw = loadFixture('charges/charges-outstanding.json');
   const result = projectCharges(raw, '04138203');
@@ -433,6 +483,59 @@ describe('projectOfficerAppointments', () => {
   it('marks a resigned appointment inactive', () => {
     const resigned = result.appointments.find((appointment) => !appointment.is_active);
     expect(resigned?.resigned_on).toBe('2019-09-19');
+  });
+});
+
+describe('projectOfficerAppointments across a dissolved company', () => {
+  // Recorded from a director of Marine and General (00000006), dissolved 2018.
+  // The live 0.3.0 deployment returned `company_status: "dissolved"` and
+  // `is_active: true` on the same row, and counted it as his one current
+  // appointment. Companies House's own payload says `active_count: 0`.
+  const raw = loadFixture('officers/appointments-dissolved.json');
+
+  it('does not call somebody a serving director of a dissolved company', () => {
+    const result = projectOfficerAppointments(raw, 'I-4OI1Rt7bqjbeWflGDl_s6KG6s');
+    const marineAndGeneral = result.appointments.find((a) => a.company_number === '00000006');
+
+    expect(marineAndGeneral?.company_status).toBe('dissolved');
+    expect(marineAndGeneral?.resigned_on).toBeUndefined();
+    // Never resigned, because there was nothing left to resign from.
+    expect(marineAndGeneral?.is_active).toBe(false);
+  });
+
+  it('agrees with the register on how many appointments are current', () => {
+    // This is the conflict-of-interest tool: "how many companies is this person
+    // running" is the question it exists to answer, and the old answer was one
+    // company that has not existed since 2018.
+    const result = projectOfficerAppointments(raw, 'I-4OI1Rt7bqjbeWflGDl_s6KG6s');
+
+    expect(result.active_appointment_count).toBe(0);
+    expect(raw).toMatchObject({ active_count: 0 });
+  });
+
+  it('still counts a live company the person never resigned from', () => {
+    // The guard keys on the company being gone, not on it being troubled.
+    // Liquidation and administration are deliberately not in that set: those
+    // companies still exist and their directors are still serving, which is
+    // precisely when somebody screening them wants the name.
+    const live = {
+      ...(raw as Record<string, unknown>),
+      items: [
+        {
+          appointed_on: '2015-03-01',
+          appointed_to: {
+            company_name: 'STILL TRADING LIMITED',
+            company_number: '99999999',
+            company_status: 'liquidation'
+          },
+          name: 'James GALBRAITH',
+          officer_role: 'director'
+        }
+      ]
+    };
+    const result = projectOfficerAppointments(live, 'I-4OI1Rt7bqjbeWflGDl_s6KG6s');
+
+    expect(result.appointments[0]?.is_active).toBe(true);
   });
 });
 

@@ -158,9 +158,18 @@ export function deriveSignals(input: SignalInput): Signal[] {
   if (officers !== undefined) {
     const active = officers.officers.filter((officer) => officer.is_active);
     if (officers.officers.length > 0 && active.length === 0) {
+      // Two different routes reach this state and the wording has to survive
+      // both. On a live company every officer really has resigned, which is
+      // alarming and worth saying plainly. On a dissolved one they usually
+      // never did — Companies House simply stops counting anybody as serving —
+      // so claiming they resigned would be a confident false statement about
+      // named individuals.
+      const allResigned = officers.officers.every((officer) => officer.resigned_on !== undefined);
       signals.push({
         code: 'no_active_officers',
-        detail: 'Every officer on the register has resigned; the company has no serving directors.'
+        detail: allResigned
+          ? 'Every officer on the register has resigned; the company has no serving directors.'
+          : 'The register shows no serving officers.'
       });
     }
 

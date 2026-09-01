@@ -242,3 +242,48 @@ describe('deriveSignals', () => {
     expect(fromCases.find((signal) => signal.code === 'insolvency_history')?.detail).toContain('2 insolvency');
   });
 });
+
+describe('no_active_officers on a dissolved company', () => {
+  // Recorded from Marine and General (00000006). Three of the five officers
+  // have no resignation date because the company was dissolved out from under
+  // them, and Companies House reports `active_count: 0`.
+  const officers = projectOfficers(
+    loadFixture('officers/officers-dissolved.json'),
+    '00000006',
+    false
+  );
+  const profile = projectCompanyProfile(
+    loadFixture('company/profile-dissolved.json'),
+    '00000006',
+    NOW
+  );
+
+  it('fires, because there genuinely are none', () => {
+    expect(codes(deriveSignals({ profile, officers, now: NOW }))).toContain('no_active_officers');
+  });
+
+  it('does not claim officers resigned when they never did', () => {
+    // "Every officer has resigned" would be a confident false statement about
+    // three named individuals.
+    const signal = deriveSignals({ profile, officers, now: NOW }).find(
+      (entry) => entry.code === 'no_active_officers'
+    );
+
+    expect(signal?.detail).toBe('The register shows no serving officers.');
+  });
+
+  it('still says so plainly when they really did all resign', () => {
+    const walkedOut = projectOfficers(
+      { items: [{ name: 'GONE, Person', officer_role: 'director', resigned_on: '2019-01-01' }] },
+      '04138203',
+      false
+    );
+    const signal = deriveSignals({
+      profile: projectCompanyProfile(loadFixture('company/profile-active.json'), '04138203', NOW),
+      officers: walkedOut,
+      now: NOW
+    }).find((entry) => entry.code === 'no_active_officers');
+
+    expect(signal?.detail).toContain('has resigned');
+  });
+});

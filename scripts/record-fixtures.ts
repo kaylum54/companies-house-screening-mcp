@@ -22,7 +22,9 @@
  *                         all populated, so every section records something.
  *   dissolved   00000006  Marine and General Mutual Life Assurance Society,
  *                         incorporated 1862 and long dissolved. This is the
- *                         Companies House documentation's own example company.
+ *                         Companies House documentation's own example company,
+ *                         and its officers are the case that breaks a naive
+ *                         reading of "active" — see officers-dissolved.json.
  *   insolvency  03782379  Carillion PLC, in liquidation.
  *
  * Override any of them:
@@ -71,6 +73,17 @@ const FIXTURES: FixtureSpec[] = [
   {
     file: 'officers/officers-list.json',
     path: `/company/${SUBJECT}/officers`,
+    query: { items_per_page: PAGE },
+    resource: 'officers'
+  },
+  {
+    // The dissolved company's officers, which are the ones that break the
+    // naive reading of "active". Nobody resigns from a company that was
+    // dissolved out from under them, so `resigned_on` stays empty forever;
+    // Companies House reports `active_count: 0` with a non-zero
+    // `inactive_count`, and that is the figure to trust.
+    file: 'officers/officers-dissolved.json',
+    path: `/company/${DISSOLVED}/officers`,
     query: { items_per_page: PAGE },
     resource: 'officers'
   },

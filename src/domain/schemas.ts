@@ -167,6 +167,12 @@ export const getOfficersOutput = z.object({
   company_number: z.string(),
   active_count: z.number().optional(),
   resigned_count: z.number().optional(),
+  inactive_count: z
+    .number()
+    .optional()
+    .describe(
+      'Appointments that ended because the company did, rather than by resignation. Non-zero on a dissolved company, and the reason active + resigned can fall short of the total.'
+    ),
   officers: z.array(officerSummarySchema),
   pagination: paginationSchema,
   meta: metaSchema,

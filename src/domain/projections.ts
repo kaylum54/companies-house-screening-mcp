@@ -43,7 +43,34 @@ import type {
 /** Everything a tool returns except the `meta` and `raw` envelope. */
 export type Body<T> = Omit<T, 'meta' | 'raw'>;
 
-const isActive = (resignedOrCeased: string | undefined): boolean => resignedOrCeased === undefined;
+/**
+ * Whether an appointment with no end date is genuinely still in force.
+ *
+ * The absence of `resigned_on` / `ceased_on` is an *inference*, and it is wrong
+ * for a company that no longer exists: officers of a dissolved company were
+ * usually never formally resigned, so the field stays empty forever and the
+ * inference says they are still serving. Companies House counts them a third
+ * way — `active_count: 0, resigned_count: 49, inactive_count: 3` for a
+ * dissolved company — so its own count is the authority, and when it says
+ * nobody is serving, nobody is.
+ *
+ * Only the zero case is reconciled. A non-zero count above a shorter list is
+ * not a contradiction: the list is one page of many, and the count is the
+ * total. There the inference is left alone.
+ */
+const isActive = (
+  resignedOrCeased: string | undefined,
+  activeCount: number | undefined
+): boolean => activeCount !== 0 && resignedOrCeased === undefined;
+
+/**
+ * Company statuses that mean the company is gone, not merely in trouble.
+ *
+ * Liquidation, administration and receivership are deliberately absent: the
+ * company still exists and its officers are still serving, which is exactly
+ * when somebody screening it wants to see who they are.
+ */
+const ENDED_STATUSES = new Set(['dissolved', 'converted-closed', 'removed', 'closed']);
 
 /** Search hits differ in shape between /search/companies and /advanced-search/companies. */
 function companySummary(item: unknown): Body<FindCompanyResult>['companies'][number] | undefined {
@@ -173,6 +200,7 @@ export function projectOfficers(
   includeAddresses: boolean
 ): Body<GetOfficersResult> {
   const source = obj(payload);
+  const activeCount = num(source['active_count']);
   const officers = arr(source['items'])
     .map((item) => {
       const entry = obj(item);
@@ -185,7 +213,7 @@ export function projectOfficers(
         role: str(entry['officer_role']),
         appointed_on: str(entry['appointed_on']),
         resigned_on: resignedOn,
-        is_active: isActive(resignedOn),
+        is_active: isActive(resignedOn, activeCount),
         nationality: str(entry['nationality']),
         country_of_residence: str(entry['country_of_residence']),
         occupation: str(entry['occupation']),
@@ -199,8 +227,13 @@ export function projectOfficers(
 
   return {
     company_number: companyNumber,
-    active_count: num(source['active_count']),
+    active_count: activeCount,
     resigned_count: num(source['resigned_count']),
+    // Appointments that ended because the company did, rather than by
+    // resignation. Reported because without it the counts do not add up: a
+    // dissolved company reads 0 active and 49 resigned out of 52, and the
+    // missing three are the ones that made `is_active` wrong here.
+    inactive_count: num(source['inactive_count']),
     officers,
     pagination: pagination(payload, officers.length)
   };
@@ -271,6 +304,7 @@ export function projectCharges(payload: unknown, companyNumber: string): Body<Ge
 
 export function projectPsc(payload: unknown, companyNumber: string): Body<GetPscResult> {
   const source = obj(payload);
+  const activeCount = num(source['active_count']);
   const controllers = arr(source['items'])
     .map((item) => {
       const entry = obj(item);
@@ -287,7 +321,7 @@ export function projectPsc(payload: unknown, companyNumber: string): Body<GetPsc
           .filter((nature): nature is string => nature !== undefined),
         notified_on: str(entry['notified_on']),
         ceased_on: ceasedOn,
-        is_active: isActive(ceasedOn),
+        is_active: isActive(ceasedOn, activeCount),
         nationality: str(entry['nationality']),
         country_of_residence: str(entry['country_of_residence']),
         date_of_birth: formatPartialDateOfBirth(entry['date_of_birth'])
@@ -297,7 +331,7 @@ export function projectPsc(payload: unknown, companyNumber: string): Body<GetPsc
 
   return {
     company_number: companyNumber,
-    active_count: num(source['active_count']),
+    active_count: activeCount,
     ceased_count: num(source['ceased_count']),
     controllers,
     pagination: pagination(payload, controllers.length)
@@ -352,15 +386,23 @@ export function projectOfficerAppointments(
         str(path(entry, 'appointed_to', 'company_number')) ?? str(entry['company_number']);
       if (companyNumber === undefined) return undefined;
       const resignedOn = str(entry['resigned_on']);
+      const companyStatus =
+        str(path(entry, 'appointed_to', 'company_status')) ?? str(entry['company_status']);
       return {
         company_number: companyNumber,
         company_name: str(path(entry, 'appointed_to', 'company_name')) ?? str(entry['company_name']),
-        company_status:
-          str(path(entry, 'appointed_to', 'company_status')) ?? str(entry['company_status']),
+        company_status: companyStatus,
         role: str(entry['officer_role']),
         appointed_on: str(entry['appointed_on']),
         resigned_on: resignedOn,
-        is_active: isActive(resignedOn)
+        // Checked against the company as well as the appointment. Nobody
+        // resigns from a company that was dissolved out from under them, so
+        // going by `resigned_on` alone reported a person as a serving director
+        // of companies that no longer exist — the most misleading form of this
+        // mistake, because the whole point of this tool is mapping who is
+        // currently running what.
+        is_active:
+          resignedOn === undefined && !ENDED_STATUSES.has(companyStatus ?? '')
       };
     })
     .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined);
