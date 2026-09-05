@@ -37,6 +37,7 @@ export const SIGNAL_CODES = [
   'accounts_overdue',
   'confirmation_statement_overdue',
   'outstanding_charges',
+  'part_satisfied_charges',
   'floating_charge_over_all_assets',
   'no_active_officers',
   'recent_officer_departures',
@@ -127,15 +128,15 @@ export function deriveSignals(input: SignalInput): Signal[] {
     });
   }
 
-  if (charges !== undefined && charges.outstanding_count > 0) {
+  if (charges !== undefined) {
     const holders = [
       ...new Set(
         charges.charges
-          .filter((charge) => charge.status !== 'fully-satisfied')
+          .filter((charge) => charge.status === 'outstanding')
           .flatMap((charge) => charge.persons_entitled)
       )
     ];
-    signals.push({
+    if (charges.outstanding_count > 0) signals.push({
       code: 'outstanding_charges',
       detail:
         holders.length === 0
@@ -143,28 +144,38 @@ export function deriveSignals(input: SignalInput): Signal[] {
           : `${charges.outstanding_count} outstanding ${charges.outstanding_count === 1 ? 'charge' : 'charges'} registered, held by ${holders.join(', ')}.`
     });
 
+    if (charges.part_satisfied_count > 0) {
+      signals.push({
+        code: 'part_satisfied_charges',
+        detail: `${charges.part_satisfied_count} charge${charges.part_satisfied_count === 1 ? ' is' : 's are'} recorded as partially satisfied, not fully satisfied.`
+      });
+    }
+
     if (
       charges.charges.some(
-        (charge) => charge.status !== 'fully-satisfied' && charge.floating_charge_covers_all === true
+        (charge) => (charge.status === 'outstanding' || charge.status === 'part-satisfied') && charge.floating_charge_covers_all === true
       )
     ) {
       signals.push({
         code: 'floating_charge_over_all_assets',
-        detail: 'An outstanding floating charge covers all the property or undertaking of the company.'
+        detail: 'A floating charge recorded as outstanding or partially satisfied covers all the property or undertaking of the company.'
       });
     }
   }
 
   if (officers !== undefined) {
     const active = officers.officers.filter((officer) => officer.is_active);
-    if (officers.officers.length > 0 && active.length === 0) {
+    const completePage = officers.pagination.start_index === 0 && !officers.pagination.has_more;
+    if (officers.active_count === 0 ||
+        (officers.active_count === undefined && completePage && officers.officers.length > 0 && active.length === 0)) {
       // Two different routes reach this state and the wording has to survive
       // both. On a live company every officer really has resigned, which is
       // alarming and worth saying plainly. On a dissolved one they usually
       // never did — Companies House simply stops counting anybody as serving —
       // so claiming they resigned would be a confident false statement about
       // named individuals.
-      const allResigned = officers.officers.every((officer) => officer.resigned_on !== undefined);
+      const allResigned = completePage && officers.officers.length > 0 &&
+        officers.officers.every((officer) => officer.resigned_on !== undefined);
       signals.push({
         code: 'no_active_officers',
         detail: allResigned
@@ -176,12 +187,12 @@ export function deriveSignals(input: SignalInput): Signal[] {
     const recentlyDeparted = officers.officers.filter((officer) => {
       if (officer.resigned_on === undefined) return false;
       const resigned = Date.parse(officer.resigned_on);
-      return Number.isFinite(resigned) && now - resigned <= YEAR_MS;
+      return Number.isFinite(resigned) && resigned <= now && now - resigned <= YEAR_MS;
     });
     if (recentlyDeparted.length > 0) {
       signals.push({
         code: 'recent_officer_departures',
-        detail: `${recentlyDeparted.length} officer${recentlyDeparted.length === 1 ? '' : 's'} resigned in the last twelve months.`
+        detail: `${recentlyDeparted.length} officer${recentlyDeparted.length === 1 ? '' : 's'} on the returned page resigned in the last twelve months.`
       });
     }
   }

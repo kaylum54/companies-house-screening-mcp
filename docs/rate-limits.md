@@ -324,7 +324,7 @@ direction.
 
 Where a client cannot, run the server locally over stdio. You get your own
 budget, your own cache, and no shared ceiling at all. See the
-[README](../README.md#local--stdio).
+[README](../README.md#local-your-own-key-no-hosting).
 
 ---
 

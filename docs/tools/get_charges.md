@@ -42,7 +42,7 @@ This tool reads only and changes nothing, and calls an external service (the Com
 | `meta.age_seconds` | number | no | How long ago the cached answer was retrieved. Absent for a live answer. |
 | `meta.rate_limit_remaining` | number | yes | Requests still available in the current five-minute window. Pace long runs by this. |
 | `meta.rate_limit_resets_in_ms` | number | yes | Milliseconds until more budget becomes available. |
-| `meta.licence` | `"OGL-v3.0"` | yes | Companies House data is Open Government Licence v3.0. |
+| `meta.licence` | `"OGL-v3.0"` | yes | OGL v3.0 applies to eligible public-sector information. Personal data and other OGL exclusions are not licensed by this label; applicable data-protection duties still apply. |
 | `raw` | unknown | no | The untouched Companies House payload. Present only when verbose was true. |
 
 On failure the tool returns `isError: true` and a payload carrying `code`,

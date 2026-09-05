@@ -24,6 +24,7 @@ SOFTWARE.
 
 This licence covers the source code in this repository.
 
-Data returned by the Companies House API is published by Companies House under
-the Open Government Licence v3.0 and is not covered by the licence above. Any
-use of that data must carry the attribution the OGL requires. See README.md.
+Companies House data is separate from this source-code licence. OGL v3.0
+applies to eligible public-sector information, subject to its exclusions,
+including personal data. Public access does not remove applicable
+data-protection duties. Attribute OGL-covered information as described in README.md.

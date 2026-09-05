@@ -12,8 +12,8 @@ The example is Carillion, whose 2018 compulsory liquidation is among the most pu
 > call on this page is executed when the documentation is generated, and
 > whatever comes back is what you see. The upstream data comes from fixtures
 > recorded from the live Companies House API, so the companies are real and
-> the facts are public record, published under the Open Government Licence
-> v3.0. The framing around them is illustrative: this project makes no claim
+> the facts are public record. Open Government Licence v3.0 applies to eligible information,
+> excluding personal data and other OGL exceptions. The framing around them is illustrative: this project makes no claim
 > about any company or person named here beyond what the register itself
 > states.
 
@@ -89,6 +89,7 @@ Snapshot the company.
     "total_count": 0,
     "outstanding_count": 0,
     "satisfied_count": 0,
+    "part_satisfied_count": 0,
     "holders": []
   },
   "insolvency": {

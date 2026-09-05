@@ -71,8 +71,9 @@ export function buildSnapshot(input: SnapshotInput): Body<CompanySnapshotResult>
     snapshot.officers = {
       active_count: officers.active_count,
       resigned_count: officers.resigned_count,
+      pagination: officers.pagination,
       // Resigned officers are the long tail of this list and are rarely the
-      // question. get_officers returns them in full.
+      // question. Use get_officers with pagination to read the remaining pages.
       active: officers.officers
         .filter((officer) => officer.is_active)
         .map((officer) => ({
@@ -89,6 +90,7 @@ export function buildSnapshot(input: SnapshotInput): Body<CompanySnapshotResult>
       total_count: charges.total_count,
       outstanding_count: charges.outstanding_count,
       satisfied_count: charges.satisfied_count,
+      part_satisfied_count: charges.part_satisfied_count,
       holders: [
         ...new Set(
           charges.charges

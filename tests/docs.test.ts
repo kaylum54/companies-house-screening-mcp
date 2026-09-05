@@ -204,10 +204,14 @@ describe('documentation links', () => {
  * moment the README falls behind the suite, which is the failure that happened.
  */
 describe('the README test count', () => {
-  it('is not lower than the number of tests actually written', async () => {
+  it('checks a numeric claim when present, otherwise points readers to runnable verification', async () => {
     const readme = await readFile(join(ROOT_DIR, 'README.md'), 'utf8');
     const claim = /(\d+) tests under Node and (\d+) inside/.exec(readme);
-    expect(claim, 'README no longer states a test count in the expected shape').not.toBeNull();
+    if (claim === null) {
+      expect(readme).toContain('npm run test:coverage');
+      expect(readme).toContain('npm run test:workers');
+      return;
+    }
 
     const claimed = Number(claim?.[1]) + Number(claim?.[2]);
 

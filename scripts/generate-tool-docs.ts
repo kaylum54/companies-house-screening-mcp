@@ -112,7 +112,7 @@ Every tool returns a \`meta\` block:
 | \`age_seconds\` | How old a cached answer is. Absent for a live answer. |
 | \`rate_limit_remaining\` | Requests left in the current five-minute window. Pace long runs by this. |
 | \`rate_limit_resets_in_ms\` | Milliseconds until more budget is available. |
-| \`licence\` | Always \`OGL-v3.0\`. |
+| \`licence\` | \`OGL-v3.0\` for eligible information; excludes personal data and other OGL exceptions. |
 
 Every tool except \`screen_companies\` accepts \`verbose\`, which adds the
 untouched Companies House payload under \`raw\` alongside the shaped result.

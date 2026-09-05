@@ -14,8 +14,8 @@ The join that makes it work is the officer ID. Companies House never returns it 
 > call on this page is executed when the documentation is generated, and
 > whatever comes back is what you see. The upstream data comes from fixtures
 > recorded from the live Companies House API, so the companies are real and
-> the facts are public record, published under the Open Government Licence
-> v3.0. The framing around them is illustrative: this project makes no claim
+> the facts are public record. Open Government Licence v3.0 applies to eligible information,
+> excluding personal data and other OGL exceptions. The framing around them is illustrative: this project makes no claim
 > about any company or person named here beyond what the register itself
 > states.
 

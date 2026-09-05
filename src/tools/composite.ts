@@ -485,7 +485,11 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
               incorporated_on: snapshot.incorporated_on,
               age_years: snapshot.age_years,
               signal_codes: snapshot.signals.map((signal) => signal.code),
-              signal_count: snapshot.signals.length
+              signal_count: snapshot.signals.length,
+              sections_included: snapshot.sections_included,
+              sections_unavailable: snapshot.sections_unavailable,
+              officers_pagination: snapshot.officers?.pagination,
+              meta: mergeMeta(outcome.value.metas, client.rateLimit)
             }
           };
         });

@@ -16,7 +16,10 @@
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 
 import { loadEnvFile } from '../src/node/env-file.js';
 import { harnessRoutes } from '../tests/helpers/harness.js';
@@ -165,8 +168,8 @@ function report(cases: EvalCase[], results: Map<string, CaseResult[]>, repeat: n
     }
     if (summary.intents.some((intent) => !intent.agreed)) {
       write('');
-      write('    Phrasings of one intent choosing different tools is a finding about the');
-      write('    descriptions, not about the model — even where each choice is defensible.');
+      write('    Phrasings of one intent choosing different tools warrants investigation of the');
+      write('    descriptions and model behavior — even where each choice is defensible.');
     }
   }
 
@@ -175,7 +178,7 @@ function report(cases: EvalCase[], results: Map<string, CaseResult[]>, repeat: n
 
   if (summary.flaky.length > 0) {
     write(`  ${summary.flaky.length} flaky: ${summary.flaky.join(', ')}`);
-    write('  Flaky means two tool descriptions overlap. Fix the descriptions, not the case.');
+    write('  Flaky means inconsistent selections. Investigate descriptions, model variability, provider behavior and case expectations.');
   }
 }
 
@@ -221,6 +224,35 @@ async function main(): Promise<void> {
   const selector = createSelector(resolution.provider, options.model);
   write(`Running ${cases.length} case(s) × ${options.repeat} against ${selector.label}…`);
 
+  const startedAt = new Date().toISOString();
+  const root = join(import.meta.dirname, '..');
+  const git = (args: string[]): string | null => {
+    try { return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+    catch { return null; }
+  };
+  const sourceHash = createHash('sha256');
+  const hashDirectory = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory() && entry.name !== 'results' && entry.name !== 'baselines') hashDirectory(path);
+      else if (entry.isFile() && entry.name.endsWith('.ts')) {
+        sourceHash.update(relative(root, path).replaceAll('\\', '/') + '\0');
+        sourceHash.update(readFileSync(path, 'utf8').replaceAll('\r\n', '\n'));
+      }
+    }
+  };
+  hashDirectory(join(root, 'src'));
+  hashDirectory(join(root, 'evals'));
+  sourceHash.update(readFileSync(join(root, 'package-lock.json')));
+  const status = git(['status', '--porcelain']);
+  const provenance = {
+    startedAt,
+    commit: git(['rev-parse', 'HEAD']),
+    workingTreeDirty: status === null ? null : status.length > 0,
+    sourceSha256: sourceHash.digest('hex'),
+    sourceHashScope: 'Sorted src/ and evals/ TypeScript paths and LF-normalized contents (excluding results and baselines), then package-lock.json bytes',
+    command: ['npm', 'run', 'eval', '--', '--provider', resolution.provider, '--model', options.model ?? selector.label.replace(/^[^:]+:/, ''), '--repeat', String(options.repeat), ...(options.only === undefined ? [] : ['--case', options.only])]
+  };
   const results = await runEval(selector, cases, options.repeat, (done, total) => {
     // A sixty-case run at three repeats is a hundred and eighty requests and
     // several minutes. Silence for that long reads as a hang.
@@ -230,11 +262,12 @@ async function main(): Promise<void> {
   report(cases, results, options.repeat);
 
   const summary = summarise(results);
-  await mkdir(RESULTS_DIR, { recursive: true });
+  await mkdir(dirname(options.out), { recursive: true });
   await writeFile(
     options.out,
     JSON.stringify(
       {
+        provenance: { ...provenance, completedAt: new Date().toISOString() },
         provider: resolution.provider,
         model: selector.label,
         repeat: options.repeat,

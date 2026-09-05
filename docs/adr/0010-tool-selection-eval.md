@@ -3,6 +3,8 @@
 - **Status:** accepted
 - **Date:** 2026-08-20
 
+> Historical decision: the initial suite size and cost examples below have been superseded. The current suite has 58 cases; use [the eval guide](../../evals/README.md) for scope, evidence and pricing guidance. Inconsistent selection warrants investigation and does not by itself identify the cause.
+
 ## Context
 
 By the end of phase 4 this repository had 223 tests, all of them answering the

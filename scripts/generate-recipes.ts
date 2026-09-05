@@ -13,7 +13,7 @@
  * Companies House API, so these pages describe real companies.
  *
  * That last fact carries an editorial obligation. The register is public and
- * the data is Open Government Licence, but the *narrative* around it would be
+ * eligible information is Open Government Licence, but the *narrative* around it would be
  * mine — and "the supplier who cannot be trusted" or "the director who
  * concealed a conflict" is a story about real named people, invented to make a
  * documentation page read well. So the subjects are institutions and
@@ -176,14 +176,14 @@ Run this across a whole board and intersect the company numbers with your own cu
   {
     slug: 'invoice-verification',
     title: 'Verifying a company on an invoice',
-    question: 'Does this company exist, is it trading, and does the address match?',
+    question: 'Do the invoice company details match the registered entity?',
     intro: `One call. \`company_snapshot\` fetches the profile, the serving officers, the charges and the insolvency history together, and returns them with the signals it found.
 
-The things worth checking against an invoice: the company exists, its status is active, the registered office matches what is printed, and it was not incorporated three weeks ago.`,
+Compare the company number, legal name and registered office with the invoice. Read the registered status and incorporation date as context. Active status does not prove current trading, an authentic invoice or ownership of a bank account. A trading address can legitimately differ from the registered office.`,
     steps: [
       {
         narrative:
-          'Take the company number from the bottom of the invoice — UK companies are required to print it.',
+          'Use the company number supplied on the invoice. If absent, resolve the legal entity with find_company and confirm the candidate before continuing.',
         tool: 'company_snapshot',
         args: { company_number: '04138203' },
         reading: `\`registered_office_address\` is flattened to one line so it can be compared with what is printed, without reassembling nine fields.
@@ -193,7 +193,9 @@ The things worth checking against an invoice: the company exists, its status is 
 \`sections_included\` says what was actually read. Insolvency appears there even though this company has none: Companies House answers 404 for a company with no insolvency case, and the server reads that as "none" rather than as a fault. Had the call genuinely failed, the section would appear under \`sections_unavailable\` instead — and an absent signal would then mean "not checked" rather than "nothing found".`
       }
     ],
-    closing: `**What this cannot tell you.** Whether the company is good for the money. The register shows filings, charges and officers; it does not show the bank balance or the order book. The signals are facts, not a rating, and the judgement stays with you — see [ADR 7](../adr/0007-signals-not-scores.md).
+    closing: `**What this cannot tell you.** Whether the invoice is authentic, the bank account belongs to the company, the company is currently trading, or it is good for the money. Verify bank-detail changes through an independently established contact channel. The register shows filings, charges and officers; it does not show the bank balance or the order book. The signals are facts, not a rating, and the judgement stays with you — see [ADR 7](../adr/0007-signals-not-scores.md).
+
+**Coverage.** The officer list is one page: read officers.pagination.has_more and use get_officers to continue. Global officer counts can exceed the active entries shown here. Check meta.age_seconds and meta.stale before relying on cached information.
 
 **One caveat found in real data.** The profile's own \`has_charges\` flag reported false for this company while its charges endpoint returned fifteen. The charges section is authoritative; the flag is not, and no signal is derived from it.`
   },
@@ -308,8 +310,8 @@ ${recipe.intro}
 > call on this page is executed when the documentation is generated, and
 > whatever comes back is what you see. The upstream data comes from fixtures
 > recorded from the live Companies House API, so the companies are real and
-> the facts are public record, published under the Open Government Licence
-> v3.0. The framing around them is illustrative: this project makes no claim
+> the facts are public record. Open Government Licence v3.0 applies to eligible information,
+> excluding personal data and other OGL exceptions. The framing around them is illustrative: this project makes no claim
 > about any company or person named here beyond what the register itself
 > states.
 
@@ -346,8 +348,8 @@ and CI fails.
 |---|---|
 ${rows}
 
-The companies shown are real and the data is public record under the Open
-Government Licence v3.0. Nothing here asserts anything about them beyond what
+The companies shown are real and the data is public record. Open Government Licence v3.0 applies
+to eligible information; personal data and other OGL exceptions are excluded. Nothing here asserts anything about them beyond what
 the register states.
 
 The tool-by-tool reference is in [docs/tools](../tools/README.md).

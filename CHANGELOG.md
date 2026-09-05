@@ -6,6 +6,21 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-05
+
+### Fixed — portfolio review
+
+- Prevent a partial officer page from implying that the company has no serving officers. Use register-wide counts, expose snapshot pagination, and qualify departure counts by page.
+- Preserve partially satisfied charges in snapshot counts and a distinct signal; include them when detecting floating charges covering all assets.
+- Keep each screened company's fetched/unavailable sections, officer pagination and freshness metadata visible.
+- Use Windows-safe URL-to-path conversion and directory matching in portability checks; run Node CI on Windows and Linux.
+- Qualify OGL licensing for personal-data exclusions in documentation and MCP instructions.
+
+### Documentation and evaluation evidence
+
+- Lead the README with setup, sample data and business prompts. Add a client walkthrough and six business video scripts with explicit limitations.
+- Replace stale test/evaluation counts and price promises. Preserve sanitised historical evaluation evidence with unknown provenance labelled; record source fingerprints, commits, commands and timestamps for future runs.
+
 ### Fixed — found by running the deployed server against the live register
 
 - **A dissolved company reported officers as serving.** `is_active` was

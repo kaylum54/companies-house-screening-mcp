@@ -1,0 +1,3463 @@
+{
+  "provenance": {
+    "kind": "historical",
+    "commit": null,
+    "executedAt": null,
+    "note": "Original result did not record commit or timestamp. See baselines/README.md."
+  },
+  "provider": "openrouter",
+  "model": "openrouter:deepseek/deepseek-v4-pro",
+  "repeat": 3,
+  "summary": {
+    "total": 58,
+    "passed": 54,
+    "failed": 4,
+    "passRate": 0.9310344827586207,
+    "flaky": [
+      "trap-vat-number",
+      "para-control-1",
+      "primitive-short-number",
+      "scope-file-statement"
+    ],
+    "byCategory": [
+      {
+        "category": "grounding",
+        "passed": 7,
+        "total": 7
+      },
+      {
+        "category": "near-miss",
+        "passed": 8,
+        "total": 8
+      },
+      {
+        "category": "noise",
+        "passed": 5,
+        "total": 5
+      },
+      {
+        "category": "not-uk",
+        "passed": 3,
+        "total": 3
+      },
+      {
+        "category": "number-trap",
+        "passed": 5,
+        "total": 6
+      },
+      {
+        "category": "out-of-scope",
+        "passed": 5,
+        "total": 6
+      },
+      {
+        "category": "paraphrase",
+        "passed": 19,
+        "total": 20
+      },
+      {
+        "category": "primitive",
+        "passed": 2,
+        "total": 3
+      }
+    ],
+    "intents": [
+      {
+        "intent": "is-it-trading",
+        "tools": [
+          "company_snapshot",
+          "get_company"
+        ],
+        "agreed": false
+      },
+      {
+        "intent": "name-to-number",
+        "tools": [
+          "find_company"
+        ],
+        "agreed": true
+      },
+      {
+        "intent": "screen-a-list",
+        "tools": [
+          "screen_companies"
+        ],
+        "agreed": true
+      },
+      {
+        "intent": "secured-debt",
+        "tools": [
+          "company_snapshot",
+          "get_charges"
+        ],
+        "agreed": false
+      },
+      {
+        "intent": "who-controls",
+        "tools": [
+          "get_company",
+          "get_psc"
+        ],
+        "agreed": false
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "grounding-profile",
+      "category": "grounding",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-directors",
+      "category": "grounding",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-charges",
+      "category": "grounding",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-scottish",
+      "category": "grounding",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-address",
+      "category": "grounding",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-solvency",
+      "category": "grounding",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-officer-name",
+      "category": "grounding",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_officer], got find_officer"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_officer"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_officer], got find_officer"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_officer"
+        },
+        {
+          "passed": true,
+          "category": "grounding",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_officer], got find_officer"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_officer"
+        }
+      ]
+    },
+    {
+      "id": "trap-order-number",
+      "category": "number-trap",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "trap-vat-number",
+      "category": "number-trap",
+      "attempts": [
+        {
+          "passed": false,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": false,
+              "detail": "expected one of [find_company], got get_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": false,
+              "detail": "called forbidden tool(s): get_company"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": false,
+              "detail": "passed a company number the question does not contain: 07459384"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "trap-postcode",
+      "category": "number-trap",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "trap-invoice-reference",
+      "category": "number-trap",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "trap-phone-number",
+      "category": "number-trap",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "trap-foreign-registration",
+      "category": "number-trap",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "number-trap",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "para-trading-1",
+      "category": "paraphrase",
+      "intent": "is-it-trading",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "para-trading-2",
+      "category": "paraphrase",
+      "intent": "is-it-trading",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "para-trading-3",
+      "category": "paraphrase",
+      "intent": "is-it-trading",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "para-trading-4",
+      "category": "paraphrase",
+      "intent": "is-it-trading",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "para-control-1",
+      "category": "paraphrase",
+      "intent": "who-controls",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "passed": false,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": false,
+              "detail": "expected one of [get_psc, company_snapshot], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "chosenTool": "get_psc"
+        }
+      ]
+    },
+    {
+      "id": "para-control-2",
+      "category": "paraphrase",
+      "intent": "who-controls",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_psc"
+        }
+      ]
+    },
+    {
+      "id": "para-control-3",
+      "category": "paraphrase",
+      "intent": "who-controls",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "chosenTool": "get_psc"
+        }
+      ]
+    },
+    {
+      "id": "para-control-4",
+      "category": "paraphrase",
+      "intent": "who-controls",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "chosenTool": "get_psc"
+        }
+      ]
+    },
+    {
+      "id": "para-charges-1",
+      "category": "paraphrase",
+      "intent": "secured-debt",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_charges"
+        }
+      ]
+    },
+    {
+      "id": "para-charges-2",
+      "category": "paraphrase",
+      "intent": "secured-debt",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "chosenTool": "get_charges"
+        }
+      ]
+    },
+    {
+      "id": "para-charges-3",
+      "category": "paraphrase",
+      "intent": "secured-debt",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "para-charges-4",
+      "category": "paraphrase",
+      "intent": "secured-debt",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "chosenTool": "get_charges"
+        }
+      ]
+    },
+    {
+      "id": "para-lookup-1",
+      "category": "paraphrase",
+      "intent": "name-to-number",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "para-lookup-2",
+      "category": "paraphrase",
+      "intent": "name-to-number",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "para-lookup-3",
+      "category": "paraphrase",
+      "intent": "name-to-number",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "para-lookup-4",
+      "category": "paraphrase",
+      "intent": "name-to-number",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "para-screen-1",
+      "category": "paraphrase",
+      "intent": "screen-a-list",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        }
+      ]
+    },
+    {
+      "id": "para-screen-2",
+      "category": "paraphrase",
+      "intent": "screen-a-list",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        }
+      ]
+    },
+    {
+      "id": "para-screen-3",
+      "category": "paraphrase",
+      "intent": "screen-a-list",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        }
+      ]
+    },
+    {
+      "id": "para-screen-4",
+      "category": "paraphrase",
+      "intent": "screen-a-list",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "passed": true,
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "chosenTool": "screen_companies"
+        }
+      ]
+    },
+    {
+      "id": "near-runs-vs-owns",
+      "category": "near-miss",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officers, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officers, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officers, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "near-accounts-due",
+      "category": "near-miss",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "near-accounts-filed",
+      "category": "near-miss",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        }
+      ]
+    },
+    {
+      "id": "near-two-companies",
+      "category": "near-miss",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "near-everything-one-company",
+      "category": "near-miss",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "near-officer-id-not-company",
+      "category": "near-miss",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officer_appointments], got get_officer_appointments"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "officer_id expected to contain \"gBfDMtBVo3nHfig_wVfjaOA9o1M\", got \"gBfDMtBVo3nHfig_wVfjaOA9o1M\""
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            }
+          ],
+          "chosenTool": "get_officer_appointments"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officer_appointments], got get_officer_appointments"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "officer_id expected to contain \"gBfDMtBVo3nHfig_wVfjaOA9o1M\", got \"gBfDMtBVo3nHfig_wVfjaOA9o1M\""
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            }
+          ],
+          "chosenTool": "get_officer_appointments"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officer_appointments], got get_officer_appointments"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "officer_id expected to contain \"gBfDMtBVo3nHfig_wVfjaOA9o1M\", got \"gBfDMtBVo3nHfig_wVfjaOA9o1M\""
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            }
+          ],
+          "chosenTool": "get_officer_appointments"
+        }
+      ]
+    },
+    {
+      "id": "near-insolvency-detail",
+      "category": "near-miss",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_insolvency, company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"03782379\", got \"03782379\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_insolvency, company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"03782379\", got \"03782379\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_insolvency, company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"03782379\", got \"03782379\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "near-who-is-behind",
+      "category": "near-miss",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, get_officers, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, get_officers, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "near-miss",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, get_officers, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "primitive-filing-history",
+      "category": "primitive",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "primitive",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, get_company, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        },
+        {
+          "passed": true,
+          "category": "primitive",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, get_company, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        },
+        {
+          "passed": true,
+          "category": "primitive",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, get_company, company_snapshot], got get_company"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "primitive-short-number",
+      "category": "primitive",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "primitive",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, find_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"1234567\", got \"01234567\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": false,
+          "category": "primitive",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, find_company], got find_company"
+            },
+            {
+              "name": "arguments",
+              "passed": false,
+              "detail": "company_number expected to contain \"1234567\", got \"(absent)\""
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "primitive",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, find_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"1234567\", got \"1234567\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "primitive-number-in-prose",
+      "category": "primitive",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "primitive",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "primitive",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "primitive",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "scope-file-statement",
+      "category": "out-of-scope",
+      "attempts": [
+        {
+          "passed": false,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": false,
+              "detail": "expected no tool call, got get_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": false,
+              "detail": "called forbidden tool(s): get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scope-change-address",
+      "category": "out-of-scope",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ]
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scope-download-pdf",
+      "category": "out-of-scope",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot, get_company], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot, get_company], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot, get_company], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "scope-vat-number",
+      "category": "out-of-scope",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "scope-employee-count",
+      "category": "out-of-scope",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, get_filing_history], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, get_filing_history], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, get_filing_history], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "scope-credit-limit",
+      "category": "out-of-scope",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "out-of-scope",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "not-uk-apple",
+      "category": "not-uk",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "not-uk",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "not-uk",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "not-uk",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "not-uk-volkswagen",
+      "category": "not-uk",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "not-uk",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "not-uk",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "not-uk",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "not-uk-irish",
+      "category": "not-uk",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "not-uk",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "not-uk",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "passed": true,
+          "category": "not-uk",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "noise-typos",
+      "category": "noise",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "noise-padding",
+      "category": "noise",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "noise-two-questions",
+      "category": "noise",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "noise-no-punctuation",
+      "category": "noise",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "noise-name-and-number",
+      "category": "noise",
+      "attempts": [
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "passed": true,
+          "category": "noise",
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    }
+  ]
+}

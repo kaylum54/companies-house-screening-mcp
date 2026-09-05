@@ -31,7 +31,7 @@ export const metaSchema = z
       .number()
       .describe('Requests still available in the current five-minute window. Pace long runs by this.'),
     rate_limit_resets_in_ms: z.number().describe('Milliseconds until more budget becomes available.'),
-    licence: z.literal('OGL-v3.0').describe('Companies House data is Open Government Licence v3.0.')
+    licence: z.literal('OGL-v3.0').describe('OGL v3.0 applies to eligible public-sector information. Personal data and other OGL exclusions are not licensed by this label; applicable data-protection duties still apply.')
   })
   .describe('Provenance and budget for this answer.');
 
@@ -344,6 +344,7 @@ export const companySnapshotOutput = z.object({
     .object({
       active_count: z.number().optional(),
       resigned_count: z.number().optional(),
+      pagination: paginationSchema.describe('Coverage of the fetched officer page, before filtering to active officers. Follow get_officers pagination for the full list; counts describe the whole register.'),
       active: z.array(
         z.object({
           name: z.string(),
@@ -359,7 +360,8 @@ export const companySnapshotOutput = z.object({
       total_count: z.number(),
       outstanding_count: z.number(),
       satisfied_count: z.number(),
-      holders: z.array(z.string()).describe('Who holds the outstanding charges.')
+      part_satisfied_count: z.number(),
+      holders: z.array(z.string()).describe('Holders of returned charges not recorded as fully satisfied.')
     })
     .optional(),
   insolvency: z
@@ -390,7 +392,11 @@ export const screenCompaniesOutput = z.object({
       incorporated_on: z.string().optional(),
       age_years: z.number().optional(),
       signal_codes: z.array(z.enum(SIGNAL_CODES)),
-      signal_count: z.number().describe('Call company_snapshot on the number for the detail behind these.')
+      signal_count: z.number().describe('Call company_snapshot on the number for the detail behind these.'),
+      sections_included: z.array(z.string()).describe('Sections actually fetched for this company.'),
+      sections_unavailable: z.array(sectionUnavailableSchema),
+      officers_pagination: paginationSchema.optional().describe('Officer page coverage when officers were requested.'),
+      meta: metaSchema
     })
   ),
   unresolved: z

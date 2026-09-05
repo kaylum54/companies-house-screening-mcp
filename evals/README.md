@@ -36,37 +36,13 @@ started only so the eval can read the real tool definitions and the real
 instructions, and the model is asked one question with those tools offered.
 What it reaches for on that first turn is the whole measurement.
 
-### What a run costs
+### Scope, cost and evidence
 
-A full pass is fourteen questions at roughly four thousand input tokens each —
-about 56k tokens, because eleven tool schemas and the server instructions go in
-every time. Output is negligible.
+The suite currently contains 58 cases. At three repeats that is 174 model requests. The runner prints the actual case count before starting. Input size depends on current tool schemas; the old fourteen-case cost estimate does not apply.
 
-| Model | Per M in / out | A full run |
-|---|---|---|
-| `z-ai/glm-5.2` *(default on OpenRouter)* | $0.97 / $3.04 | ~4p |
-| `z-ai/glm-5.2:free` | free | free, but see below |
-| `z-ai/glm-4.7` | $0.40 / $1.75 | ~2p |
-| `deepseek/deepseek-v4-flash` | $0.08 / $0.16 | under 1p |
-| `deepseek/deepseek-v4-pro` | $1.60 / $3.20 | ~7p |
-| `moonshotai/kimi-k3` | $3.00 / $15.00 | ~13p |
-| `anthropic/claude-opus-5` | $5.00 / $25.00 | ~22p |
+Check your provider's current pricing and usage dashboard before choosing a model. No fixed per-run price is promised. Use `--case grounding` for a smaller run. Provider failures and sampling variability need investigation; a flaky case does not by itself prove overlapping descriptions.
 
-Prices move; `curl https://openrouter.ai/api/v1/models` is the current answer.
-
-**On the free tier.** `z-ai/glm-5.2:free` works and is not the default on
-purpose. Free tiers queue and throttle, and this eval reports an inconsistent
-result as a *finding* about overlapping tool descriptions. Throttling would
-show up as flakiness with nothing to do with the descriptions — the one kind of
-noise this suite must not manufacture. Use it for a quick look, not for a
-number you intend to trust.
-
-**Running it across several models is the better use.** A tool description that
-only a frontier model reads correctly is a tool description with a problem. The
-cheaper model failing a case is a finding about the description, not about the
-model — and at these prices you can afford to find out. Every result file
-records the provider and model, because a pass rate without a model beside it
-means nothing.
+New result files record timestamps, provider, model, repeat count, command, git commit, dirty state and a SHA-256 fingerprint of the evaluated source/dependency lock. A dirty checkout is explicitly labelled. Keep the matching source alongside a baseline if you need exact reproduction.
 
 ## What is scored
 
@@ -109,7 +85,7 @@ GLM 5.2. The one remaining failure is the one above.
 
 ## Across three models
 
-Run 20–21 August 2026, 58 cases x 3 repeats per model, via OpenRouter.
+Historical runs reported on 20–21 August 2026, 58 cases x 3 repeats per model, via OpenRouter. Sanitised result files are preserved in [baselines](baselines/README.md). Their original files do not record a commit or execution timestamp, so these are historical observations, not reproducible claims about the current checkout.
 `npm run eval:compare evals/results/*.json` regenerates the table.
 
 | Category | GLM 5.2 | Kimi K3 | DeepSeek V4 Pro |
@@ -178,9 +154,7 @@ quote.
 ## Flakiness is a finding, not noise
 
 A case that passes twice and fails once is reported as `FLAKY`, not as a pass.
-Intermittent selection means two tool descriptions overlap enough that the
-model is choosing between them at random. The fix is the descriptions, not the
-case. `--repeat 3` is the setting that surfaces it.
+Intermittent selection is a finding to investigate. Possible causes include ambiguous descriptions, sampling variability, provider behavior and defective expectations. Do not assume the cause from the score alone. `--repeat 3` is the setting that surfaces it.
 
 The runner exits non-zero when anything fails **or is flaky**, so a regression
 in tool selection can fail a pipeline the same way a failing unit test does.
@@ -201,6 +175,8 @@ people believe.
 
 ## Results
 
-`evals/results/` is gitignored. A run's output is per-key, per-model and
-per-day, and committing one would turn a measurement into a claim. Keep a
-snapshot deliberately with `--out` if you want a baseline to compare against.
+`evals/results/` is gitignored for scratch runs. Preserve a sanitised result deliberately under `evals/baselines/` with `--out`, and document the source state and command. Do not include provider keys, environment dumps or private prompts. Existing historical baselines disclose missing provenance instead of inventing it.
+
+## Latest review verification
+
+The [saved review run](baselines/review-verification.json) scored 54/58 with three repeats (174 selections), including four flaky cases. The number-trap, typo and trading-question cases included valid-looking but incorrect company numbers. Treat those as observed limitations, not server-verified identities. See [baseline provenance](baselines/README.md).

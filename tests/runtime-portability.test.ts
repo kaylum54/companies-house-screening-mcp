@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
@@ -16,7 +17,7 @@ import { describe, expect, it } from 'vitest';
  * Nothing else may, with the single audited exception below. See ADR 14.
  */
 
-const SRC = new URL('../src/', import.meta.url).pathname;
+const SRC = fileURLToPath(new URL('../src/', import.meta.url));
 
 /**
  * Only `src/node/` may reach for Node built-ins. `src/cloudflare/` is held to
@@ -52,7 +53,7 @@ describe('runtime portability', () => {
     const offenders: string[] = [];
 
     for (const file of files) {
-      const rel = relative(SRC, file);
+      const rel = relative(SRC, file).split(sep).join('/');
       if (RUNTIME_SPECIFIC.some((prefix) => rel.startsWith(prefix))) continue;
 
       const source = await readFile(file, 'utf8');

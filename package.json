@@ -1,6 +1,6 @@
 {
   "name": "companies-house-screening-mcp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "MCP server for screening UK companies against the Companies House register: batch supplier screening, one-call company snapshots, and factual signals rather than a risk score.",
   "keywords": [
     "mcp",

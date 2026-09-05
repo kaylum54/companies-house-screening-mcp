@@ -50,6 +50,59 @@ describe('the composite tools are registered', () => {
 });
 
 describe('company_snapshot', () => {
+  it('preserves per-company failed sections and officer pagination in screening', async () => {
+    harness = await harnessRoutes([
+      [/\/charges/, { status: 403 }],
+      ...FULL_ROUTES
+    ]);
+    const result = structured(await harness.client.callTool({
+      name: 'screen_companies', arguments: { companies: ['04138203'], include_officers: true }
+    }));
+    expect(result['screened']).toEqual(expect.arrayContaining([expect.objectContaining({
+      sections_included: ['profile', 'officers', 'insolvency'],
+      sections_unavailable: [expect.objectContaining({ section: 'charges' })],
+      officers_pagination: expect.objectContaining({ has_more: true }),
+      meta: expect.objectContaining({ cached: false, stale: false })
+    })]));
+  });
+
+  it('preserves officer coverage and does not infer absence from a resigned page', async () => {
+    harness = await harnessRoutes([
+      [/\/officers/, { body: {
+        active_count: 1, resigned_count: 35, total_results: 36, items_per_page: 35,
+        items: Array.from({ length: 35 }, (_, i) => ({ name: `EXAMPLE ${i}`, resigned_on: '2020-01-01' }))
+      } }],
+      ...FULL_ROUTES
+    ]);
+    const result = structured(await harness.client.callTool({
+      name: 'company_snapshot', arguments: { company_number: '04138203' }
+    }));
+    expect(result['officers']).toMatchObject({ active_count: 1, pagination: { has_more: true, returned: 35 } });
+    expect(result['signals']).not.toEqual(expect.arrayContaining([expect.objectContaining({ code: 'no_active_officers' })]));
+  });
+
+  it('keeps partially satisfied floating charges visible in snapshots and screening', async () => {
+    harness = await harnessRoutes([
+      [/\/charges/, { body: { total_count: 1, satisfied_count: 0, part_satisfied_count: 1,
+        items: [{ status: 'part-satisfied', particulars: { floating_charge_covers_all: true } }] } }],
+      ...FULL_ROUTES
+    ]);
+    const snapshot = structured(await harness.client.callTool({
+      name: 'company_snapshot', arguments: { company_number: '04138203' }
+    }));
+    expect(snapshot['charges']).toMatchObject({ outstanding_count: 0, part_satisfied_count: 1 });
+    expect(snapshot['signals']).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'part_satisfied_charges' }),
+      expect.objectContaining({ code: 'floating_charge_over_all_assets' })
+    ]));
+    const batch = structured(await harness.client.callTool({
+      name: 'screen_companies', arguments: { companies: ['04138203'] }
+    }));
+    expect(batch['screened']).toEqual(expect.arrayContaining([
+      expect.objectContaining({ signal_codes: expect.arrayContaining(['part_satisfied_charges', 'floating_charge_over_all_assets']) })
+    ]));
+  });
+
   it('answers four questions in one call', async () => {
     harness = await harnessRoutes(FULL_ROUTES);
     const result = structured(

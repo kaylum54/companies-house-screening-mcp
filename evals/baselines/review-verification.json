@@ -1,0 +1,5170 @@
+{
+  "provenance": {
+    "startedAt": "2026-09-04T23:33:46.511Z",
+    "commit": "1e14b525779787ef64d7442b4c553632bc1c32ef",
+    "workingTreeDirty": true,
+    "sourceSha256": "3f016b5846adfe2e9513445b732d54cb24a8efb61228be0d7b4ee8ae1b1bfaff",
+    "sourceHashScope": "Sorted src/ and evals/ TypeScript paths and LF-normalized contents (excluding results and baselines), then package-lock.json bytes",
+    "command": [
+      "npm",
+      "run",
+      "eval",
+      "--",
+      "--provider",
+      "openrouter",
+      "--model",
+      "z-ai/glm-5.2",
+      "--repeat",
+      "3"
+    ],
+    "completedAt": "2026-09-04T23:37:20.392Z"
+  },
+  "provider": "openrouter",
+  "model": "openrouter:z-ai/glm-5.2",
+  "repeat": 3,
+  "summary": {
+    "total": 58,
+    "passed": 54,
+    "failed": 4,
+    "passRate": 0.9310344827586207,
+    "flaky": [
+      "trap-foreign-registration",
+      "para-trading-1",
+      "near-who-is-behind",
+      "noise-typos"
+    ],
+    "byCategory": [
+      {
+        "category": "grounding",
+        "passed": 7,
+        "total": 7
+      },
+      {
+        "category": "near-miss",
+        "passed": 7,
+        "total": 8
+      },
+      {
+        "category": "noise",
+        "passed": 4,
+        "total": 5
+      },
+      {
+        "category": "not-uk",
+        "passed": 3,
+        "total": 3
+      },
+      {
+        "category": "number-trap",
+        "passed": 5,
+        "total": 6
+      },
+      {
+        "category": "out-of-scope",
+        "passed": 6,
+        "total": 6
+      },
+      {
+        "category": "paraphrase",
+        "passed": 19,
+        "total": 20
+      },
+      {
+        "category": "primitive",
+        "passed": 3,
+        "total": 3
+      }
+    ],
+    "intents": [
+      {
+        "intent": "is-it-trading",
+        "tools": [
+          "company_snapshot",
+          "get_company"
+        ],
+        "agreed": false
+      },
+      {
+        "intent": "name-to-number",
+        "tools": [
+          "find_company"
+        ],
+        "agreed": true
+      },
+      {
+        "intent": "screen-a-list",
+        "tools": [
+          "screen_companies"
+        ],
+        "agreed": true
+      },
+      {
+        "intent": "secured-debt",
+        "tools": [
+          "company_snapshot",
+          "get_charges"
+        ],
+        "agreed": false
+      },
+      {
+        "intent": "who-controls",
+        "tools": [
+          "get_psc"
+        ],
+        "agreed": true
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "grounding-profile",
+      "category": "grounding",
+      "question": "Can you tell me about Royal Mail Group Limited?",
+      "attempts": [
+        {
+          "id": "grounding-profile",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Royal Mail Group Limited"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-profile",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Royal Mail Group Limited"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-profile",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Royal Mail Group Limited"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-directors",
+      "category": "grounding",
+      "question": "Who are the directors of Marks and Spencer?",
+      "attempts": [
+        {
+          "id": "grounding-directors",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Marks and Spencer"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-directors",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Marks and Spencer"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-directors",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Marks and Spencer"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-charges",
+      "category": "grounding",
+      "question": "Does Greggs plc have any outstanding charges against it?",
+      "attempts": [
+        {
+          "id": "grounding-charges",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs plc"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-charges",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs plc"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-charges",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs plc"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-scottish",
+      "category": "grounding",
+      "question": "Is Stagecoach Group still trading?",
+      "attempts": [
+        {
+          "id": "grounding-scottish",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Stagecoach Group"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-scottish",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Stagecoach Group"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-scottish",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Stagecoach Group"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-address",
+      "category": "grounding",
+      "question": "What's the registered office address for Tesco?",
+      "attempts": [
+        {
+          "id": "grounding-address",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Tesco"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-address",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Tesco"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-address",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Tesco"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-solvency",
+      "category": "grounding",
+      "question": "Is Wetherspoons in any financial difficulty according to the register?",
+      "attempts": [
+        {
+          "id": "grounding-solvency",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Wetherspoon"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-solvency",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "J D Wetherspoon"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "grounding-solvency",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Wetherspoons"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "grounding-officer-name",
+      "category": "grounding",
+      "question": "Find me the officer records for a director called Paul Ablin.",
+      "attempts": [
+        {
+          "id": "grounding-officer-name",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_officer], got find_officer"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_officer",
+              "input": {
+                "query": "Paul Ablin"
+              }
+            }
+          ],
+          "chosenTool": "find_officer"
+        },
+        {
+          "id": "grounding-officer-name",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_officer], got find_officer"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_officer",
+              "input": {
+                "query": "Paul Ablin"
+              }
+            }
+          ],
+          "chosenTool": "find_officer"
+        },
+        {
+          "id": "grounding-officer-name",
+          "category": "grounding",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_officer], got find_officer"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_officer",
+              "input": {
+                "query": "Paul Ablin"
+              }
+            }
+          ],
+          "chosenTool": "find_officer"
+        }
+      ]
+    },
+    {
+      "id": "trap-order-number",
+      "category": "number-trap",
+      "question": "We have order 12345678 outstanding with a supplier and I want to know if they are still solvent before chasing it.",
+      "attempts": [
+        {
+          "id": "trap-order-number",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "trap-order-number",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "trap-order-number",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        }
+      ]
+    },
+    {
+      "id": "trap-vat-number",
+      "category": "number-trap",
+      "question": "Our supplier's VAT number is GB 745 9384 21. Can you check them on Companies House?",
+      "attempts": [
+        {
+          "id": "trap-vat-number",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "trap-vat-number",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "trap-vat-number",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        }
+      ]
+    },
+    {
+      "id": "trap-postcode",
+      "category": "number-trap",
+      "question": "The company registered at EC1A 1AA — are they still trading?",
+      "attempts": [
+        {
+          "id": "trap-postcode",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "EC1A 1AA"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "trap-postcode",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "EC1A 1AA",
+                "items_per_page": 20
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "trap-postcode",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "EC1A 1AA",
+                "items_per_page": 10
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "trap-invoice-reference",
+      "category": "number-trap",
+      "question": "Invoice INV-2026-8891 came in from a new supplier. Should I be worried about them?",
+      "attempts": [
+        {
+          "id": "trap-invoice-reference",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "trap-invoice-reference",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "trap-invoice-reference",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        }
+      ]
+    },
+    {
+      "id": "trap-phone-number",
+      "category": "number-trap",
+      "question": "A company called from 0207 946 0958 claiming to be our supplier. Can you verify them?",
+      "attempts": [
+        {
+          "id": "trap-phone-number",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "trap-phone-number",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "trap-phone-number",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        }
+      ]
+    },
+    {
+      "id": "trap-foreign-registration",
+      "category": "number-trap",
+      "question": "Their German registration is HRB 123456. Is that company on the UK register too?",
+      "attempts": [
+        {
+          "id": "trap-foreign-registration",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, which is acceptable here"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "trap-foreign-registration",
+          "category": "number-trap",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "passed no company number, correctly — the question contains none"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "HRB 123456"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "trap-foreign-registration",
+          "category": "number-trap",
+          "passed": false,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": false,
+              "detail": "called forbidden tool(s): get_company"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": false,
+              "detail": "passed a company number the question does not contain: 00123456"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "HRB 123456"
+              }
+            },
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "00123456"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "para-trading-1",
+      "category": "paraphrase",
+      "intent": "is-it-trading",
+      "question": "Is company 04138203 still trading?",
+      "attempts": [
+        {
+          "id": "para-trading-1",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "para-trading-1",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "para-trading-1",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": false,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": false,
+              "detail": "company_number expected \"04138203\", got \"04138223\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138223"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "para-trading-2",
+      "category": "paraphrase",
+      "intent": "is-it-trading",
+      "question": "Is 04138203 an active company?",
+      "attempts": [
+        {
+          "id": "para-trading-2",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "para-trading-2",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "para-trading-2",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "para-trading-3",
+      "category": "paraphrase",
+      "intent": "is-it-trading",
+      "question": "Has 04138203 been dissolved?",
+      "attempts": [
+        {
+          "id": "para-trading-3",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "para-trading-3",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "para-trading-3",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "para-trading-4",
+      "category": "paraphrase",
+      "intent": "is-it-trading",
+      "question": "Before we renew, can you confirm 04138203 is still a going concern on the register?",
+      "attempts": [
+        {
+          "id": "para-trading-4",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "para-trading-4",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "para-trading-4",
+          "category": "paraphrase",
+          "intent": "is-it-trading",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "para-control-1",
+      "category": "paraphrase",
+      "intent": "who-controls",
+      "question": "Who owns company 04138203?",
+      "attempts": [
+        {
+          "id": "para-control-1",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "id": "para-control-1",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "id": "para-control-1",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        }
+      ]
+    },
+    {
+      "id": "para-control-2",
+      "category": "paraphrase",
+      "intent": "who-controls",
+      "question": "Who are the persons with significant control for 04138203?",
+      "attempts": [
+        {
+          "id": "para-control-2",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "id": "para-control-2",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "id": "para-control-2",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        }
+      ]
+    },
+    {
+      "id": "para-control-3",
+      "category": "paraphrase",
+      "intent": "who-controls",
+      "question": "Who ultimately controls 04138203?",
+      "attempts": [
+        {
+          "id": "para-control-3",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "id": "para-control-3",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "id": "para-control-3",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        }
+      ]
+    },
+    {
+      "id": "para-control-4",
+      "category": "paraphrase",
+      "intent": "who-controls",
+      "question": "Who holds the shares in 04138203?",
+      "attempts": [
+        {
+          "id": "para-control-4",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "id": "para-control-4",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "id": "para-control-4",
+          "category": "paraphrase",
+          "intent": "who-controls",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, company_snapshot], got get_psc"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        }
+      ]
+    },
+    {
+      "id": "para-charges-1",
+      "category": "paraphrase",
+      "intent": "secured-debt",
+      "question": "Are there any charges registered against 04138203?",
+      "attempts": [
+        {
+          "id": "para-charges-1",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "id": "para-charges-1",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "id": "para-charges-1",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        }
+      ]
+    },
+    {
+      "id": "para-charges-2",
+      "category": "paraphrase",
+      "intent": "secured-debt",
+      "question": "Does 04138203 have any secured debt outstanding?",
+      "attempts": [
+        {
+          "id": "para-charges-2",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "id": "para-charges-2",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "id": "para-charges-2",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        }
+      ]
+    },
+    {
+      "id": "para-charges-3",
+      "category": "paraphrase",
+      "intent": "secured-debt",
+      "question": "Has 04138203 borrowed against its assets?",
+      "attempts": [
+        {
+          "id": "para-charges-3",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "id": "para-charges-3",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "para-charges-3",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        }
+      ]
+    },
+    {
+      "id": "para-charges-4",
+      "category": "paraphrase",
+      "intent": "secured-debt",
+      "question": "Show me the mortgages on 04138203.",
+      "attempts": [
+        {
+          "id": "para-charges-4",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "id": "para-charges-4",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        },
+        {
+          "id": "para-charges-4",
+          "category": "paraphrase",
+          "intent": "secured-debt",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_charges, company_snapshot], got get_charges"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_charges",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_charges"
+        }
+      ]
+    },
+    {
+      "id": "para-lookup-1",
+      "category": "paraphrase",
+      "intent": "name-to-number",
+      "question": "What's the company number for Greggs?",
+      "attempts": [
+        {
+          "id": "para-lookup-1",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "para-lookup-1",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "para-lookup-1",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "para-lookup-2",
+      "category": "paraphrase",
+      "intent": "name-to-number",
+      "question": "Look up Greggs on Companies House for me.",
+      "attempts": [
+        {
+          "id": "para-lookup-2",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "para-lookup-2",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "para-lookup-2",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "para-lookup-3",
+      "category": "paraphrase",
+      "intent": "name-to-number",
+      "question": "I need to find Greggs on the register — can you search?",
+      "attempts": [
+        {
+          "id": "para-lookup-3",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "para-lookup-3",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "para-lookup-3",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "para-lookup-4",
+      "category": "paraphrase",
+      "intent": "name-to-number",
+      "question": "Which company on the register is Greggs?",
+      "attempts": [
+        {
+          "id": "para-lookup-4",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "para-lookup-4",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "para-lookup-4",
+          "category": "paraphrase",
+          "intent": "name-to-number",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Greggs"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "para-screen-1",
+      "category": "paraphrase",
+      "intent": "screen-a-list",
+      "question": "I have three new suppliers to check: 04138203, 03782379 and 00000006. Which ones should I worry about?",
+      "attempts": [
+        {
+          "id": "para-screen-1",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ],
+                "include_officers": true
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "id": "para-screen-1",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ],
+                "include_officers": true
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "id": "para-screen-1",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ],
+                "include_charges": true,
+                "include_insolvency": true,
+                "include_officers": true
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        }
+      ]
+    },
+    {
+      "id": "para-screen-2",
+      "category": "paraphrase",
+      "intent": "screen-a-list",
+      "question": "Run a check over these: 04138203, 03782379, 00000006.",
+      "attempts": [
+        {
+          "id": "para-screen-2",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ]
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "id": "para-screen-2",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ],
+                "include_officers": true,
+                "include_charges": true,
+                "include_insolvency": true
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "id": "para-screen-2",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ]
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        }
+      ]
+    },
+    {
+      "id": "para-screen-3",
+      "category": "paraphrase",
+      "intent": "screen-a-list",
+      "question": "Which of 04138203, 03782379 and 00000006 has anything concerning on the register?",
+      "attempts": [
+        {
+          "id": "para-screen-3",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ],
+                "include_charges": true,
+                "include_insolvency": true,
+                "include_officers": true
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "id": "para-screen-3",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ],
+                "include_charges": true,
+                "include_insolvency": true,
+                "include_officers": true
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "id": "para-screen-3",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ],
+                "include_charges": true,
+                "include_insolvency": true,
+                "include_officers": true
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        }
+      ]
+    },
+    {
+      "id": "para-screen-4",
+      "category": "paraphrase",
+      "intent": "screen-a-list",
+      "question": "Procurement sent over 04138203, 03782379 and 00000006 for onboarding. Anything I should know?",
+      "attempts": [
+        {
+          "id": "para-screen-4",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ],
+                "include_officers": true
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "id": "para-screen-4",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ],
+                "include_officers": true
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        },
+        {
+          "id": "para-screen-4",
+          "category": "paraphrase",
+          "intent": "screen-a-list",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379",
+                  "00000006"
+                ],
+                "include_officers": true
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        }
+      ]
+    },
+    {
+      "id": "near-runs-vs-owns",
+      "category": "near-miss",
+      "question": "Who runs company 04138203 day to day?",
+      "attempts": [
+        {
+          "id": "near-runs-vs-owns",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officers, company_snapshot], got get_officers"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_officers",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_officers"
+        },
+        {
+          "id": "near-runs-vs-owns",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officers, company_snapshot], got get_officers"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_officers",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_officers"
+        },
+        {
+          "id": "near-runs-vs-owns",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officers, company_snapshot], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "near-accounts-due",
+      "category": "near-miss",
+      "question": "When are 04138203's next accounts due?",
+      "attempts": [
+        {
+          "id": "near-accounts-due",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "near-accounts-due",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "near-accounts-due",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "near-accounts-filed",
+      "category": "near-miss",
+      "question": "What did 04138203 file most recently?",
+      "attempts": [
+        {
+          "id": "near-accounts-filed",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_filing_history",
+              "input": {
+                "company_number": "04138203",
+                "items_per_page": 1
+              }
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        },
+        {
+          "id": "near-accounts-filed",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_filing_history",
+              "input": {
+                "company_number": "04138203",
+                "items_per_page": 1
+              }
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        },
+        {
+          "id": "near-accounts-filed",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_filing_history",
+              "input": {
+                "company_number": "04138203",
+                "items_per_page": 1
+              }
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        }
+      ]
+    },
+    {
+      "id": "near-two-companies",
+      "category": "near-miss",
+      "question": "Compare 04138203 and 03782379 for me.",
+      "attempts": [
+        {
+          "id": "near-two-companies",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies, company_snapshot], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            },
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "03782379"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "near-two-companies",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies, company_snapshot], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            },
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "03782379"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "near-two-companies",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [screen_companies, company_snapshot], got screen_companies"
+            }
+          ],
+          "calls": [
+            {
+              "name": "screen_companies",
+              "input": {
+                "companies": [
+                  "04138203",
+                  "03782379"
+                ],
+                "include_officers": true
+              }
+            },
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            },
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "03782379"
+              }
+            }
+          ],
+          "chosenTool": "screen_companies"
+        }
+      ]
+    },
+    {
+      "id": "near-everything-one-company",
+      "category": "near-miss",
+      "question": "Tell me everything on the register about 04138203.",
+      "attempts": [
+        {
+          "id": "near-everything-one-company",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203",
+                "include_officers": true,
+                "include_charges": true,
+                "include_insolvency": true
+              }
+            },
+            {
+              "name": "get_filing_history",
+              "input": {
+                "company_number": "04138203",
+                "items_per_page": 100
+              }
+            },
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203",
+                "items_per_page": 100
+              }
+            },
+            {
+              "name": "get_officers",
+              "input": {
+                "company_number": "04138203",
+                "items_per_page": 100
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "near-everything-one-company",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            },
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203",
+                "items_per_page": 100
+              }
+            },
+            {
+              "name": "get_filing_history",
+              "input": {
+                "company_number": "04138203",
+                "items_per_page": 100
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "near-everything-one-company",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            },
+            {
+              "name": "get_filing_history",
+              "input": {
+                "company_number": "04138203",
+                "items_per_page": 100
+              }
+            },
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203",
+                "items_per_page": 100
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "near-officer-id-not-company",
+      "category": "near-miss",
+      "question": "What other companies does officer gBfDMtBVo3nHfig_wVfjaOA9o1M sit on the board of?",
+      "attempts": [
+        {
+          "id": "near-officer-id-not-company",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officer_appointments], got get_officer_appointments"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "officer_id expected to contain \"gBfDMtBVo3nHfig_wVfjaOA9o1M\", got \"gBfDMtBVo3nHfig_wVfjaOA9o1M\""
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_officer_appointments",
+              "input": {
+                "officer_id": "gBfDMtBVo3nHfig_wVfjaOA9o1M"
+              }
+            }
+          ],
+          "chosenTool": "get_officer_appointments"
+        },
+        {
+          "id": "near-officer-id-not-company",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officer_appointments], got get_officer_appointments"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "officer_id expected to contain \"gBfDMtBVo3nHfig_wVfjaOA9o1M\", got \"gBfDMtBVo3nHfig_wVfjaOA9o1M\""
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_officer_appointments",
+              "input": {
+                "officer_id": "gBfDMtBVo3nHfig_wVfjaOA9o1M"
+              }
+            }
+          ],
+          "chosenTool": "get_officer_appointments"
+        },
+        {
+          "id": "near-officer-id-not-company",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_officer_appointments], got get_officer_appointments"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "officer_id expected to contain \"gBfDMtBVo3nHfig_wVfjaOA9o1M\", got \"gBfDMtBVo3nHfig_wVfjaOA9o1M\""
+            },
+            {
+              "name": "no_forbidden_company_number",
+              "passed": true,
+              "detail": "did not pass the decoy as a company number"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_officer_appointments",
+              "input": {
+                "officer_id": "gBfDMtBVo3nHfig_wVfjaOA9o1M"
+              }
+            }
+          ],
+          "chosenTool": "get_officer_appointments"
+        }
+      ]
+    },
+    {
+      "id": "near-insolvency-detail",
+      "category": "near-miss",
+      "question": "Has company 03782379 ever been through an insolvency process?",
+      "attempts": [
+        {
+          "id": "near-insolvency-detail",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_insolvency, company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"03782379\", got \"03782379\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "03782379"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "near-insolvency-detail",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_insolvency, company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"03782379\", got \"03782379\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "03782379"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "near-insolvency-detail",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_insolvency, company_snapshot, get_company], got get_insolvency"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"03782379\", got \"03782379\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_insolvency",
+              "input": {
+                "company_number": "03782379"
+              }
+            }
+          ],
+          "chosenTool": "get_insolvency"
+        }
+      ]
+    },
+    {
+      "id": "near-who-is-behind",
+      "category": "near-miss",
+      "question": "Who is behind 04138203?",
+      "attempts": [
+        {
+          "id": "near-who-is-behind",
+          "category": "near-miss",
+          "passed": false,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": false,
+              "detail": "expected one of [get_psc, get_officers, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            },
+            {
+              "name": "get_officers",
+              "input": {
+                "company_number": "04138203"
+              }
+            },
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "near-who-is-behind",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, get_officers, company_snapshot], got get_psc"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            },
+            {
+              "name": "get_officers",
+              "input": {
+                "company_number": "04138203"
+              }
+            },
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_psc"
+        },
+        {
+          "id": "near-who-is-behind",
+          "category": "near-miss",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_psc, get_officers, company_snapshot], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            },
+            {
+              "name": "get_psc",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "primitive-filing-history",
+      "category": "primitive",
+      "question": "When did company 04138203 last file its accounts?",
+      "attempts": [
+        {
+          "id": "primitive-filing-history",
+          "category": "primitive",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, get_company, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_filing_history",
+              "input": {
+                "category": "accounts",
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        },
+        {
+          "id": "primitive-filing-history",
+          "category": "primitive",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, get_company, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_filing_history",
+              "input": {
+                "company_number": "04138203",
+                "category": "accounts",
+                "items_per_page": 5
+              }
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        },
+        {
+          "id": "primitive-filing-history",
+          "category": "primitive",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, get_company, company_snapshot], got get_filing_history"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_filing_history",
+              "input": {
+                "company_number": "04138203",
+                "category": "accounts",
+                "items_per_page": 5
+              }
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        }
+      ]
+    },
+    {
+      "id": "primitive-short-number",
+      "category": "primitive",
+      "question": "Look up company 1234567 for me.",
+      "attempts": [
+        {
+          "id": "primitive-short-number",
+          "category": "primitive",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, find_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "any expected to contain \"1234567\", got \"{\"company_number\":\"1234567\"}\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "1234567"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "primitive-short-number",
+          "category": "primitive",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, find_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "any expected to contain \"1234567\", got \"{\"company_number\":\"1234567\"}\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "1234567"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "primitive-short-number",
+          "category": "primitive",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, find_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "any expected to contain \"1234567\", got \"{\"company_number\":\"1234567\"}\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "1234567"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "primitive-number-in-prose",
+      "category": "primitive",
+      "question": "Invoice says \"Registered in England no. 04138203\". Is that company real and still trading?",
+      "attempts": [
+        {
+          "id": "primitive-number-in-prose",
+          "category": "primitive",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "primitive-number-in-prose",
+          "category": "primitive",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "primitive-number-in-prose",
+          "category": "primitive",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "scope-file-statement",
+      "category": "out-of-scope",
+      "question": "Please file this year's confirmation statement for company 04138203.",
+      "attempts": [
+        {
+          "id": "scope-file-statement",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "scope-file-statement",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "scope-file-statement",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ],
+          "calls": []
+        }
+      ]
+    },
+    {
+      "id": "scope-change-address",
+      "category": "out-of-scope",
+      "question": "Change the registered office address for 04138203 to our new office.",
+      "attempts": [
+        {
+          "id": "scope-change-address",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "scope-change-address",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ],
+          "calls": []
+        },
+        {
+          "id": "scope-change-address",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "called no tool, as expected"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            }
+          ],
+          "calls": []
+        }
+      ]
+    },
+    {
+      "id": "scope-download-pdf",
+      "category": "out-of-scope",
+      "question": "Download the latest accounts PDF for 04138203 and tell me the turnover.",
+      "attempts": [
+        {
+          "id": "scope-download-pdf",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot, get_company], got get_filing_history"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_filing_history",
+              "input": {
+                "company_number": "04138203",
+                "category": "accounts",
+                "items_per_page": 5
+              }
+            },
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        },
+        {
+          "id": "scope-download-pdf",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot, get_company], got get_filing_history"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_filing_history",
+              "input": {
+                "company_number": "04138203",
+                "category": "accounts",
+                "items_per_page": 10
+              }
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        },
+        {
+          "id": "scope-download-pdf",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_filing_history, company_snapshot, get_company], got get_filing_history"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_filing_history",
+              "input": {
+                "category": "accounts",
+                "company_number": "04138203",
+                "items_per_page": 5
+              }
+            }
+          ],
+          "chosenTool": "get_filing_history"
+        }
+      ]
+    },
+    {
+      "id": "scope-vat-number",
+      "category": "out-of-scope",
+      "question": "What's the VAT number for 04138203?",
+      "attempts": [
+        {
+          "id": "scope-vat-number",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "scope-vat-number",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "scope-vat-number",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "scope-employee-count",
+      "category": "out-of-scope",
+      "question": "How many people does 04138203 employ?",
+      "attempts": [
+        {
+          "id": "scope-employee-count",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, get_filing_history], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203",
+                "verbose": true
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "scope-employee-count",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, get_filing_history], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "scope-employee-count",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot, get_filing_history], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "scope-credit-limit",
+      "category": "out-of-scope",
+      "question": "What credit limit would you give company 04138203?",
+      "attempts": [
+        {
+          "id": "scope-credit-limit",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "scope-credit-limit",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "scope-credit-limit",
+          "category": "out-of-scope",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "not-uk-apple",
+      "category": "not-uk",
+      "question": "Tell me about Apple Inc on Companies House.",
+      "attempts": [
+        {
+          "id": "not-uk-apple",
+          "category": "not-uk",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Apple Inc"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "not-uk-apple",
+          "category": "not-uk",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Apple Inc"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "not-uk-apple",
+          "category": "not-uk",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Apple Inc"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "not-uk-volkswagen",
+      "category": "not-uk",
+      "question": "Look up Volkswagen AG for me.",
+      "attempts": [
+        {
+          "id": "not-uk-volkswagen",
+          "category": "not-uk",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Volkswagen AG"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "not-uk-volkswagen",
+          "category": "not-uk",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Volkswagen AG"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "not-uk-volkswagen",
+          "category": "not-uk",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Volkswagen AG"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "not-uk-irish",
+      "category": "not-uk",
+      "question": "Is Ryanair registered at Companies House?",
+      "attempts": [
+        {
+          "id": "not-uk-irish",
+          "category": "not-uk",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Ryanair"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "not-uk-irish",
+          "category": "not-uk",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Ryanair"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        },
+        {
+          "id": "not-uk-irish",
+          "category": "not-uk",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [find_company], got find_company"
+            },
+            {
+              "name": "no_forbidden_tools",
+              "passed": true,
+              "detail": "avoided every forbidden tool"
+            },
+            {
+              "name": "no_invented_company_number",
+              "passed": true,
+              "detail": "passed no company number that was not in the question"
+            }
+          ],
+          "calls": [
+            {
+              "name": "find_company",
+              "input": {
+                "query": "Ryanair"
+              }
+            }
+          ],
+          "chosenTool": "find_company"
+        }
+      ]
+    },
+    {
+      "id": "noise-typos",
+      "category": "noise",
+      "question": "can you chekc compnay 04138203 for me pls, is it stil active",
+      "attempts": [
+        {
+          "id": "noise-typos",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "noise-typos",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "noise-typos",
+          "category": "noise",
+          "passed": false,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": false,
+              "detail": "company_number expected to contain \"04138203\", got \"04138223\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138223"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "noise-padding",
+      "category": "noise",
+      "question": "Morning — sorry, quick one before the call. Finance flagged something on a supplier and I need to sanity check it before I reply to them, they're getting twitchy about it. Company number is 04138203. Anything on the register I should know about?",
+      "attempts": [
+        {
+          "id": "noise-padding",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "noise-padding",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "noise-padding",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "noise-two-questions",
+      "category": "noise",
+      "question": "Two things on 04138203: are they active, and do they have charges against them?",
+      "attempts": [
+        {
+          "id": "noise-two-questions",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "noise-two-questions",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "noise-two-questions",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [company_snapshot, get_company, get_charges], got company_snapshot"
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    },
+    {
+      "id": "noise-no-punctuation",
+      "category": "noise",
+      "question": "whats the status of 04138203",
+      "attempts": [
+        {
+          "id": "noise-no-punctuation",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "noise-no-punctuation",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        },
+        {
+          "id": "noise-no-punctuation",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got get_company"
+            }
+          ],
+          "calls": [
+            {
+              "name": "get_company",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "get_company"
+        }
+      ]
+    },
+    {
+      "id": "noise-name-and-number",
+      "category": "noise",
+      "question": "Royal Mail Group Limited (04138203) — still trading?",
+      "attempts": [
+        {
+          "id": "noise-name-and-number",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "noise-name-and-number",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        },
+        {
+          "id": "noise-name-and-number",
+          "category": "noise",
+          "passed": true,
+          "checks": [
+            {
+              "name": "tool_choice",
+              "passed": true,
+              "detail": "expected one of [get_company, company_snapshot], got company_snapshot"
+            },
+            {
+              "name": "arguments",
+              "passed": true,
+              "detail": "company_number expected to contain \"04138203\", got \"04138203\""
+            }
+          ],
+          "calls": [
+            {
+              "name": "company_snapshot",
+              "input": {
+                "company_number": "04138203"
+              }
+            }
+          ],
+          "chosenTool": "company_snapshot"
+        }
+      ]
+    }
+  ]
+}

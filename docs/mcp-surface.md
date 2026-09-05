@@ -171,11 +171,12 @@ operator, and what is genuinely at risk, is in
 
 ## Data licence
 
-Companies House data is published under the Open Government Licence v3.0. When
-reproducing it, include:
+Eligible Companies House public-sector information is available under the Open Government Licence v3.0. Personal data and other OGL exclusions are not covered; applicable data-protection duties still apply. When reproducing OGL-covered information, include:
 
 > Contains public sector information licensed under the Open Government
 > Licence v3.0.
 
 The server states this in its instructions so the attribution reaches the model
 once per session rather than once per response.
+
+Snapshots expose officer pagination before filtering to active entries. Batch rows expose their own included/unavailable sections, officer pagination when requested, and freshness metadata. Global counts do not imply that every individual record was fetched.

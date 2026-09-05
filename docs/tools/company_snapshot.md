@@ -40,6 +40,12 @@ This tool reads only and changes nothing, and calls an external service (the Com
 | `officers` | object | no | — |
 | `officers.active_count` | number | no | — |
 | `officers.resigned_count` | number | no | — |
+| `officers.pagination` | object | yes | Coverage of the fetched officer page, before filtering to active officers. Follow get_officers pagination for the full list; counts describe the whole register. |
+| `officers.pagination.start_index` | number | yes | — |
+| `officers.pagination.items_per_page` | number | yes | — |
+| `officers.pagination.total_results` | number | yes | — |
+| `officers.pagination.returned` | number | yes | How many records are in this response. |
+| `officers.pagination.has_more` | boolean | yes | More records exist. Call again with start_index advanced by `returned`. |
 | `officers.active` | object[] | yes | — |
 | `officers.active[].name` | string | yes | — |
 | `officers.active[].role` | string | no | — |
@@ -49,12 +55,13 @@ This tool reads only and changes nothing, and calls an external service (the Com
 | `charges.total_count` | number | yes | — |
 | `charges.outstanding_count` | number | yes | — |
 | `charges.satisfied_count` | number | yes | — |
-| `charges.holders` | string[] | yes | Who holds the outstanding charges. |
+| `charges.part_satisfied_count` | number | yes | — |
+| `charges.holders` | string[] | yes | Holders of returned charges not recorded as fully satisfied. |
 | `insolvency` | object | no | — |
 | `insolvency.case_count` | number | yes | — |
 | `insolvency.types` | string[] | yes | — |
 | `signals` | object[] | yes | — |
-| `signals[].code` | enum (12 values) | yes | Stable identifier for the observation. |
+| `signals[].code` | enum (13 values) | yes | Stable identifier for the observation. |
 | `signals[].detail` | string | yes | The observation in one sentence, with the dates or names behind it. |
 | `sections_included` | string[] | yes | Which sections were fetched. Signals can only reflect the sections listed here. |
 | `sections_unavailable` | object[] | yes | Sections that failed. The snapshot is still returned; treat those signals as unknown. |
@@ -67,7 +74,7 @@ This tool reads only and changes nothing, and calls an external service (the Com
 | `meta.age_seconds` | number | no | How long ago the cached answer was retrieved. Absent for a live answer. |
 | `meta.rate_limit_remaining` | number | yes | Requests still available in the current five-minute window. Pace long runs by this. |
 | `meta.rate_limit_resets_in_ms` | number | yes | Milliseconds until more budget becomes available. |
-| `meta.licence` | `"OGL-v3.0"` | yes | Companies House data is Open Government Licence v3.0. |
+| `meta.licence` | `"OGL-v3.0"` | yes | OGL v3.0 applies to eligible public-sector information. Personal data and other OGL exclusions are not licensed by this label; applicable data-protection duties still apply. |
 | `raw` | unknown | no | The untouched Companies House payload. Present only when verbose was true. |
 
 On failure the tool returns `isError: true` and a payload carrying `code`,

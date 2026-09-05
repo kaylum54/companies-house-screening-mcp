@@ -30,8 +30,26 @@ This tool reads only and changes nothing, and calls an external service (the Com
 | `screened[].status` | string | no | — |
 | `screened[].incorporated_on` | string | no | — |
 | `screened[].age_years` | number | no | — |
-| `screened[].signal_codes` | enum (12 values)[] | yes | — |
+| `screened[].signal_codes` | enum (13 values)[] | yes | — |
 | `screened[].signal_count` | number | yes | Call company_snapshot on the number for the detail behind these. |
+| `screened[].sections_included` | string[] | yes | Sections actually fetched for this company. |
+| `screened[].sections_unavailable` | object[] | yes | — |
+| `screened[].sections_unavailable[].section` | string | yes | Which part of the snapshot could not be read. |
+| `screened[].sections_unavailable[].code` | string | yes | The error code from the failed request. |
+| `screened[].sections_unavailable[].message` | string | yes | — |
+| `screened[].officers_pagination` | object | no | Officer page coverage when officers were requested. |
+| `screened[].officers_pagination.start_index` | number | yes | — |
+| `screened[].officers_pagination.items_per_page` | number | yes | — |
+| `screened[].officers_pagination.total_results` | number | yes | — |
+| `screened[].officers_pagination.returned` | number | yes | How many records are in this response. |
+| `screened[].officers_pagination.has_more` | boolean | yes | More records exist. Call again with start_index advanced by `returned`. |
+| `screened[].meta` | object | yes | Provenance and budget for this answer. |
+| `screened[].meta.cached` | boolean | yes | Answer came from the local cache rather than a live request. |
+| `screened[].meta.stale` | boolean | yes | Answer came from an expired cache entry because Companies House was unreachable. Treat the data as possibly out of date. |
+| `screened[].meta.age_seconds` | number | no | How long ago the cached answer was retrieved. Absent for a live answer. |
+| `screened[].meta.rate_limit_remaining` | number | yes | Requests still available in the current five-minute window. Pace long runs by this. |
+| `screened[].meta.rate_limit_resets_in_ms` | number | yes | Milliseconds until more budget becomes available. |
+| `screened[].meta.licence` | `"OGL-v3.0"` | yes | OGL v3.0 applies to eligible public-sector information. Personal data and other OGL exclusions are not licensed by this label; applicable data-protection duties still apply. |
 | `unresolved` | object[] | yes | Inputs that could not be resolved to exactly one company. Never guessed at. |
 | `unresolved[].input` | string | yes | — |
 | `unresolved[].reason` | string | yes | — |
@@ -48,7 +66,7 @@ This tool reads only and changes nothing, and calls an external service (the Com
 | `meta.age_seconds` | number | no | How long ago the cached answer was retrieved. Absent for a live answer. |
 | `meta.rate_limit_remaining` | number | yes | Requests still available in the current five-minute window. Pace long runs by this. |
 | `meta.rate_limit_resets_in_ms` | number | yes | Milliseconds until more budget becomes available. |
-| `meta.licence` | `"OGL-v3.0"` | yes | Companies House data is Open Government Licence v3.0. |
+| `meta.licence` | `"OGL-v3.0"` | yes | OGL v3.0 applies to eligible public-sector information. Personal data and other OGL exclusions are not licensed by this label; applicable data-protection duties still apply. |
 
 On failure the tool returns `isError: true` and a payload carrying `code`,
 `message`, `next_step` and `retryable` instead of the fields above. See

@@ -46,7 +46,7 @@ new_sqlite_classes = ["RateLimitDurableObject"]
 #   npx wrangler kv namespace create CACHE
 [[kv_namespaces]]
 binding = "CACHE"
-id = "replace-with-your-kv-namespace-id"
+id = "d1b2faff9d63420daec589f7ffee77c9"
 
 # The health check. Every five minutes, matching the length of the rate-limit
 # window: one check per window is enough to see a window that failed to

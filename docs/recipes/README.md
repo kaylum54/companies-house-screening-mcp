@@ -10,12 +10,12 @@ and CI fails.
 |---|---|
 | [Screening a list of companies](supplier-onboarding-check.md) | A list of names came in from procurement. Which entries need a closer look? |
 | [Mapping an officer across companies](director-conflict-check.md) | Which other companies is this director appointed to? |
-| [Verifying a company on an invoice](invoice-verification.md) | Does this company exist, is it trading, and does the address match? |
+| [Verifying a company on an invoice](invoice-verification.md) | Do the invoice company details match the registered entity? |
 | [What insolvency looks like on the register](debtor-risk-screen.md) | A company has entered an insolvency process. What does the register show? |
 | [Reading a filing cadence](competitor-filing-watch.md) | When did they last file accounts, and what has been filed since? |
 
-The companies shown are real and the data is public record under the Open
-Government Licence v3.0. Nothing here asserts anything about them beyond what
+The companies shown are real and the data is public record. Open Government Licence v3.0 applies
+to eligible information; personal data and other OGL exceptions are excluded. Nothing here asserts anything about them beyond what
 the register states.
 
 The tool-by-tool reference is in [docs/tools](../tools/README.md).

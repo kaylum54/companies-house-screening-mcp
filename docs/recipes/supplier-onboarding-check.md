@@ -12,8 +12,8 @@ The behaviour worth studying is what happens to the awkward entries. A name matc
 > call on this page is executed when the documentation is generated, and
 > whatever comes back is what you see. The upstream data comes from fixtures
 > recorded from the live Companies House API, so the companies are real and
-> the facts are public record, published under the Open Government Licence
-> v3.0. The framing around them is illustrative: this project makes no claim
+> the facts are public record. Open Government Licence v3.0 applies to eligible information,
+> excluding personal data and other OGL exceptions. The framing around them is illustrative: this project makes no claim
 > about any company or person named here beyond what the register itself
 > states.
 
@@ -55,7 +55,20 @@ Pass the list exactly as it arrived — company numbers, full names and half-rem
       "signal_codes": [
         "outstanding_charges"
       ],
-      "signal_count": 1
+      "signal_count": 1,
+      "sections_included": [
+        "profile",
+        "charges",
+        "insolvency"
+      ],
+      "sections_unavailable": [],
+      "meta": {
+        "cached": false,
+        "stale": false,
+        "rate_limit_remaining": 562,
+        "rate_limit_resets_in_ms": 0,
+        "licence": "OGL-v3.0"
+      }
     },
     {
       "input": "Royal Mail Limited",
@@ -65,7 +78,20 @@ Pass the list exactly as it arrived — company numbers, full names and half-rem
       "incorporated_on": "2022-07-18",
       "age_years": 4,
       "signal_codes": [],
-      "signal_count": 0
+      "signal_count": 0,
+      "sections_included": [
+        "profile",
+        "charges",
+        "insolvency"
+      ],
+      "sections_unavailable": [],
+      "meta": {
+        "cached": false,
+        "stale": false,
+        "rate_limit_remaining": 562,
+        "rate_limit_resets_in_ms": 0,
+        "licence": "OGL-v3.0"
+      }
     }
   ],
   "unresolved": [

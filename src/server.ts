@@ -25,13 +25,13 @@ How to use it:
 - Every retrieval tool takes an eight-character company number. If you have a name, call find_company first. Do not guess a number — a plausible wrong one returns a real company and nothing downstream will flag the mistake.
 - When find_company reports disambiguation_needed, ask which company was meant rather than taking the first result.
 - get_company returns derived flags (overdue filings, charges, insolvency history, incorporated within the last year) computed by this server. Prefer them to working the same thing out from dates.
-- The signals on a snapshot are facts read off the register, not a rating. This server does not score companies and will not tell you whether one is safe to trade with. An empty signal list means nothing on the list was found, not that the company is sound, and signals can only reflect the sections named in sections_included.
-- screen_companies never guesses which company a name meant. Rows it could not resolve come back under unresolved with candidates, and anything skipped for rate-limit budget comes back under not_screened. The table is never quietly shorter than the list you sent.
+- The signals on a snapshot are facts read off the register, not a rating. This server does not score companies and will not tell you whether one is safe to trade with. An empty signal list means nothing on the list was found, not that the company is sound, and signals can only reflect the sections named in sections_included. Check sections_unavailable and officer pagination too; a fetched page may be incomplete.
+- screen_companies resolves exact names or single search candidates; these still need checking against the intended business. Rows it could not resolve come back under unresolved with candidates, and anything skipped for rate-limit budget comes back under not_screened. The table is never quietly shorter than the list you sent.
 - Every response carries meta.rate_limit_remaining. Companies House allows 600 requests per five minutes; pace long runs by that number, and check meta.stale before relying on an answer during an outage.
 
 There is no write path and no access to anything beyond the public register.
 
-Data is published by Companies House under the Open Government Licence v3.0. When reproducing it, include: "Contains public sector information licensed under the Open Government Licence v3.0."`;
+Eligible public-sector information is available under the Open Government Licence v3.0. Personal data and other OGL exclusions are not licensed by that label; applicable data-protection duties still apply. When reproducing OGL-covered information, include: "Contains public sector information licensed under the Open Government Licence v3.0."`;
 
 export function createServer(context: ToolContext, version: string): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version }, { instructions: INSTRUCTIONS });

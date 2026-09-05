@@ -179,6 +179,27 @@ describe('deriveSignals', () => {
     ).not.toContain('no_active_officers');
   });
 
+  it('does not infer absence from a partial page when the global count is missing', () => {
+    const officers = projectOfficers({ total_results: 2, items_per_page: 1,
+      items: [{ name: 'FORMER OFFICER', resigned_on: '2020-01-01' }] }, '04138203', false);
+    expect(codes(deriveSignals({ profile: profileOf('company/profile-active.json'), officers, now: NOW })))
+      .not.toContain('no_active_officers');
+  });
+
+  it('uses an explicit register-wide zero even when the page is empty', () => {
+    const officers = projectOfficers({ active_count: 0, items: [] }, '04138203', false);
+    expect(deriveSignals({ profile: profileOf('company/profile-active.json'), officers, now: NOW }))
+      .toContainEqual({ code: 'no_active_officers', detail: 'The register shows no serving officers.' });
+  });
+
+  it('qualifies page-based departure counts and excludes future resignations', () => {
+    const officers = projectOfficers({ active_count: 2, total_results: 4, items_per_page: 2,
+      items: [{ name: 'PAST', resigned_on: '2026-06-01' }, { name: 'FUTURE', resigned_on: '2027-01-01' }] }, '04138203', false);
+    const signal = deriveSignals({ profile: profileOf('company/profile-active.json'), officers, now: NOW })
+      .find((entry) => entry.code === 'recent_officer_departures');
+    expect(signal?.detail).toBe('1 officer on the returned page resigned in the last twelve months.');
+  });
+
   it('counts resignations inside the last twelve months only', () => {
     const officers = projectOfficers(
       {

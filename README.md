@@ -1,274 +1,108 @@
 # companies-house-screening-mcp
 
-Screen UK companies against the [Companies House public
-register](https://developer.company-information.service.gov.uk/) from an MCP
-host. Batch screening of a supplier list, one-call company snapshots, and
-factual signals rather than a risk score.
+Turn a list of UK companies into a register-checking worksheet in your AI assistant: registered details, filing observations, charges, and entries that need human follow-up.
 
 [![npm](https://img.shields.io/npm/v/companies-house-screening-mcp)](https://www.npmjs.com/package/companies-house-screening-mcp)
 [![CI](https://github.com/kaylum54/companies-house-screening-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/kaylum54/companies-house-screening-mcp/actions/workflows/ci.yml)
 [![licence: MIT](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 
-Published with [npm provenance](https://docs.npmjs.com/generating-provenance-statements)
-and an attested container image, so the artefact is traceable to the commit
-that produced it.
+Free, MIT-licensed source. Read-only access to Companies House. Your AI client may have its own account requirements or charges.
 
-## There is another one, and you should know about it
+## Try a business workflow
 
-[`companies-house-mcp`](https://www.npmjs.com/package/companies-house-mcp) by
-[@aicayzer](https://github.com/aicayzer/companies-house-mcp) has existed since
-July 2025, is at v4.0.0, and is actively maintained. It covers the same API.
-This project is not first and does not claim to be.
+Paste this into your assistant after connecting the server:
 
-The two are shaped differently, so which one fits depends on what you are
-doing.
+> Screen companies 04138203 and 00000006. Return one row per input with legal name, registered status, factual signals, sections checked, missing sections and data freshness. Keep unresolved and not-screened entries visible. Do not assign a risk score or call any company safe. Explain which records need human follow-up and why.
 
-**Use theirs if you want breadth.** It exposes more of the API — registers,
-exemptions, UK establishments, officer disqualifications — and, importantly,
-it can **download the filed documents themselves**. This one deliberately
-does not: the Companies House document API is out of scope here.
+The server returns structured facts; your assistant formats the worksheet. The [executed supplier example](docs/recipes/supplier-onboarding-check.md) shows the actual response from recorded public-register fixtures. Its data is a dated example, not a current assessment of those companies.
 
-**Use this one if you are screening rather than browsing.** The differences
-that matter:
+[First-video setup and script](docs/tiktok-01-supplier-screening.md) · [Sample list](examples/supplier-list.csv) · [Business prompts and filming scripts](docs/business-demos.md) · [Setup walkthrough](docs/getting-started.md)
 
-| | |
-|---|---|
-| **Batch screening** | `screen_companies` takes up to 50 names or numbers and returns one row each. Nothing else here does this. |
-| **Never guesses a company number** | Retrieval tools refuse a company name outright, before any request. Given a name, a model produces a number that looks right, and a plausible wrong number returns *a different real company* that nothing downstream flags. [ADR 5](docs/adr/0005-question-shaped-tool-surface.md). |
-| **Signals, not scores** | Facts read off the register with the date or name behind each, and deliberately no rating. [ADR 7](docs/adr/0007-signals-not-scores.md) has the argument. |
-| **Nothing dropped quietly** | Partial results are labelled; a screening table that comes back short always says why. [ADR 8](docs/adr/0008-partial-results-and-budget-honesty.md). |
-| **Documentation that cannot go stale** | The tool reference is generated from the running server and every example executes; CI fails if either drifts. [ADR 9](docs/adr/0009-documentation-is-generated-and-gated.md). |
-| **A tool-selection eval** | Asks a real model which tool it reaches for, and fails on flakiness. [ADR 10](docs/adr/0010-tool-selection-eval.md). |
-| **Runs hosted or local** | Streamable HTTP as well as stdio, so it works in claude.ai on web and mobile — with one shared rate-limit budget that is actually authoritative rather than one guess per process. [ADR 12](docs/adr/0012-remote-transport-alongside-stdio.md), [ADR 13](docs/adr/0013-one-key-shared-budget-fair-shares.md). |
+Two more prompts:
 
-Fifteen decisions are written up in [docs/adr](docs/adr), including the ones
-that did not go the obvious way. [docs/mcp-surface.md](docs/mcp-surface.md)
-describes what the server implements as an MCP server — capabilities,
-transports, session and budget semantics — read off the running server rather
-than from intent.
+> Check company 04138203 against the legal name and registered-office address I supply from an invoice. Show matches, differences and unknowns. Do not treat a match as proof that the invoice or bank details are authentic.
 
-## Install
+> Get the filing history for company 04138203. Summarise filings since the date I give you, fetching further pages as needed. Distinguish filing dates from the period covered. Do not claim to have read the filed documents.
 
-Two ways to run it, and they answer different questions.
+## Connect
 
-### Hosted — you deploy it, users paste a URL
+**There is no public endpoint advertised by this project.** Use a local server with your own free Companies House API key, or connect to an instance you or your organisation operates. A placeholder URL is not a working service.
 
-**There is no public instance of this server.** You run one; the people you
-give the URL to need nothing but the link — no install, no Node, no Companies
-House key of their own. That is the point of the hosted mode, and it is what
-makes the server usable from claude.ai on web and mobile, where no local
-process can be spawned.
+### Local: your own key, no hosting
 
-Deploy to Cloudflare Workers or any single Node host —
-[docs/deployment.md](docs/deployment.md) has both, with the costs and the
-trade-offs stated. Then hand out your endpoint:
-
-In claude.ai: Settings → Connectors → Add custom connector → paste the URL.
-In Claude Code:
-
-```bash
-claude mcp add --transport http companies-house https://your-deployment/mcp
-```
-
-Your deployment holds one Companies House key and shares its 600 requests per
-five minutes across everyone using it. Each caller is guaranteed a share, so a
-50-company screening run cannot starve somebody's single lookup. A caller who
-finds that tight can send `X-Companies-House-Api-Key` and get a private budget
-of their own — in Claude Code, `--header "X-Companies-House-Api-Key: ..."`.
-
-[**docs/rate-limits.md**](docs/rate-limits.md) is the full account: what the
-budget is, exactly how much of it any one caller can take, how to read
-`meta.rate_limit_remaining`, what happens when it runs out, and how to bring
-your own key.
-
-Once it is live, [**docs/observability.md**](docs/observability.md) covers
-knowing what it is doing: one row per request in Workers Analytics Engine,
-the SQL to query it, and a five-minute check that alerts when the window is
-spent, the limiter is unreachable, or Companies House has throttled the key. It records volume and outcome and
-deliberately never records which companies anybody looked up.
-
-Before you make a deployment public, read the
-[**what to expect**](docs/deployment.md#before-you-make-it-public) section. The
-short version: an authless URL means anyone holding it spends your budget, and
-the Companies House terms neither prohibit nor explicitly permit pooling one
-registered key behind a shared service — there is no published usage policy for
-the public data API that addresses it. Checked August 2026; your account, your
-key, your call.
-
-### Local — stdio
-
-Still the right answer for one person on one machine: no infrastructure, no
-hosting bill, and your own full rate-limit budget.
-
-```bash
-npx -y companies-house-screening-mcp
-```
-
-Host configuration:
+1. Install **Node.js 22 or newer** and an MCP client that supports local stdio servers.
+2. Register at the [Companies House developer portal](https://developer.company-information.service.gov.uk/), create a Live application and a REST API key.
+3. Add this configuration to your client's MCP server settings, replace the key, and restart or reconnect the client:
 
 ```json
 {
   "mcpServers": {
     "companies-house": {
       "command": "npx",
-      "args": ["-y", "companies-house-screening-mcp"],
+      "args": ["-y", "companies-house-screening-mcp@latest"],
       "env": { "COMPANIES_HOUSE_API_KEY": "your_key" }
     }
   }
 }
 ```
 
-Or with Docker — note `-i` and no `-t`, because a TTY corrupts the JSON-RPC
-framing:
+On Windows, some clients require `npx.cmd` as the command. See [setup and troubleshooting](docs/getting-started.md) for client configuration, success checks, Docker and Windows details. Keep keys out of screenshots and source control.
+
+### Hosted: an operator supplies a URL
+
+An operator can deploy to Cloudflare Workers or a single Node host using [the deployment guide](docs/deployment.md). Users then connect to its actual HTTPS MCP URL. For example, in Claude Code:
 
 ```bash
-docker run --rm -i -e COMPANIES_HOUSE_API_KEY=your_key ghcr.io/kaylum54/companies-house-screening-mcp
+claude mcp add --transport http companies-house https://YOUR-HOST/mcp
 ```
 
-Get a free API key at
-[developer.company-information.service.gov.uk](https://developer.company-information.service.gov.uk/):
-register, create an application against the **Live** environment, and create a
-key of type **REST** (a stream key authenticates the same way but is for a
-different service).
+The shared key has a finite budget; a public service is not unlimited. [Rate limits](docs/rate-limits.md) explains fair shares, partial batches and bring-your-own-key support. Read [operating a public deployment](docs/deployment.md#before-you-make-it-public) before sharing an endpoint. This repository does not promise hosted availability or free hosting.
 
-## What it is for
+## Read results correctly
 
-Two cases it was actually built around. More in
-[docs/recipes](docs/recipes/README.md), which are executed on every build.
+- Signals are observations, not a credit rating, fraud verdict or onboarding approval.
+- Registered status `active` does not establish current trading, solvency, invoice authenticity or bank-account ownership.
+- An empty signal list is not a clean bill of health. Check each row's `sections_included`, `sections_unavailable` and `meta`.
+- Snapshots fetch one officer page. `officers.pagination` describes that page before filtering to active entries; counts describe the whole register. Use `get_officers` pagination for the remaining records. Screening exposes `officers_pagination` when requested.
+- Outstanding and partially satisfied charges are separate observations. Registration does not reveal the current debt balance; satisfaction records can lag repayment.
+- Check `meta.age_seconds` and `meta.stale`. Profiles, charges and insolvency have a 24-hour cache TTL by default. A hosted caller cannot force a refresh through a tool argument; the operator can disable caching.
+- Company names can be ambiguous. Confirm the intended legal entity. Number validation rejects names but cannot detect every plausible company number invented by an AI.
+- This covers entities on the UK register, not every UK business. No result for a sole trader is not evidence of wrongdoing.
+- Filing history describes filings. This server does not download or analyse account PDFs, submit filings, or schedule company watches.
 
-### Screening a supplier list
+## Tools
 
-The quarterly onboarding list lands: forty new suppliers, first invoices due in
-a fortnight. One call.
-
-```json
-{
-  "tool": "screen_companies",
-  "arguments": { "companies": ["04138203", "Bramble Facilities", "SC443221"] }
-}
-```
-
-One row per company with its signal codes. Skip the rows carrying nothing; open
-the ones with `accounts_overdue` or `outstanding_charges` using
-`company_snapshot`.
-
-The behaviour that earns its place is what happens to the awkward entries.
-"Bramble Facilities" matches several companies, so it comes back under
-`unresolved` **with its candidates** rather than resolved to a best guess. And
-if the rate limit runs out at company 31, the remaining nine come back under
-`not_screened` with the reset time — because a table that quietly stops at 31
-looks exactly like a table where nine companies were clean.
-
-Officers are excluded by default (one extra request per company), so the
-officer-based signals cannot appear unless you ask for them. `sections_used`
-says so on every response.
-
-### Verifying an invoice before paying it
-
-A first invoice from an unfamiliar supplier, or an email asking to change bank
-details on an existing account.
-
-```json
-{
-  "tool": "company_snapshot",
-  "arguments": { "company_number": "04138203" }
-}
-```
-
-Four checks in one response: the company exists, `status` is `active`,
-`registered_office_address` matches what is printed on the invoice, and
-`age_years` plus the `incorporated_within_last_year` signal say whether this
-counterparty existed a month ago. The address is flattened to one line
-specifically so it can be compared without reassembling nine fields.
-
-**This is the case the no-names rule is for.** Invoice-redirection fraud works
-because the paperwork looks right. If a tool accepts a company *name* and a
-model invents a number to look it up, you get a confident "verified — active,
-good standing" about **a different real company**, with real directors and real
-filings, and nothing anywhere flags it. You would have used a verification step
-to approve the fraud.
-
-So passing a name is refused before any request is made:
-
-```json
-{
-  "error": {
-    "code": "INVALID_COMPANY_NUMBER",
-    "message": "\"Royal Mail Group Limited\" looks like a company name, not a company number.",
-    "next_step": "Call find_company with this name to get candidate company numbers, then call this tool again with the number of the right one. Do not guess a number: a plausible wrong company number returns a real company and nothing will flag it as the wrong one."
-  }
-}
-```
-
-What it cannot tell you: whether a bank account belongs to that company. This
-raises or lowers suspicion; it does not settle it.
-
-## Why another API wrapper
-
-The obvious way to build this is one MCP tool per endpoint. Twenty-two thin
-pass-throughs, a weekend's work, and it is what most published MCP servers
-are. It is also bad in three specific ways:
-
-- Every tool schema sits in the model's context on every turn, whether the
-  task needs it or not.
-- It pushes the orchestration onto the model. "Is this supplier safe to
-  onboard" becomes search, then profile, then officers, then charges, then
-  insolvency — five round trips and five chances to lose the thread.
-- Companies House payloads carry structure no model reads — `links`, `etag`,
-  `kind`, per-item ETags, filing-transaction arrays, nine-key address objects.
-  Shaping them away saves between 36% and 72% depending on the endpoint,
-  measured against real recorded responses rather than assumed (`npm run
-  measure`).
-
-So this server exposes eleven tools shaped around questions, two of which
-(`company_snapshot` and `screen_companies`) do the fan-out server-side and
-return one derived object. Retrieval tools accept a company number and refuse
-a company name, because given a name a model will guess a number, and a
-plausible wrong company number returns a real company that nothing downstream
-flags as wrong.
-
-## The tools
-
-| Tool | Returns |
+| Tool | Purpose |
 |---|---|
-| `find_company` | Ranked candidates for a name or number, with a `disambiguation_needed` flag. |
-| `find_officer` | Candidate officer IDs for a person's name, with appointment counts. |
-| `get_company` | Profile, plus derived flags for overdue filings, charges, insolvency and recent incorporation. |
-| `get_officers` | Current and resigned officers, each with the ID needed to look up their other companies. |
-| `get_filing_history` | What was filed and when, filterable by category. |
-| `get_charges` | Secured debt, with a derived `outstanding_count` the API never reports. |
-| `get_psc` | Who actually controls the company, and how that control is held. |
-| `get_insolvency` | Insolvency cases and the practitioners appointed. |
-| `get_officer_appointments` | Every company an officer sits on — the conflict-of-interest tool. |
-| `company_snapshot` | Profile, officers, charges and insolvency in one call, with signals. |
-| `screen_companies` | Up to 50 companies in, one row each out, nothing dropped quietly. |
+| `find_company` | Find candidates and resolve a name to a company number. |
+| `find_officer` | Search officer identities; a shared name alone does not prove identity. |
+| `get_company` | Registered profile and filing due dates. |
+| `get_officers` | Paginated current and resigned officer records. |
+| `get_filing_history` | Paginated filing metadata, filterable by category. |
+| `get_charges` | Registered security, holders and satisfaction categories. |
+| `get_psc` | Registered persons with significant control. |
+| `get_insolvency` | Recorded insolvency cases and practitioners. |
+| `get_officer_appointments` | Paginated appointments associated with an officer ID. |
+| `company_snapshot` | Profile, officer page, charges and insolvency with factual signals. |
+| `screen_companies` | Up to 50 names or numbers, with coverage and unresolved/skipped entries. |
 
-Full reference: [docs/tools](docs/tools/README.md). Worked examples:
-[docs/recipes](docs/recipes/README.md) — supplier screening, director conflict
-checks, invoice verification, debtor risk, competitor filing watch.
+[Generated tool reference](docs/tools/README.md) · [Executed recipes](docs/recipes/README.md) · [MCP capabilities](docs/mcp-surface.md)
 
-**The signals are facts, not a rating.** This server does not score companies
-and will not tell you whether one is safe to trade with — it reports what it
-found on the register, with the date or the name behind each observation, and
-leaves the judgement with the person who has the context. An empty signal list
-means nothing on the list was found, not that the company is sound.
-[ADR 7](docs/adr/0007-signals-not-scores.md) has the full reasoning.
+## Engineering and evidence
 
-Every tool is annotated `readOnlyHint: true`, publishes an output schema, and
-takes `verbose` to return the untouched payload alongside the shaped one.
+The client handles timeouts, retryable failures, caching and request budgets. Projections simplify upstream responses; deterministic rules derive signals. Composite tools fetch the profile first, avoiding extra requests for an invalid company, then fetch the other sections concurrently.
 
-## Under the tools
+The tradeoff is explicit: an officer summary costs one upstream request, while full officer coverage requires pagination. The output exposes that boundary instead of implying the summary is exhaustive.
 
-| Piece | What it does |
-|---|---|
-| `loadConfig` | Validates every environment variable at startup and reports all the problems at once, naming the variable rather than the internal field. |
-| `CompaniesHouseClient` | Basic-auth requests, per-request timeout, jittered retry on 429 and 5xx, conditional revalidation, stale-on-failure fallback. |
-| `RateLimiter` | Sliding window sized to the documented 600 per five minutes, with a safety margin and serialised acquisition. |
-| `ResponseCache` | Memory over disk, TTL per resource kind, atomic writes, corrupt entries treated as a miss. |
-| `CompaniesHouseError` | Every failure carries a stable code, a plain sentence and a next step. |
-| Projections | Upstream read defensively field by field; output validated strictly against the published schema. |
+Tool references are generated from a running MCP server and recipes execute against recorded fixtures. CI checks those generated files for drift. Handwritten guidance and external service details still require review.
 
-562 tests under Node and 16 inside `workerd`, no network and no API key required to run any of them.
+Node tests cover the domain, transports and failure handling; Workers tests execute inside workerd. CI runs Node checks on Linux and Windows. Release workflows verify the package and publish npm/container provenance. [Architecture decisions](docs/adr) document the choices, including [partial results](docs/adr/0008-partial-results-and-budget-honesty.md) and [runtime portability](docs/adr/0014-runtime-portable-core.md).
+
+The [tool-selection eval](evals/README.md) measures first-call choice, arguments and grounding across 58 cases. It does not establish the accuracy of a complete business report. Historical measurements and their provenance limitations are documented there; new runs record source and execution metadata.
+
+## Related project
+
+[companies-house-mcp by aicayzer](https://github.com/aicayzer/companies-house-mcp) is an alternative worth evaluating, particularly for broader API or document access. Check its current documentation for capabilities. This project's focus is batch screening, composite summaries, explicit coverage and tool-selection evaluation.
 
 ## Configuration
 
@@ -288,134 +122,33 @@ Only one variable is required.
 | `CH_LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug`. Logs go to stderr. |
 | `CH_ENV_FILE` | — | Absolute path to a `.env` for the server to read. Not set by default, deliberately. |
 
-## Development
+
+## Development and verification
 
 ```bash
-npm install
-npm test
-npm run test:workers
+npm ci
 npm run typecheck
 npm run build
-npm run docs:generate
+npm run docs:check
+npm run test:coverage
+npm run test:workers
+npm run release:check
 ```
 
-**The documentation is generated and gated.** `docs/tools` is rendered from the
-running server over a real MCP client, and every call in `docs/recipes` is
-executed when the pages are built. `npm run docs:check` fails if what is
-committed differs, CI runs it before the tests, and the suite runs the same
-comparison so the failure arrives while you still have the change in front of
-you. Change a tool description and you regenerate, or the build goes red.
+Build before tests so the compiled stdio entry-point tests run. No API key is required for the offline suites. After changing tool schemas or recipe prose in `scripts/generate-recipes.ts`, run `npm run docs:generate` and commit the generated changes.
 
-The suite runs offline against fixtures recorded from the live Companies House
-API, so a fresh clone works with nothing configured. `npm run record-fixtures`
-re-records them — see [tests/fixtures/README.md](tests/fixtures/README.md) for
-which companies they come from and why those were chosen.
+For live validation, copy `.env.example` to `.env`, supply a Companies House REST key and run `npm run test:live`. Scheduled CI runs this only when its secret is configured. Model evaluations require a separately billed provider key; see [eval instructions](evals/README.md).
 
-**`npm test` runs under Node; `npm run test:workers` runs under `workerd`.**
-The second is not a duplicate of the first. Node and workerd disagree — a
-`globalThis.fetch` stored detached works on one and throws `Illegal
-invocation` on the other — and that disagreement once passed every Node test
-while breaking every request on the deployed Worker. `tests/workers/` runs the
-real handler in the real runtime against the bindings `wrangler.toml`
-declares, with only Companies House replaced. CI runs both, and neither is
-optional before a deploy.
+The published server does not automatically read a working-directory `.env`. Set `CH_ENV_FILE` to an absolute path if needed. [Fixture recording](tests/fixtures/README.md) and [observability](docs/observability.md) cover maintenance.
 
-Once you hold a key, copy `.env.example` to `.env` and fill it in:
+## Licence and data reuse
 
-```bash
-npm run test:live
-```
+Source code: [MIT](LICENSE), including commercial use subject to its notice requirements.
 
-Every development command reads that file. Anything already set in your shell
-wins over it. The published server does **not** read a `.env` unless
-`CH_ENV_FILE` names one — a host launches it with the host's working
-directory, and picking up whatever `.env` happens to be there is a good way to
-load the wrong credentials.
+Companies House data is separate from the source-code licence. The [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/) applies to eligible public-sector information, subject to its exclusions. **Personal data is excluded from OGL licensing**; public availability does not remove applicable data-protection duties. See [the National Archives' exceptions](https://www.nationalarchives.gov.uk/information-management/re-using-public-sector-information/uk-government-licensing-framework/open-government-licence/exceptions-to-ogl/).
 
-That test runs nightly in CI. Its job is not to pass — it is to fail loudly the
-week Companies House changes a field, so the fixtures get refreshed before a
-user finds the drift instead.
+When reusing OGL-covered information, include:
 
-## The tool-selection eval
+> Contains public sector information licensed under the Open Government Licence v3.0.
 
-Every test in this repository asks *does the tool work*. One thing none of
-them can ask is whether a model **reaches for the right tool** when a person
-asks a real question — a tool can be correct, fast and fully covered and still
-never get chosen, because its description is vague or overlaps another. That
-is the most common real defect in published MCP servers.
-
-```bash
-npm run eval -- --repeat 3
-```
-
-Runs through **OpenRouter** or the **Anthropic API** — set `OPENROUTER_API_KEY`
-or `ANTHROPIC_API_KEY`. It defaults to `z-ai/glm-5.2` on OpenRouter, about 4p
-for a full pass, because an eval nobody runs because of the bill is not doing
-anything. Point `--model` at anything with tool support to compare.
-
-Fourteen questions phrased the way a person would phrase them, scored on which
-tool was called first, whether a forbidden tool was touched, whether the
-arguments were right, and — the one that matters — whether the model invented
-a company number that was not in the question. A case that passes two runs in
-three is reported as flaky and fails, because intermittent selection means two
-descriptions overlap.
-
-Run across three models (GLM 5.2, Kimi K3, DeepSeek V4 Pro) it scores 93–98%.
-The grounding group — given a company name and no number, search rather than
-recall one — passes **7/7 on all three**. The failures clustered, and three of
-them turned out to be defects in my own tool descriptions and one in the eval
-itself, rather than in any model.
-
-No Companies House key is needed; nothing is executed. Full comparison and
-what it found in [evals/README.md](evals/README.md), reasoning in
-[ADR 10](docs/adr/0010-tool-selection-eval.md).
-
-## Design notes
-
-Eleven decisions are written up in [docs/adr](docs/adr):
-
-1. [Recording architecture decisions](docs/adr/0001-record-architecture-decisions.md)
-2. [The sliding-window rate limiter and its safety margin](docs/adr/0002-sliding-window-rate-limiter.md)
-3. [Errors as data rather than exceptions](docs/adr/0003-errors-are-data.md)
-4. [Caching, TTLs and the stale fallback](docs/adr/0004-caching-and-stale-fallback.md)
-5. [Question-shaped tools, and why a name is refused](docs/adr/0005-question-shaped-tool-surface.md)
-6. [Why the result payload is sent twice](docs/adr/0006-duplicated-result-payload.md)
-7. [Signals, not scores](docs/adr/0007-signals-not-scores.md)
-8. [Partial results, and never dropping anything quietly](docs/adr/0008-partial-results-and-budget-honesty.md)
-9. [Generated documentation, gated in CI](docs/adr/0009-documentation-is-generated-and-gated.md)
-10. [The tool-selection eval](docs/adr/0010-tool-selection-eval.md)
-11. [Tag-driven releases, signed with provenance](docs/adr/0011-release-and-provenance.md)
-
-## Scope
-
-Read-only, permanently. Every tool is annotated `readOnlyHint: true` and there
-is no write path. The Companies House *filing* API, which submits documents on
-a company's behalf, is a different product with a different risk profile and is
-out of scope for this one. The streaming API is out of scope too. Fetching the
-PDF or iXBRL of a filing through the document API is phase 7 and would remain
-read-only.
-
-## Roadmap
-
-| Phase | Content | Status |
-|---|---|---|
-| 1 | Client, auth, rate limiter, cache, error mapping, fixtures | done |
-| 2 | Nine primitive tools with Zod schemas and shaped projections | done |
-| 3 | `company_snapshot` and `screen_companies` | done |
-| 4 | Generated tool docs with a CI drift check, five worked recipes | done |
-| 5 | Tool-selection eval suite, live smoke test in CI, remaining ADRs | done |
-| 6 | npm and Docker release with provenance | done — published 2026-08-20 |
-
-## Licence
-
-Source code: [MIT](LICENSE).
-
-Data returned by this server is published by Companies House under the
-[Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/)
-and is not covered by the MIT licence. If you redistribute it, carry the
-attribution the OGL requires:
-
-> Contains public sector information licensed under the Open Government
-> Licence v3.0.
-
-This project is not affiliated with or endorsed by Companies House.
+The response label `OGL-v3.0` does not grant blanket reuse rights over every returned field. This project is not affiliated with or endorsed by Companies House.

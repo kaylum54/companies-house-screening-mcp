@@ -2,18 +2,18 @@
 
 # Verifying a company on an invoice
 
-> Does this company exist, is it trading, and does the address match?
+> Do the invoice company details match the registered entity?
 
 One call. `company_snapshot` fetches the profile, the serving officers, the charges and the insolvency history together, and returns them with the signals it found.
 
-The things worth checking against an invoice: the company exists, its status is active, the registered office matches what is printed, and it was not incorporated three weeks ago.
+Compare the company number, legal name and registered office with the invoice. Read the registered status and incorporation date as context. Active status does not prove current trading, an authentic invoice or ownership of a bank account. A trading address can legitimately differ from the registered office.
 
 > **About the responses below.** They are real output from this server — every
 > call on this page is executed when the documentation is generated, and
 > whatever comes back is what you see. The upstream data comes from fixtures
 > recorded from the live Companies House API, so the companies are real and
-> the facts are public record, published under the Open Government Licence
-> v3.0. The framing around them is illustrative: this project makes no claim
+> the facts are public record. Open Government Licence v3.0 applies to eligible information,
+> excluding personal data and other OGL exceptions. The framing around them is illustrative: this project makes no claim
 > about any company or person named here beyond what the register itself
 > states.
 
@@ -21,7 +21,7 @@ The things worth checking against an invoice: the company exists, its status is 
 
 ### 1. company_snapshot
 
-Take the company number from the bottom of the invoice — UK companies are required to print it.
+Use the company number supplied on the invoice. If absent, resolve the legal entity with find_company and confirm the candidate before continuing.
 
 ```json
 {
@@ -68,6 +68,13 @@ Take the company number from the bottom of the invoice — UK companies are requ
   "officers": {
     "active_count": 10,
     "resigned_count": 54,
+    "pagination": {
+      "start_index": 0,
+      "items_per_page": 5,
+      "total_results": 64,
+      "returned": 5,
+      "has_more": true
+    },
     "active": [
       {
         "name": "NEWMAN, Matthew",
@@ -105,6 +112,7 @@ Take the company number from the bottom of the invoice — UK companies are requ
     "total_count": 15,
     "outstanding_count": 2,
     "satisfied_count": 13,
+    "part_satisfied_count": 0,
     "holders": [
       "Rmcpp Trustees Limited",
       "Royal Mail Pensions Trustees Limited as Trustee of the Royal Mail Pension Plan"
@@ -132,7 +140,9 @@ Take the company number from the bottom of the invoice — UK companies are requ
 
 ## Notes
 
-**What this cannot tell you.** Whether the company is good for the money. The register shows filings, charges and officers; it does not show the bank balance or the order book. The signals are facts, not a rating, and the judgement stays with you — see [ADR 7](../adr/0007-signals-not-scores.md).
+**What this cannot tell you.** Whether the invoice is authentic, the bank account belongs to the company, the company is currently trading, or it is good for the money. Verify bank-detail changes through an independently established contact channel. The register shows filings, charges and officers; it does not show the bank balance or the order book. The signals are facts, not a rating, and the judgement stays with you — see [ADR 7](../adr/0007-signals-not-scores.md).
+
+**Coverage.** The officer list is one page: read officers.pagination.has_more and use get_officers to continue. Global officer counts can exceed the active entries shown here. Check meta.age_seconds and meta.stale before relying on cached information.
 
 **One caveat found in real data.** The profile's own `has_charges` flag reported false for this company while its charges endpoint returned fifteen. The charges section is authoritative; the flag is not, and no signal is derived from it.
 
