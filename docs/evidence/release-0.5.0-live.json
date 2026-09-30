@@ -1,0 +1,21 @@
+{
+  "verified_at": "2026-09-30T02:40:23.319Z",
+  "reports": [
+    {
+      "transport": "npx",
+      "version": "0.5.0",
+      "tools": 12,
+      "reconciliation_passed": true,
+      "deadline_clients_checked": 6,
+      "as_of": "2026-09-30"
+    },
+    {
+      "transport": "hosted",
+      "version": "0.5.0",
+      "tools": 12,
+      "reconciliation_passed": true,
+      "deadline_clients_checked": 6,
+      "as_of": "2026-09-30"
+    }
+  ]
+}
