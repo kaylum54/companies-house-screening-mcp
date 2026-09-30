@@ -10,6 +10,8 @@ Free, MIT-licensed source. Read-only access to Companies House. Your AI client m
 
 ## Try a business workflow
 
+**New in 0.5.0:** [Accountant filing-deadline worksheet and filming guide](docs/accountant-deadline-demo.md). Review client accounts and confirmation-statement deadlines in one dated worksheet.
+
 Paste this into your assistant after connecting the server:
 
 > Screen companies 04138203 and 00000006. Return one row per input with legal name, registered status, factual signals, sections checked, missing sections and data freshness. Keep unresolved and not-screened entries visible. Do not assign a risk score or call any company safe. Explain which records need human follow-up and why.

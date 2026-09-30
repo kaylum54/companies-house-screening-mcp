@@ -71,13 +71,16 @@ async function fetchSections(
   companyNumber: string,
   sections: SnapshotSection[],
   now: number,
-  metrics?: MetricsRecorder | undefined
+  metrics?: MetricsRecorder | undefined,
+  signal?: AbortSignal
 ): Promise<SectionResults> {
+  signal?.throwIfAborted();
   const profileResponse = await client.get<unknown>({
     path: `/company/${companyNumber}`,
     resource: 'company-profile',
     label: 'company',
-    identifier: companyNumber
+    identifier: companyNumber,
+    ...(signal === undefined ? {} : { signal })
   });
 
   const results: SectionResults = {
@@ -91,6 +94,7 @@ async function fetchSections(
   if (rest.length === 0) return results;
 
   const fetched = await mapWithConcurrency(rest, DEFAULT_CONCURRENCY, async (section) => {
+    signal?.throwIfAborted();
     const outcome = await attempt(async () => {
       switch (section) {
         case 'officers':
@@ -98,26 +102,30 @@ async function fetchSections(
             path: `/company/${companyNumber}/officers`,
             resource: 'officers',
             label: 'officers for company',
-            identifier: companyNumber
+            identifier: companyNumber,
+            ...(signal === undefined ? {} : { signal })
           });
         case 'charges':
           return await client.get<unknown>({
             path: `/company/${companyNumber}/charges`,
             resource: 'charges',
             label: 'charges for company',
-            identifier: companyNumber
+            identifier: companyNumber,
+            ...(signal === undefined ? {} : { signal })
           });
         case 'insolvency':
           return await client.get<unknown>({
             path: `/company/${companyNumber}/insolvency`,
             resource: 'insolvency',
             label: 'insolvency history for company',
-            identifier: companyNumber
+            identifier: companyNumber,
+            ...(signal === undefined ? {} : { signal })
           });
         default:
           throw new Error(`unhandled section ${section}`);
       }
     });
+    signal?.throwIfAborted();
     return { section, outcome };
   });
 
@@ -178,6 +186,18 @@ type Resolution =
       candidates?: { company_number: string; name: string; status?: string | undefined }[];
     };
 
+type InputRecord = { input: string; input_index: number; key: string };
+
+function inputKey(input: string): string {
+  const trimmed = input.trim();
+  if (isValidCompanyNumber(trimmed)) return `number:${normaliseCompanyNumber(trimmed).value}`;
+  return `text:${trimmed.toLowerCase()}`;
+}
+
+function byInputIndex(a: { input_index: number }, b: { input_index: number }): number {
+  return a.input_index - b.input_index;
+}
+
 /**
  * Turns one screening input into a company number, or explains why it could
  * not.
@@ -190,8 +210,10 @@ type Resolution =
 async function resolveInput(
   client: CompaniesHouseClient,
   input: string,
-  metrics?: MetricsRecorder
+  metrics?: MetricsRecorder,
+  signal?: AbortSignal
 ): Promise<Resolution> {
+  signal?.throwIfAborted();
   const trimmed = input.trim();
   if (trimmed === '') return { kind: 'unresolved', input, reason: 'The entry is empty.' };
 
@@ -204,9 +226,11 @@ async function resolveInput(
       path: '/search/companies',
       query: { q: trimmed, items_per_page: MAX_CANDIDATES },
       resource: 'search',
-      label: 'company search'
+      label: 'company search',
+      ...(signal === undefined ? {} : { signal })
     })
   );
+  signal?.throwIfAborted();
 
   if (!outcome.ok) {
     // The same absorption `fetchSections` performs, and for a while the only
@@ -248,6 +272,7 @@ async function resolveInput(
       status: company.status
     }))
   };
+
 }
 
 export function registerCompositeTools(server: McpServer, context: ToolContext): void {
@@ -279,7 +304,7 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
       outputSchema: companySnapshotOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ company_number, include_officers, include_charges, include_insolvency, verbose }) =>
+    async ({ company_number, include_officers, include_charges, include_insolvency, verbose }, extra) =>
       guard(context, 'company_snapshot', async () => {
         const number = resolveCompanyNumber(company_number);
         const sections: SnapshotSection[] = ['profile'];
@@ -287,7 +312,7 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         if (include_charges !== false) sections.push('charges');
         if (include_insolvency !== false) sections.push('insolvency');
 
-        const fetched = await fetchSections(client, number, sections, context.now(), context.metrics);
+        const fetched = await fetchSections(client, number, sections, context.now(), context.metrics, extra.signal);
         const body: Body<CompanySnapshotResult> = buildSnapshot({
           profile: fetched.profile,
           officers: fetched.officers,
@@ -318,10 +343,10 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
     {
       title: 'Screen a list of companies',
       description:
-        'Use this whenever the question is about MORE THAN ONE company — a list, a comparison, "which of these", a batch from procurement, anything with several names or numbers in it. Prefer it over calling company_snapshot repeatedly: it costs a quarter of the requests and returns a table you can read at a glance. Screens up to 50 companies and returns one row each: status, age, and which signals were found. Names that match more than one company are never guessed at; they come back under `unresolved` with their candidates so you can ask which was meant. Anything skipped for want of rate-limit budget comes back under `not_screened` with the reason, so the table is never quietly shorter than the list you passed in. Rows carry signal codes only — call company_snapshot on one company number for the detail behind them. Officers are excluded by default because they cost an extra request per company; sections_used says what the signals could see.',
+        'Use this whenever the question is about MORE THAN ONE company — a list, a comparison, "which of these", a batch from procurement, anything with several names or numbers in it. For accountant filing-date lists, prefer review_filing_deadlines. Prefer it over calling company_snapshot repeatedly: it costs a quarter of the requests and returns a table you can read at a glance. Screens up to 50 companies and returns one row each: status, age, and which signals were found. Names that match more than one company are never guessed at; they come back under `unresolved` with their candidates so you can ask which was meant. Anything skipped for want of rate-limit budget comes back under `not_screened` with the reason, so the table is never quietly shorter than the list you passed in. Rows carry signal codes only — call company_snapshot on one company number for the detail behind them. Officers are excluded by default because they cost an extra request per company; sections_used says what the signals could see.',
       inputSchema: {
         companies: z
-          .array(z.string().min(1).max(MAX_QUERY_LENGTH))
+          .array(z.string().max(MAX_QUERY_LENGTH))
           .min(1)
           .max(MAX_SCREEN_INPUTS)
           .describe('Company names or numbers. Mixed input is fine. Maximum 50 per call.'),
@@ -337,7 +362,7 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
       outputSchema: screenCompaniesOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ companies, include_officers, include_charges, include_insolvency }) =>
+    async ({ companies, include_officers, include_charges, include_insolvency }, extra) =>
       guard(context, 'screen_companies', async () => {
         const sections: SnapshotSection[] = ['profile'];
         if (include_officers === true) sections.push('officers');
@@ -347,32 +372,36 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         // Deduplicate before spending anything. The same supplier appearing
         // twice in a pasted list is common and there is no reason to pay for
         // it twice.
-        const seen = new Set<string>();
-        const inputs = companies.filter((entry) => {
-          const key = entry.trim().toLowerCase();
-          if (key === '' || seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
+        const records: InputRecord[] = companies.map((input, input_index) => ({ input, input_index, key: inputKey(input) }));
+        const groups = new Map<string, InputRecord[]>();
+        for (const record of records) {
+          const group = groups.get(record.key);
+          if (group === undefined) groups.set(record.key, [record]);
+          else group.push(record);
+        }
+        const uniqueRecords = [...groups.values()].map((group) => group[0]!);
 
-        const resolutions = await mapWithConcurrency(inputs, DEFAULT_CONCURRENCY, (entry) =>
-          resolveInput(client, entry, context.metrics)
+        const resolutions = await mapWithConcurrency(uniqueRecords, DEFAULT_CONCURRENCY, (record) =>
+          resolveInput(client, record.input, context.metrics, extra.signal)
         );
 
-        const resolved = resolutions.filter(
-          (resolution): resolution is Extract<Resolution, { kind: 'resolved' }> =>
-            resolution.kind === 'resolved'
+        const entries = resolutions.map((resolution, index) => ({
+          resolution,
+          records: groups.get(uniqueRecords[index]!.key)!
+        }));
+        const resolved = entries.filter(
+          (entry): entry is { resolution: Extract<Resolution, { kind: 'resolved' }>; records: InputRecord[] } => entry.resolution.kind === 'resolved'
         );
-        const unresolved = resolutions
+        const unresolved = entries
           .filter(
-            (resolution): resolution is Extract<Resolution, { kind: 'unresolved' }> =>
-              resolution.kind === 'unresolved'
+            (entry): entry is { resolution: Extract<Resolution, { kind: 'unresolved' }>; records: InputRecord[] } => entry.resolution.kind === 'unresolved'
           )
-          .map((resolution) => ({
-            input: resolution.input,
+          .flatMap(({ resolution, records: group }) => group.map(({ input, input_index }) => ({
+            input_index,
+            input,
             reason: resolution.reason,
             ...(resolution.candidates === undefined ? {} : { candidates: resolution.candidates })
-          }));
+          })));
 
         // Budget check before the expensive half. Screening what fits and
         // naming what did not is honest; running until the rate limiter
@@ -433,35 +462,37 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
         for (let i = 0; i < refusedSubrequests; i += 1) {
           context.metrics?.refused(budget.boundBy ?? cause);
         }
-        const notScreened = skipped.map((resolution) => ({
-          input: resolution.input,
+        const notScreened = skipped.flatMap(({ records: group }) => group.map(({ input, input_index }) => ({
+          input_index,
+          input,
           reason: `Not enough rate-limit budget left in this five-minute window. Screening this company needs ${perCompany} requests. ${retry}`
-        }));
+        })));
 
         if (notScreened.length > 0) {
           logger.warn('screen_companies truncated for rate-limit budget', {
-            requested: inputs.length,
+            requested: companies.length,
             screened: toScreen.length,
             skipped: notScreened.length
           });
         }
 
         const metas: RequestMeta[] = [];
-        const rows = await mapWithConcurrency(toScreen, DEFAULT_CONCURRENCY, async (resolution) => {
+        const rows = await mapWithConcurrency(toScreen, DEFAULT_CONCURRENCY, async ({ resolution, records: group }) => {
+          extra.signal.throwIfAborted();
           const outcome = await attempt(() =>
-            fetchSections(client, resolution.companyNumber, sections, context.now(), context.metrics)
+            fetchSections(client, resolution.companyNumber, sections, context.now(), context.metrics, extra.signal)
           );
+          extra.signal.throwIfAborted();
 
           if (!outcome.ok) {
             // A whole company that could not be read, absorbed into the table.
             context.metrics?.subrequestFailed();
             return {
-              failed: {
-                input: resolution.input,
-                reason: CompaniesHouseError.is(outcome.error)
-                  ? outcome.error.message
-                  : 'The company could not be read.'
-              }
+              failed: group.map(({ input, input_index }) => ({
+                input_index,
+                input,
+                reason: CompaniesHouseError.is(outcome.error) ? outcome.error.message : 'The company could not be read.'
+              }))
             };
           }
 
@@ -477,8 +508,9 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
           });
 
           return {
-            row: {
-              input: resolution.input,
+            rows: group.map(({ input, input_index }) => ({
+              input_index,
+              input,
               company_number: snapshot.company_number,
               name: snapshot.name,
               status: snapshot.status,
@@ -490,23 +522,19 @@ export function registerCompositeTools(server: McpServer, context: ToolContext):
               sections_unavailable: snapshot.sections_unavailable,
               officers_pagination: snapshot.officers?.pagination,
               meta: mergeMeta(outcome.value.metas, client.rateLimit)
-            }
+            }))
           };
         });
 
         const body: Body<ScreenCompaniesResult> = {
           requested: companies.length,
           sections_used: sections,
-          screened: rows
-            .map((result) => result.row)
-            .filter((row): row is NonNullable<typeof row> => row !== undefined),
-          unresolved,
+          screened: rows.flatMap((result) => result.rows ?? []).sort(byInputIndex),
+          unresolved: unresolved.sort(byInputIndex),
           not_screened: [
             ...notScreened,
-            ...rows
-              .map((result) => result.failed)
-              .filter((failed): failed is NonNullable<typeof failed> => failed !== undefined)
-          ]
+            ...rows.flatMap((result) => result.failed ?? [])
+          ].sort(byInputIndex)
         };
 
         return ok({ ...body, meta: mergeMeta(metas, client.rateLimit) });

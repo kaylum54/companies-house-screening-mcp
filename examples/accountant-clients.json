@@ -1,0 +1,12 @@
+{
+  "clients": [
+    { "client_reference": "DEMO-01", "company_number": "04138203" },
+    { "client_reference": "DEMO-02", "company_number": "00445790" },
+    { "client_reference": "DEMO-03", "company_number": "00185647" },
+    { "client_reference": "DEMO-04", "company_number": "00502851" },
+    { "client_reference": "DEMO-05", "company_number": "00214436" },
+    { "client_reference": "DEMO-06", "company_number": "04412362" }
+  ],
+  "horizon_days": 30,
+  "refresh": true
+}

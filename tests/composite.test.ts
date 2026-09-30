@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { COMPOSITE_TOOL_NAMES } from '../src/tools/composite.js';
+import { DEADLINE_TOOL_NAMES } from '../src/tools/deadlines.js';
 import { TOOL_NAMES } from '../src/tools/definitions.js';
 import type { Harness } from './helpers/harness.js';
 import { errorPayload, harnessAlways, harnessRoutes, structured, harnessWithBudget } from './helpers/harness.js';
@@ -30,12 +31,12 @@ const FULL_ROUTES: [RegExp, { body: unknown }][] = [
 ];
 
 describe('the composite tools are registered', () => {
-  it('brings the surface to eleven tools', async () => {
+  it('exposes the complete tool surface', async () => {
     harness = await harnessAlways({ body: {} });
     const { tools } = await harness.client.listTools();
 
     expect(tools.map((tool) => tool.name).sort()).toEqual(
-      [...TOOL_NAMES, ...COMPOSITE_TOOL_NAMES].sort()
+      [...TOOL_NAMES, ...COMPOSITE_TOOL_NAMES, ...DEADLINE_TOOL_NAMES].sort()
     );
   });
 
@@ -350,7 +351,7 @@ describe('screen_companies', () => {
     expect((result['unresolved'] as Record<string, unknown>[])[0]?.['reason']).toContain('No company');
   });
 
-  it('does not pay twice for the same company listed twice', async () => {
+  it('reconciles duplicate aliases without paying twice upstream', async () => {
     harness = await harnessRoutes(FULL_ROUTES);
     const result = structured(
       await harness.client.callTool({
@@ -360,7 +361,50 @@ describe('screen_companies', () => {
     );
 
     expect(result['requested']).toBe(3);
-    expect(result['screened']).toHaveLength(1);
+    expect(result['screened']).toHaveLength(3);
+    expect((result['screened'] as Record<string, unknown>[]).map((row) => [row['input_index'], row['input']])).toEqual([
+      [0, '04138203'],
+      [1, '04138203'],
+      [2, ' 04138203 ']
+    ]);
+    expect(harness.calls).toHaveLength(3);
+  });
+
+  it('keeps blank rows and accounts for every original input', async () => {
+    harness = await harnessRoutes(FULL_ROUTES);
+    const result = structured(
+      await harness.client.callTool({
+        name: 'screen_companies',
+        arguments: { companies: ['04138203', '   ', '04138203'] }
+      })
+    );
+
+    const screened = result['screened'] as Record<string, unknown>[];
+    const unresolved = result['unresolved'] as Record<string, unknown>[];
+    const notScreened = result['not_screened'] as Record<string, unknown>[];
+    expect(screened.length + unresolved.length + notScreened.length).toBe(result['requested']);
+    expect(unresolved).toHaveLength(1);
+    expect(unresolved[0]).toMatchObject({ input_index: 1, input: '   ' });
+    expect(screened.map((row) => row['input_index'])).toEqual([0, 2]);
+    expect(harness.calls).toHaveLength(3);
+  });
+
+  it('keeps an empty string as an invalid row without rejecting the batch', async () => {
+    harness = await harnessRoutes(FULL_ROUTES);
+    const result = structured(
+      await harness.client.callTool({
+        name: 'screen_companies',
+        arguments: { companies: ['04138203', '', '00000006'] }
+      })
+    );
+
+    const screened = result['screened'] as Record<string, unknown>[];
+    const unresolved = result['unresolved'] as Record<string, unknown>[];
+    const notScreened = result['not_screened'] as Record<string, unknown>[];
+    expect(result['requested']).toBe(3);
+    expect(screened.length + unresolved.length + notScreened.length).toBe(3);
+    expect(unresolved).toEqual([expect.objectContaining({ input_index: 1, input: '' })]);
+    expect(screened.map((row) => row['input_index'])).toEqual([0, 2]);
   });
 
   it('returns signal codes per row and points at the snapshot for detail', async () => {

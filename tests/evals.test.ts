@@ -12,6 +12,7 @@ import {
 } from '../evals/score.js';
 import { COMPOSITE_TOOL_NAMES } from '../src/tools/composite.js';
 import { TOOL_NAMES } from '../src/tools/definitions.js';
+import { DEADLINE_TOOL_NAMES } from '../src/tools/deadlines.js';
 
 /**
  * Tests for the eval itself.
@@ -22,7 +23,7 @@ import { TOOL_NAMES } from '../src/tools/definitions.js';
  * because it produces a number people believe.
  */
 
-const ALL_TOOLS = [...TOOL_NAMES, ...COMPOSITE_TOOL_NAMES] as string[];
+const ALL_TOOLS = [...TOOL_NAMES, ...COMPOSITE_TOOL_NAMES, ...DEADLINE_TOOL_NAMES] as string[];
 
 describe('the eval cases', () => {
   it('only names tools that exist', () => {
@@ -105,6 +106,12 @@ describe('findInventedCompanyNumbers', () => {
         { name: 'screen_companies', input: { companies: ['Greggs plc', '00502851'] } }
       ])
     ).toEqual(['00502851']);
+  });
+
+  it('checks company numbers nested in accountant client rows', () => {
+    expect(findInventedCompanyNumbers('Check deadlines for Greggs', [
+      { name: 'review_filing_deadlines', input: { clients: [{ client_reference: 'C1', company_number: '00502851' }] } }
+    ])).toEqual(['00502851']);
   });
 });
 

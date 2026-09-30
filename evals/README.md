@@ -38,7 +38,7 @@ What it reaches for on that first turn is the whole measurement.
 
 ### Scope, cost and evidence
 
-The suite currently contains 58 cases. At three repeats that is 174 model requests. The runner prints the actual case count before starting. Input size depends on current tool schemas; the old fourteen-case cost estimate does not apply.
+The suite currently contains 60 cases. At three repeats that is 180 model requests. Two new accountant cases cover tool selection and missing company numbers; historical results below predate these additions. The runner prints the actual case count before starting. Input size depends on current tool schemas; the old fourteen-case cost estimate does not apply.
 
 Check your provider's current pricing and usage dashboard before choosing a model. No fixed per-run price is promised. Use `--case grounding` for a smaller run. Provider failures and sampling variability need investigation; a flaky case does not by itself prove overlapping descriptions.
 

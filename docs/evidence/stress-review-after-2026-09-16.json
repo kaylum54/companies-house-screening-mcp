@@ -1,0 +1,449 @@
+[
+  {
+    "generated_at": "2026-09-16T13:55:15.732Z",
+    "mock_latency_ms": 2,
+    "note": "Offline real MCP client/server with synthetic upstream, zero retries and real clock. Not a production throughput benchmark.",
+    "reports": [
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 1,
+        "distinct": false,
+        "inputs": 50,
+        "calls": 200,
+        "peak": 12,
+        "duration_ms": 313,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 5,
+        "distinct": false,
+        "inputs": 250,
+        "calls": 200,
+        "peak": 12,
+        "duration_ms": 240,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 20,
+        "distinct": false,
+        "inputs": 1000,
+        "calls": 200,
+        "peak": 12,
+        "duration_ms": 205,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 5,
+        "distinct": true,
+        "inputs": 250,
+        "calls": 1000,
+        "peak": 60,
+        "duration_ms": 293,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 20,
+        "distinct": true,
+        "inputs": 1000,
+        "calls": 4000,
+        "peak": 240,
+        "duration_ms": 402,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": 403,
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": 429,
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": 503,
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": "malformed",
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "10 batches competing for 57-request budget",
+        "calls": 57,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "input reconciliation",
+        "inputs": [
+          "10000000",
+          "10000000"
+        ],
+        "requested": 2,
+        "accounted": 2,
+        "passed": true
+      },
+      {
+        "scenario": "input reconciliation",
+        "inputs": [
+          "10000000",
+          "   "
+        ],
+        "requested": 2,
+        "accounted": 2,
+        "passed": true
+      },
+      {
+        "scenario": "input reconciliation",
+        "inputs": [
+          "   "
+        ],
+        "requested": 1,
+        "accounted": 1,
+        "passed": true
+      },
+      {
+        "scenario": "all 50 profile requests time out",
+        "calls": 50,
+        "peak": 4,
+        "passed": true
+      },
+      {
+        "scenario": "four invalid inputs rejected before upstream; next valid call succeeds",
+        "passed": true
+      },
+      {
+        "scenario": "cancel running batch",
+        "calls_at_cancel": 16,
+        "calls_after_settle": 16,
+        "additional_calls": 0,
+        "passed": true
+      }
+    ]
+  },
+  {
+    "generated_at": "2026-09-16T13:58:57.386Z",
+    "mock_latency_ms": 2,
+    "note": "Offline real MCP client/server with synthetic upstream, zero retries and real clock. Not a production throughput benchmark.",
+    "reports": [
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 1,
+        "distinct": false,
+        "inputs": 50,
+        "calls": 200,
+        "peak": 12,
+        "duration_ms": 273,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 5,
+        "distinct": false,
+        "inputs": 250,
+        "calls": 200,
+        "peak": 12,
+        "duration_ms": 278,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 20,
+        "distinct": false,
+        "inputs": 1000,
+        "calls": 200,
+        "peak": 12,
+        "duration_ms": 229,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 5,
+        "distinct": true,
+        "inputs": 250,
+        "calls": 1000,
+        "peak": 60,
+        "duration_ms": 289,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 20,
+        "distinct": true,
+        "inputs": 1000,
+        "calls": 4000,
+        "peak": 240,
+        "duration_ms": 431,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": 403,
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": 429,
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": 503,
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": "malformed",
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "10 batches competing for 57-request budget",
+        "calls": 57,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "input reconciliation",
+        "inputs": [
+          "10000000",
+          "10000000"
+        ],
+        "requested": 2,
+        "accounted": 2,
+        "passed": true
+      },
+      {
+        "scenario": "input reconciliation",
+        "inputs": [
+          "10000000",
+          "   "
+        ],
+        "requested": 2,
+        "accounted": 2,
+        "passed": true
+      },
+      {
+        "scenario": "input reconciliation",
+        "inputs": [
+          "   "
+        ],
+        "requested": 1,
+        "accounted": 1,
+        "passed": true
+      },
+      {
+        "scenario": "all 50 profile requests time out",
+        "calls": 50,
+        "peak": 4,
+        "passed": true
+      },
+      {
+        "scenario": "four invalid inputs rejected before upstream; next valid call succeeds",
+        "passed": true
+      },
+      {
+        "scenario": "cancel running batch",
+        "calls_at_cancel": 16,
+        "calls_after_settle": 16,
+        "additional_calls": 0,
+        "passed": true
+      }
+    ]
+  },
+  {
+    "generated_at": "2026-09-16T13:59:02.739Z",
+    "mock_latency_ms": 2,
+    "note": "Offline real MCP client/server with synthetic upstream, zero retries and real clock. Not a production throughput benchmark.",
+    "reports": [
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 1,
+        "distinct": false,
+        "inputs": 50,
+        "calls": 200,
+        "peak": 12,
+        "duration_ms": 277,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 5,
+        "distinct": false,
+        "inputs": 250,
+        "calls": 200,
+        "peak": 12,
+        "duration_ms": 259,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 20,
+        "distinct": false,
+        "inputs": 1000,
+        "calls": 200,
+        "peak": 12,
+        "duration_ms": 204,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 5,
+        "distinct": true,
+        "inputs": 250,
+        "calls": 1000,
+        "peak": 60,
+        "duration_ms": 287,
+        "passed": true
+      },
+      {
+        "scenario": "50-company full-section batches",
+        "concurrency": 20,
+        "distinct": true,
+        "inputs": 1000,
+        "calls": 4000,
+        "peak": 240,
+        "duration_ms": 366,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": 403,
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": 429,
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": 503,
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "charges fault",
+        "fault": "malformed",
+        "screened": 50,
+        "not_screened": 0,
+        "unavailable": 50,
+        "calls": 150,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "10 batches competing for 57-request budget",
+        "calls": 57,
+        "peak": 8,
+        "passed": true
+      },
+      {
+        "scenario": "input reconciliation",
+        "inputs": [
+          "10000000",
+          "10000000"
+        ],
+        "requested": 2,
+        "accounted": 2,
+        "passed": true
+      },
+      {
+        "scenario": "input reconciliation",
+        "inputs": [
+          "10000000",
+          "   "
+        ],
+        "requested": 2,
+        "accounted": 2,
+        "passed": true
+      },
+      {
+        "scenario": "input reconciliation",
+        "inputs": [
+          "   "
+        ],
+        "requested": 1,
+        "accounted": 1,
+        "passed": true
+      },
+      {
+        "scenario": "all 50 profile requests time out",
+        "calls": 50,
+        "peak": 4,
+        "passed": true
+      },
+      {
+        "scenario": "four invalid inputs rejected before upstream; next valid call succeeds",
+        "passed": true
+      },
+      {
+        "scenario": "cancel running batch",
+        "calls_at_cancel": 16,
+        "calls_after_settle": 16,
+        "additional_calls": 0,
+        "passed": true
+      }
+    ]
+  }
+]

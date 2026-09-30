@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -81,7 +82,7 @@ jobs:
     # Fixtures make the suite fast and offline. This is the price of that: it
     # runs against the real API on a schedule so that a change to the API
     # surfaces here rather than in somebody's terminal.
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +100,7 @@ jobs:
           CH_CACHE_ENABLED: 'false'
         run: |
           if [ -z "$COMPANIES_HOUSE_API_KEY" ]; then
-            echo "::warning::COMPANIES_HOUSE_API_KEY is not set; skipping the live smoke test."
-            exit 0
+            echo "::error::COMPANIES_HOUSE_API_KEY is required for live verification."
+            exit 1
           fi
           npm run test:live

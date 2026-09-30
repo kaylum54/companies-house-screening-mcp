@@ -87,6 +87,13 @@ export function companyNumberArguments(calls: ToolCall[]): string[] {
     const direct = call.input['company_number'];
     if (typeof direct === 'string') values.push(direct);
 
+    const clients = call.input['clients'];
+    if (Array.isArray(clients)) {
+      for (const entry of clients) {
+        if (entry !== null && typeof entry === 'object' && typeof entry.company_number === 'string') values.push(entry.company_number);
+      }
+    }
+
     const list = call.input['companies'];
     if (Array.isArray(list)) {
       for (const entry of list) if (typeof entry === 'string') values.push(entry);

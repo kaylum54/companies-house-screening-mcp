@@ -1,5 +1,5 @@
 import type { Clock } from '../clock.js';
-import { systemClock } from '../clock.js';
+import { sleepWithAbort, systemClock, throwIfAborted } from '../clock.js';
 import { CompaniesHouseError } from '../errors.js';
 import type { MetricsRecorder } from '../telemetry/metrics.js';
 import { silentMetrics } from '../telemetry/metrics.js';
@@ -158,18 +158,22 @@ export class RateLimiter {
    * continuation can run and overwrite it. Handing the value back closes that
    * window by construction.
    *
+   * @param signal Optional caller cancellation signal. An observed abort stops
+   * waiting before another budget reservation is attempted.
    * @throws {CompaniesHouseError} RATE_LIMITED when the wait would exceed
    * `maxWaitMs`. Callers that would rather resize their work than wait should
    * ask `snapshot` first — that is what `screen_companies` does.
    */
-  async acquire(clientId: string = DEFAULT_CLIENT_ID): Promise<RateLimitSnapshot> {
+  async acquire(clientId: string = DEFAULT_CLIENT_ID, signal?: AbortSignal): Promise<RateLimitSnapshot> {
     const startedAt = this.#clock.now();
     const deadline = startedAt + this.#maxWaitMs;
     let last: BudgetOutcome | undefined;
 
     // Bounded so that a pathological clock cannot spin here forever.
     for (let attempt = 0; attempt < 64; attempt += 1) {
+      throwIfAborted(signal);
       const outcome = await this.#store.acquire(clientId, this.#clock.now());
+      throwIfAborted(signal);
       const snapshot = this.#remember(outcome);
       if (outcome.granted) return snapshot;
       last = outcome;
@@ -182,7 +186,7 @@ export class RateLimiter {
       const now = this.#clock.now();
       if (now + outcome.retryInMs > deadline) throw this.#refuse(outcome);
 
-      await this.#clock.sleep(Math.max(outcome.retryInMs, 1) + this.#jitter());
+      await sleepWithAbort(this.#clock, Math.max(outcome.retryInMs, 1) + this.#jitter(), signal);
     }
 
     // The bound is reachable with a perfectly healthy clock: a caller held to

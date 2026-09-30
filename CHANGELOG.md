@@ -4,7 +4,17 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] — 2026-09-30
+
+- Add `review_filing_deadlines`: profile-only accountant client worksheets with references, explicit comparison dates, inclusive horizons, freshness and missing-date categories.
+- Preserve duplicate and blank batch input rows with `input_index`, while sharing upstream lookups.
+- Propagate MCP cancellation to section scheduling, shared HTTP requests, retry waits and rate-limit waits without cancelling other subscribers.
+- Add live accountant rehearsal evidence and before/after stress checks.
+- Preserve truly empty spreadsheet cells alongside whitespace-only rows instead of rejecting the batch.
+- Serve fresh cached deadline profiles even when the upstream request budget is exhausted.
+- Bound upstream concurrency across shared client sessions, with cancellation-safe queued requests.
+- Update vulnerable dependencies and pin patched development-only Miniflare dependencies.
+- Require the API key for scheduled live checks and enable manual CI verification.
 
 ## [0.4.0] — 2026-09-05
 

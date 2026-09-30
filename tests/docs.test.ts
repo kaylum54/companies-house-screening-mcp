@@ -8,6 +8,7 @@ import { generateToolDocs } from '../scripts/generate-tool-docs.js';
 import { apply } from '../scripts/lib/generate.js';
 import { TOOL_NAMES } from '../src/tools/definitions.js';
 import { COMPOSITE_TOOL_NAMES } from '../src/tools/composite.js';
+import { DEADLINE_TOOL_NAMES } from '../src/tools/deadlines.js';
 
 /**
  * The drift check.
@@ -41,7 +42,7 @@ describe('generated documentation', () => {
       .map((name) => name.replace(/\.md$/, ''))
       .sort();
 
-    expect(pages).toEqual([...TOOL_NAMES, ...COMPOSITE_TOOL_NAMES].sort());
+    expect(pages).toEqual([...TOOL_NAMES, ...COMPOSITE_TOOL_NAMES, ...DEADLINE_TOOL_NAMES].sort());
   });
 
   it('warns against editing the generated pages by hand', async () => {

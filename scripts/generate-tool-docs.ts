@@ -45,7 +45,8 @@ const SUMMARIES: Record<string, string> = {
   get_insolvency: 'Insolvency cases and the practitioners appointed.',
   get_officer_appointments: 'Every company an officer sits on.',
   company_snapshot: 'Profile, officers, charges and insolvency in one call.',
-  screen_companies: 'Screen a list of up to 50 companies.'
+  screen_companies: 'Screen a list of up to 50 companies.',
+  review_filing_deadlines: 'A dated filing-deadline worksheet for up to 50 client rows.'
 };
 
 function renderTool(tool: ToolInfo): string {

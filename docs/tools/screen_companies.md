@@ -4,7 +4,7 @@
 
 **Screen a list of companies**
 
-Use this whenever the question is about MORE THAN ONE company — a list, a comparison, "which of these", a batch from procurement, anything with several names or numbers in it. Prefer it over calling company_snapshot repeatedly: it costs a quarter of the requests and returns a table you can read at a glance. Screens up to 50 companies and returns one row each: status, age, and which signals were found. Names that match more than one company are never guessed at; they come back under `unresolved` with their candidates so you can ask which was meant. Anything skipped for want of rate-limit budget comes back under `not_screened` with the reason, so the table is never quietly shorter than the list you passed in. Rows carry signal codes only — call company_snapshot on one company number for the detail behind them. Officers are excluded by default because they cost an extra request per company; sections_used says what the signals could see.
+Use this whenever the question is about MORE THAN ONE company — a list, a comparison, "which of these", a batch from procurement, anything with several names or numbers in it. For accountant filing-date lists, prefer review_filing_deadlines. Prefer it over calling company_snapshot repeatedly: it costs a quarter of the requests and returns a table you can read at a glance. Screens up to 50 companies and returns one row each: status, age, and which signals were found. Names that match more than one company are never guessed at; they come back under `unresolved` with their candidates so you can ask which was meant. Anything skipped for want of rate-limit budget comes back under `not_screened` with the reason, so the table is never quietly shorter than the list you passed in. Rows carry signal codes only — call company_snapshot on one company number for the detail behind them. Officers are excluded by default because they cost an extra request per company; sections_used says what the signals could see.
 
 This tool reads only and changes nothing, and calls an external service (the Companies House API).
 
@@ -24,6 +24,7 @@ This tool reads only and changes nothing, and calls an external service (the Com
 | `requested` | number | yes | — |
 | `sections_used` | string[] | yes | Signals in this table can only reflect these sections. Officers are off by default. |
 | `screened` | object[] | yes | — |
+| `screened[].input_index` | integer | yes | Zero-based position in the original companies input array. |
 | `screened[].input` | string | yes | What was passed in, so rows can be matched back to the source list. |
 | `screened[].company_number` | string | yes | — |
 | `screened[].name` | string | yes | — |
@@ -51,6 +52,7 @@ This tool reads only and changes nothing, and calls an external service (the Com
 | `screened[].meta.rate_limit_resets_in_ms` | number | yes | Milliseconds until more budget becomes available. |
 | `screened[].meta.licence` | `"OGL-v3.0"` | yes | OGL v3.0 applies to eligible public-sector information. Personal data and other OGL exclusions are not licensed by this label; applicable data-protection duties still apply. |
 | `unresolved` | object[] | yes | Inputs that could not be resolved to exactly one company. Never guessed at. |
+| `unresolved[].input_index` | integer | yes | Zero-based position in the original companies input array. |
 | `unresolved[].input` | string | yes | — |
 | `unresolved[].reason` | string | yes | — |
 | `unresolved[].candidates` | object[] | no | Ask which was meant, then screen the chosen number directly. |
@@ -58,6 +60,7 @@ This tool reads only and changes nothing, and calls an external service (the Com
 | `unresolved[].candidates[].name` | string | yes | — |
 | `unresolved[].candidates[].status` | string | no | active, dissolved, liquidation, administration, and so on. |
 | `not_screened` | object[] | yes | Inputs deliberately skipped, with the reason. Nothing is dropped silently. |
+| `not_screened[].input_index` | integer | yes | Zero-based position in the original companies input array. |
 | `not_screened[].input` | string | yes | — |
 | `not_screened[].reason` | string | yes | — |
 | `meta` | object | yes | Provenance and budget for this answer. |

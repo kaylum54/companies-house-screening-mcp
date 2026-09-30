@@ -5,7 +5,7 @@
  * start a server or read the environment as a side effect.
  *
  * Phases 1 to 3 are here: configuration, HTTP client, rate limiter, cache,
- * error model, projections, output schemas, all eleven tools and the server
+ * error model, projections, output schemas, all twelve tools and the server
  * factory.
  */
 

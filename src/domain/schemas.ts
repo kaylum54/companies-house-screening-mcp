@@ -385,6 +385,7 @@ export const screenCompaniesOutput = z.object({
     .describe('Signals in this table can only reflect these sections. Officers are off by default.'),
   screened: z.array(
     z.object({
+      input_index: z.number().int().nonnegative().describe('Zero-based position in the original companies input array.'),
       input: z.string().describe('What was passed in, so rows can be matched back to the source list.'),
       company_number: z.string(),
       name: z.string(),
@@ -402,6 +403,7 @@ export const screenCompaniesOutput = z.object({
   unresolved: z
     .array(
       z.object({
+        input_index: z.number().int().nonnegative().describe('Zero-based position in the original companies input array.'),
         input: z.string(),
         reason: z.string(),
         candidates: z
@@ -412,7 +414,13 @@ export const screenCompaniesOutput = z.object({
     )
     .describe('Inputs that could not be resolved to exactly one company. Never guessed at.'),
   not_screened: z
-    .array(z.object({ input: z.string(), reason: z.string() }))
+    .array(
+      z.object({
+        input_index: z.number().int().nonnegative().describe('Zero-based position in the original companies input array.'),
+        input: z.string(),
+        reason: z.string()
+      })
+    )
     .describe('Inputs deliberately skipped, with the reason. Nothing is dropped silently.'),
   meta: metaSchema
 });

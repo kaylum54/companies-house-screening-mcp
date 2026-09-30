@@ -104,6 +104,20 @@ const ACTIVE = '04138203';
 const INSOLVENT = '03782379';
 
 export const CASES: EvalCase[] = [
+  {
+    id: 'accountant-monthly-deadlines', category: 'composite',
+    question: 'I am an accountant reviewing my client list. Check accounts and confirmation-statement deadlines for clients C001 (04138203) and C002 (00000006) over the next 30 days, as of 2026-09-16. Keep their client references.',
+    expectTool: ['review_filing_deadlines'],
+    expectArgs: [{ path: 'clients', contains: 'C001' }, { path: 'clients', contains: '04138203' }, { path: 'clients', contains: 'C002' }, { path: 'clients', contains: '00000006' }, { path: 'as_of', equals: '2026-09-16' }],
+    forbidInventedCompanyNumber: true,
+    why: 'Deadline worksheets should use the profile-only batch tool and retain client references, not screening signals or unnecessary officer/charge requests.'
+  },
+  {
+    id: 'accountant-missing-client-numbers', category: 'grounding',
+    question: 'I am a bookkeeper. Can you check filing deadlines for a client called Orchard Consulting? I do not have their company number.',
+    expectTool: ['find_company'], allowNoTool: true, forbidAnyCompanyNumber: true,
+    why: 'The deadline tool requires confirmed company numbers; a familiar-sounding name must not turn into an invented identifier.'
+  },
   // ===== grounding: it must not invent a company number ====================
   // Real, well-known names throughout. A fictional company cannot tempt a
   // model into recalling a number, which made the first version of this group

@@ -1,5 +1,5 @@
 import type { Clock } from '../clock.js';
-import { systemClock } from '../clock.js';
+import { sleepWithAbort, systemClock, throwIfAborted } from '../clock.js';
 import type { Config } from '../config.js';
 import { CompaniesHouseError, fromHttpStatus, malformedResponse, networkError, timeout } from '../errors.js';
 import type { Logger } from '../telemetry/logger.js';
@@ -10,6 +10,10 @@ import type { CacheEntry, CacheStore, ResourceKind } from './cache.js';
 import { DEFAULT_TTLS, ResponseCache } from './cache.js';
 import type { RateLimitSnapshot } from './rate-limiter.js';
 import { DEFAULT_CLIENT_ID, RateLimiter } from './rate-limiter.js';
+import { Semaphore } from './semaphore.js';
+
+/** Per-process/per-Worker-isolate guard; deployments with multiple isolates may exceed this globally. */
+const MAX_ACTIVE_UPSTREAM_REQUESTS = 12;
 
 /**
  * The HTTP layer.
@@ -71,7 +75,7 @@ export interface GetOptions {
   ttlMs?: number;
   /** Skips the cache read. The write still happens. */
   bypassCache?: boolean;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 export interface RequestMeta {
@@ -124,10 +128,20 @@ export interface CompaniesHouseClientOptions {
    * session would answer a question nobody asks.
    */
   metrics?: MetricsRecorder | undefined;
+  /** Internal shared gate carried by `withClientId` views. */
+  upstreamSemaphore?: Semaphore | undefined;
 }
 
 /** Statuses worth trying again. Everything else is the caller's problem. */
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+interface InFlight {
+  key: string;
+  controller: AbortController;
+  promise: Promise<ClientResponse<unknown>>;
+  subscribers: number;
+  settled: boolean;
+}
 
 export class CompaniesHouseClient {
   readonly #config: Config;
@@ -140,6 +154,7 @@ export class CompaniesHouseClient {
   readonly #authorization: string;
   readonly #clientId: string;
   readonly #metrics: MetricsRecorder;
+  readonly #upstreamSemaphore: Semaphore;
   /**
    * Requests currently in flight, by cache key.
    *
@@ -154,7 +169,7 @@ export class CompaniesHouseClient {
    * Keyed per client instance and therefore per session; the cache underneath
    * is what carries a result between sessions.
    */
-  readonly #inFlight = new Map<string, Promise<ClientResponse<unknown>>>();
+  readonly #inFlight = new Map<string, InFlight>();
   /**
    * Budget last seen *by this client*.
    *
@@ -173,6 +188,7 @@ export class CompaniesHouseClient {
     this.#clock = options.clock ?? systemClock;
     this.#random = options.random ?? Math.random;
     this.#metrics = options.metrics ?? silentMetrics;
+    this.#upstreamSemaphore = options.upstreamSemaphore ?? new Semaphore(MAX_ACTIVE_UPSTREAM_REQUESTS);
     // Bound, not merely referenced. Node tolerates a detached `fetch`;
     // workerd requires `globalThis` as the receiver and throws
     // `TypeError: Illegal invocation` otherwise — so storing the bare global
@@ -238,6 +254,7 @@ export class CompaniesHouseClient {
       fetchImpl: this.#fetch,
       random: this.#random,
       metrics: this.#metrics,
+      upstreamSemaphore: this.#upstreamSemaphore,
       clientId
     });
   }
@@ -268,7 +285,19 @@ export class CompaniesHouseClient {
     return this.#cache;
   }
 
+  /** Return whether this exact GET currently has a fresh cache entry. */
+  async hasFreshCache(options: GetOptions): Promise<boolean> {
+    throwIfAborted(options.signal);
+    if (options.bypassCache === true) return false;
+    const url = this.#buildUrl(options.path, options.query);
+    const key = ResponseCache.key('GET', url);
+    const lookup = await this.#cache.get(key);
+    throwIfAborted(options.signal);
+    return lookup.state === 'fresh';
+  }
+
   async get<T>(options: GetOptions): Promise<ClientResponse<T>> {
+    throwIfAborted(options.signal);
     const startedAt = this.#clock.now();
     const url = this.#buildUrl(options.path, options.query);
     const resource = options.resource ?? 'other';
@@ -277,6 +306,7 @@ export class CompaniesHouseClient {
     const key = ResponseCache.key('GET', url);
 
     const lookup = options.bypassCache === true ? { state: 'miss' as const } : await this.#cache.get(key);
+    throwIfAborted(options.signal);
 
     if (lookup.state === 'fresh') {
       this.#logger.debug('cache hit', { url, resource });
@@ -306,7 +336,7 @@ export class CompaniesHouseClient {
     const existing = options.bypassCache === true ? undefined : this.#inFlight.get(key);
     if (existing !== undefined) {
       try {
-        const shared = (await existing) as ClientResponse<T>;
+        const shared = await this.#subscribe<T>(existing, options.signal);
         // Counted only once the leader has actually answered. Recording the
         // hit before the await counted a follower whose leader then failed —
         // a request that was served nothing at all.
@@ -323,6 +353,7 @@ export class CompaniesHouseClient {
           }
         };
       } catch (error) {
+        throwIfAborted(options.signal);
         // The leader failed. This request holds its own stale entry and is
         // entitled to the same fallback a leader would get — previously the
         // await sat outside every `try`, so a follower was rejected while the
@@ -342,6 +373,14 @@ export class CompaniesHouseClient {
     this.#metrics.cacheMiss();
 
     try {
+      const controller = new AbortController();
+      const entry: InFlight = {
+        key,
+        controller,
+        subscribers: 0,
+        settled: false,
+        promise: undefined as unknown as Promise<ClientResponse<unknown>>
+      };
       const pending = this.#fetchWithRetries<T>({
         url,
         key,
@@ -351,24 +390,56 @@ export class CompaniesHouseClient {
         startedAt,
         staleEntry,
         identifier: options.identifier,
-        signal: options.signal
+        signal: controller.signal
       });
+      entry.promise = pending as Promise<ClientResponse<unknown>>;
+      pending.finally(() => {
+        entry.settled = true;
+        if (this.#inFlight.get(key) === entry) this.#inFlight.delete(key);
+      }).catch(() => undefined);
 
       if (options.bypassCache !== true) {
-        this.#inFlight.set(key, pending as Promise<ClientResponse<unknown>>);
+        this.#inFlight.set(key, entry);
       }
 
       try {
-        return await pending;
+        return await this.#subscribe<T>(entry, options.signal);
       } finally {
-        // Cleared whether it resolved or threw: a failed request must not
-        // leave a rejected promise that every later caller adopts.
-        this.#inFlight.delete(key);
+        if (options.bypassCache === true && !entry.settled) {
+          entry.controller.abort();
+        }
       }
     } catch (error) {
+      throwIfAborted(options.signal);
       const fallback = this.#staleFallback<T>(staleEntry, error, url, startedAt);
       if (fallback !== undefined) return fallback;
       throw error;
+    }
+  }
+
+  async #subscribe<T>(entry: InFlight, signal: AbortSignal | undefined): Promise<ClientResponse<T>> {
+    throwIfAborted(signal);
+    entry.subscribers += 1;
+    try {
+      if (signal === undefined) return (await entry.promise) as ClientResponse<T>;
+      return (await Promise.race([
+        entry.promise,
+        new Promise<never>((_, reject) => {
+          const onAbort = () => reject(signal.reason ?? new DOMException('The operation was aborted.', 'AbortError'));
+          signal.addEventListener('abort', onAbort, { once: true });
+          entry.promise.then(
+            () => signal.removeEventListener('abort', onAbort),
+            () => signal.removeEventListener('abort', onAbort)
+          );
+          if (signal.aborted) onAbort();
+        })
+      ])) as ClientResponse<T>;
+    } finally {
+      entry.subscribers -= 1;
+      if (entry.subscribers === 0 && !entry.settled) {
+        if (this.#inFlight.get(entry.key) === entry) this.#inFlight.delete(entry.key);
+        entry.controller.abort();
+      }
     }
   }
 
@@ -426,22 +497,29 @@ export class CompaniesHouseClient {
 
     for (let attempt = 0; attempt <= this.#config.maxRetries; attempt += 1) {
       if (attempt > 0) {
-        await this.#clock.sleep(this.#backoffMs(attempt, lastError));
+        await sleepWithAbort(this.#clock, this.#backoffMs(attempt, lastError), input.signal);
       }
 
-      // Taken from the return value, not read back off the shared limiter:
-      // another session's continuation can run between the await resolving and
-      // a read of shared state, and would then be reported as this session's.
-      this.#lastRateLimit = await this.#limiter.acquire(this.#clientId);
-
       let response: Response;
+      const releasePermit = await this.#upstreamSemaphore.acquire(input.signal);
+      // Limiter refusals are policy decisions, not upstream fetch failures:
+      // preserve them unchanged and never retry them as network errors.
       try {
-        // Counted here rather than around the whole attempt: this is the line
-        // that spends a slot of the key's window, and it is the number every
-        // cost question comes back to. The retry is counted alongside it, and
-        // after `acquire` — an attempt the limiter refuses never reaches the
-        // network, and counting it made the retry rate read 100% for a request
-        // that retried nothing.
+        // The slot bounds the complete upstream attempt, including time spent
+        // waiting for the rate limiter. This keeps queued cancellations from
+        // spending budget and keeps rate reservations close to actual sends.
+        // Taken from the return value, not read back off the shared limiter:
+        // another session's continuation may otherwise be attributed here.
+        this.#lastRateLimit = await this.#limiter.acquire(this.#clientId, input.signal);
+      } catch (error) {
+        releasePermit();
+        throw error;
+      }
+
+      try {
+        throwIfAborted(input.signal);
+        // Count only attempts that are about to reach fetch. A limiter refusal
+        // or a cancelled semaphore waiter must not appear as upstream traffic.
         this.#metrics.upstreamRequest();
         if (attempt > 0) this.#metrics.upstreamRetry();
         response = await this.#fetch(url, {
@@ -450,6 +528,7 @@ export class CompaniesHouseClient {
           signal: this.#signal(input.signal)
         });
       } catch (error) {
+        releasePermit();
         lastError = this.#classifyFetchFailure(error, label);
         // The underlying reason goes in the log, not in the error payload:
         // the caller gets a sanitised code (ADR 3), while whoever is operating
@@ -466,62 +545,67 @@ export class CompaniesHouseClient {
         if (!lastError.retryable) throw lastError;
         continue;
       }
+      try {
+        await this.#limiter.applyServerHeaders(response.headers);
 
-      await this.#limiter.applyServerHeaders(response.headers);
+        if (response.status === 304 && staleEntry !== undefined) {
+          await this.#cache.refresh(key, staleEntry);
+          return {
+            data: staleEntry.body as T,
+            meta: {
+              cached: true,
+              revalidated: true,
+              stale: false,
+              attempts: attempt + 1,
+              durationMs: this.#clock.now() - startedAt,
+              rateLimit: this.#lastRateLimit
+            }
+          };
+        }
 
-      if (response.status === 304 && staleEntry !== undefined) {
-        await this.#cache.refresh(key, staleEntry);
-        return {
-          data: staleEntry.body as T,
-          meta: {
-            cached: true,
-            revalidated: true,
-            stale: false,
-            attempts: attempt + 1,
-            durationMs: this.#clock.now() - startedAt,
-            rateLimit: this.#lastRateLimit
-          }
-        };
-      }
+        if (response.ok) {
+          const body = await this.#parseJson(response, label);
+          const etag = response.headers.get('etag');
+          await this.#cache.set(key, {
+            body,
+            storedAt: this.#clock.now(),
+            ttlMs,
+            ...(etag === null ? {} : { etag })
+          });
+          return {
+            data: body as T,
+            meta: {
+              cached: false,
+              revalidated: false,
+              stale: false,
+              attempts: attempt + 1,
+              durationMs: this.#clock.now() - startedAt,
+              rateLimit: this.#lastRateLimit
+            }
+          };
+        }
 
-      if (response.ok) {
-        const body = await this.#parseJson(response, label);
-        const etag = response.headers.get('etag');
-        await this.#cache.set(key, {
-          body,
-          storedAt: this.#clock.now(),
-          ttlMs,
-          ...(etag === null ? {} : { etag })
+        const retryAfterMs = this.#retryAfterMs(response.headers);
+        if (response.status === 429) this.#metrics.upstreamThrottled();
+        if (response.status === 429 && retryAfterMs !== undefined) {
+          await this.#limiter.penalise(this.#clock.now() + retryAfterMs);
+        }
+
+        lastError = fromHttpStatus({
+          status: response.status,
+          resource: label,
+          identifier,
+          retryAfterMs,
+          body: await this.#safeText(response)
         });
-        return {
-          data: body as T,
-          meta: {
-            cached: false,
-            revalidated: false,
-            stale: false,
-            attempts: attempt + 1,
-            durationMs: this.#clock.now() - startedAt,
-            rateLimit: this.#lastRateLimit
-          }
-        };
+
+        if (!RETRYABLE_STATUSES.has(response.status)) throw lastError;
+        this.#logger.debug('retryable status', { url, status: response.status, attempt });
+      } finally {
+        // Hold the permit through response body consumption and cache writes.
+        // The next retry's backoff runs after this finally releases it.
+        releasePermit();
       }
-
-      const retryAfterMs = this.#retryAfterMs(response.headers);
-      if (response.status === 429) this.#metrics.upstreamThrottled();
-      if (response.status === 429 && retryAfterMs !== undefined) {
-        await this.#limiter.penalise(this.#clock.now() + retryAfterMs);
-      }
-
-      lastError = fromHttpStatus({
-        status: response.status,
-        resource: label,
-        identifier,
-        retryAfterMs,
-        body: await this.#safeText(response)
-      });
-
-      if (!RETRYABLE_STATUSES.has(response.status)) throw lastError;
-      this.#logger.debug('retryable status', { url, status: response.status, attempt });
     }
 
     throw (

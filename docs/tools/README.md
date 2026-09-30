@@ -18,6 +18,7 @@ full list rather than a summary.
 | [`get_officer_appointments`](get_officer_appointments.md) | Every company an officer sits on. |
 | [`get_officers`](get_officers.md) | Directors, secretaries and members, current and resigned. |
 | [`get_psc`](get_psc.md) | Who controls the company, and how. |
+| [`review_filing_deadlines`](review_filing_deadlines.md) | A dated filing-deadline worksheet for up to 50 client rows. |
 | [`screen_companies`](screen_companies.md) | Screen a list of up to 50 companies. |
 
 ## The common envelope

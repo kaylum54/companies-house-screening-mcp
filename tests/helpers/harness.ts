@@ -36,6 +36,8 @@ export interface Harness {
 export interface HarnessOptions {
   /** Lowered in tests that need the budget to run out. */
   rateLimit?: number;
+  /** Enables the in-memory response cache for cache-sensitive tool tests. */
+  cacheEnabled?: boolean;
   /**
    * Replaces the budget entirely. For testing what tools do when the limiter
    * itself misbehaves — an unreachable window reports `remaining: 0` just as
@@ -51,7 +53,7 @@ async function build(
 ): Promise<Harness> {
   const clock = new FakeClock(HARNESS_NOW);
   const config = testConfig({
-    cacheEnabled: false,
+    cacheEnabled: options.cacheEnabled ?? false,
     ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit })
   });
 
@@ -60,7 +62,7 @@ async function build(
     clock,
     fetchImpl,
     random: fixedRandom(0),
-    cache: new ResponseCache({ enabled: false, clock }),
+    cache: new ResponseCache({ enabled: options.cacheEnabled ?? false, clock }),
     limiter: new RateLimiter({
       limit: config.rateLimit,
       windowMs: config.rateWindowMs,

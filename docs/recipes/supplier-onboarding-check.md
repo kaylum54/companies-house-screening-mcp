@@ -46,6 +46,7 @@ Pass the list exactly as it arrived — company numbers, full names and half-rem
   ],
   "screened": [
     {
+      "input_index": 0,
       "input": "04138203",
       "company_number": "04138203",
       "name": "ROYAL MAIL GROUP LIMITED",
@@ -71,6 +72,7 @@ Pass the list exactly as it arrived — company numbers, full names and half-rem
       }
     },
     {
+      "input_index": 1,
       "input": "Royal Mail Limited",
       "company_number": "14240638",
       "name": "ROYAL MAIL LIMITED",
@@ -96,6 +98,7 @@ Pass the list exactly as it arrived — company numbers, full names and half-rem
   ],
   "unresolved": [
     {
+      "input_index": 2,
       "input": "Royal Mail",
       "reason": "5 companies match this name and none matches it exactly. Ask which was meant rather than assuming.",
       "candidates": [

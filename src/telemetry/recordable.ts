@@ -11,6 +11,7 @@
 import { ERROR_CODES } from '../errors.js';
 import { COMPOSITE_TOOL_NAMES } from '../tools/composite.js';
 import { TOOL_NAMES } from '../tools/definitions.js';
+import { DEADLINE_TOOL_NAMES } from '../tools/deadlines.js';
 
 /**
  * Every tool, plus the two non-tool rows this server writes.
@@ -22,6 +23,7 @@ import { TOOL_NAMES } from '../tools/definitions.js';
 export const RECORDABLE_TOOLS: readonly string[] = [
   ...TOOL_NAMES,
   ...COMPOSITE_TOOL_NAMES,
+  ...DEADLINE_TOOL_NAMES,
   'unknown',
   'heartbeat'
 ];

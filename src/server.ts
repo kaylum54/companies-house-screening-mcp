@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { registerCompositeTools } from './tools/composite.js';
 import { registerTools } from './tools/definitions.js';
+import { registerDeadlineTools } from './tools/deadlines.js';
 import type { ToolContext } from './tools/shared.js';
 
 export const SERVER_NAME = 'companies-house';
@@ -19,7 +20,7 @@ export const INSTRUCTIONS = `Read-only access to the UK Companies House register
 
 READ ONLY. This server can only read the public register. It cannot file, submit, change, update, delete or register anything, and no tool here does. If you are asked to do any of those: answer that it is not possible, and call NO TOOL AT ALL. Looking the company up first does not help and is not progress.
 
-Start with company_snapshot for a single company and screen_companies for anything involving more than one — they fan out server-side and cost you one call instead of four. Reach for the primitive tools when you need a full list rather than a summary: every officer including resigned ones, every charge, the filing history, the PSC register.
+For filing deadlines, accountant client lists and monthly filing reviews, prefer review_filing_deadlines: it retrieves profiles only, preserves client references and classifies dates. It does not schedule recurring work. Otherwise start with company_snapshot for a single company and screen_companies for screening more than one. Reach for the primitive tools when you need a full list rather than a summary: every officer including resigned ones, every charge, the filing history, the PSC register.
 
 How to use it:
 - Every retrieval tool takes an eight-character company number. If you have a name, call find_company first. Do not guess a number — a plausible wrong one returns a real company and nothing downstream will flag the mistake.
@@ -37,5 +38,6 @@ export function createServer(context: ToolContext, version: string): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version }, { instructions: INSTRUCTIONS });
   registerTools(server, context);
   registerCompositeTools(server, context);
+  registerDeadlineTools(server, context);
   return server;
 }

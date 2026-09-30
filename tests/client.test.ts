@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { FakeClock } from '../src/clock.js';
+import type { Clock } from '../src/clock.js';
 import { CompaniesHouseError } from '../src/errors.js';
 import { ResponseCache } from '../src/http/cache.js';
 import { CompaniesHouseClient } from '../src/http/client.js';
@@ -16,7 +17,7 @@ interface BuildOptions {
   cacheDir?: string;
   cacheEnabled?: boolean;
   maxRetries?: number;
-  clock?: FakeClock;
+  clock?: Clock;
 }
 
 function build(options: BuildOptions) {
@@ -53,6 +54,105 @@ function build(options: BuildOptions) {
 }
 
 describe('CompaniesHouseClient — request shape', () => {
+  it('rejects an already-aborted caller before touching the cache or network', async () => {
+    const fake = fakeFetchAlways({ body: PROFILE });
+    const { client } = build({ fetchImpl: fake.fetch });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(client.get({ path: '/company/00000006', signal: controller.signal })).rejects.toMatchObject({
+      name: 'AbortError'
+    });
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  it('cancels one coalesced subscriber without cancelling the remaining subscriber', async () => {
+    let resolveFetch: ((response: Response) => void) | undefined;
+    let underlyingSignal: AbortSignal | undefined;
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      underlyingSignal = init?.signal ?? undefined;
+      return await new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      });
+    };
+    const { client } = build({ fetchImpl });
+    const first = new AbortController();
+    const second = new AbortController();
+    const one = client.get({ path: '/company/00000006', signal: first.signal });
+    await Promise.resolve();
+    const two = client.get({ path: '/company/00000006', signal: second.signal });
+    await Promise.resolve();
+    first.abort();
+    await expect(one).rejects.toMatchObject({ name: 'AbortError' });
+    expect(underlyingSignal?.aborted).toBe(false);
+
+    resolveFetch?.(new Response(JSON.stringify(PROFILE), { status: 200 }));
+    await expect(two).resolves.toMatchObject({ data: PROFILE });
+  });
+
+  it('aborts the shared HTTP request when its last subscriber cancels', async () => {
+    let underlyingSignal: AbortSignal | undefined;
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      underlyingSignal = init?.signal ?? undefined;
+      return await new Promise<Response>(() => undefined);
+    };
+    const { client } = build({ fetchImpl });
+    const controller = new AbortController();
+    const pending = client.get({ path: '/company/00000006', signal: controller.signal });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(underlyingSignal?.aborted).toBe(true);
+  });
+
+  it('starts a fresh coalesced request after the previous flight is cancelled', async () => {
+    let calls = 0;
+    let firstSignal: AbortSignal | undefined;
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      calls += 1;
+      if (calls === 1) {
+        firstSignal = init?.signal ?? undefined;
+        return await new Promise<Response>(() => undefined);
+      }
+      return new Response(JSON.stringify(PROFILE), { status: 200 });
+    };
+    const { client } = build({ fetchImpl });
+    const controller = new AbortController();
+    const cancelled = client.get({ path: '/company/00000006', signal: controller.signal });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+    await expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+    expect(firstSignal?.aborted).toBe(true);
+
+    await expect(client.get({ path: '/company/00000006' })).resolves.toMatchObject({ data: PROFILE });
+    expect(calls).toBe(2);
+  });
+
+  it('cancels retry backoff without starting another attempt', async () => {
+    let resolveSleep: (() => void) | undefined;
+    let fetchCalls = 0;
+    const clock: Clock = {
+      now: () => 1_700_000_000_000,
+      sleep: async () => await new Promise<void>((resolve) => {
+        resolveSleep = resolve;
+      })
+    };
+    const fetchImpl: typeof fetch = async () => {
+      fetchCalls += 1;
+      return new Response('{}', { status: 503 });
+    };
+    const { client } = build({ fetchImpl, clock });
+    const controller = new AbortController();
+    const pending = client.get({ path: '/company/00000006', signal: controller.signal });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchCalls).toBe(1);
+    resolveSleep?.();
+  });
+
   it('authenticates with the API key as the basic-auth username and a blank password', async () => {
     // Companies House ignores the password entirely, but the trailing colon is
     // still required or the header does not parse as basic auth.
@@ -410,6 +510,121 @@ describe('CompaniesHouseClient — in-flight coalescing', () => {
     await expect(
       client.get({ path: '/company/04138203', label: 'company' })
     ).resolves.toBeDefined();
+  });
+});
+
+describe('CompaniesHouseClient — upstream concurrency', () => {
+  it('shares the 12-request bound across withClientId views', async () => {
+    let active = 0;
+    let peak = 0;
+    let started = 0;
+    const pending: Array<() => void> = [];
+    const fetchImpl: typeof fetch = async () => {
+      started += 1;
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise<void>((resolve) => pending.push(resolve));
+      active -= 1;
+      return new Response(JSON.stringify(PROFILE), { headers: { 'content-type': 'application/json' } });
+    };
+    const { client } = build({ fetchImpl });
+    const calls = Array.from({ length: 16 }, (_, i) =>
+      (i % 2 === 0 ? client : client.withClientId(`client-${i}`)).get({ path: `/company/${i}` })
+    );
+    while (pending.length < 12) await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(peak).toBe(12);
+    while (started < 16) {
+      for (const release of pending.splice(0)) release();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    for (const release of pending.splice(0)) release();
+    await Promise.all(calls);
+    expect(peak).toBe(12);
+  });
+
+  it('removes a cancelled queued request and releases permits after requests finish', async () => {
+    let active = 0;
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchImpl: typeof fetch = async () => {
+      active += 1;
+      return await new Promise<Response>((resolve) => resolvers.push((response) => {
+        active -= 1;
+        resolve(response);
+      }));
+    };
+    const { client } = build({ fetchImpl, maxRetries: 0 });
+    const running = Array.from({ length: 12 }, (_, i) => client.get({ path: `/company/run-${i}` }));
+    while (resolvers.length < 12) await new Promise((resolve) => setTimeout(resolve, 0));
+    const budgetBeforeQueuedAbort = await client.budget();
+    const controller = new AbortController();
+    const queued = client.get({ path: '/company/cancelled', signal: controller.signal });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(resolvers).toHaveLength(12);
+    controller.abort();
+    await expect(queued).rejects.toMatchObject({ name: 'AbortError' });
+    expect((await client.budget()).remaining).toBe(budgetBeforeQueuedAbort.remaining);
+    expect(resolvers).toHaveLength(12);
+    for (const resolve of resolvers.splice(0)) resolve(new Response('{}'));
+    await Promise.all(running);
+    expect(active).toBe(0);
+    const after = client.get({ path: '/company/after' });
+    while (resolvers.length < 1) await new Promise((resolve) => setTimeout(resolve, 0));
+    resolvers.shift()!(new Response('{}'));
+    await expect(after).resolves.toBeDefined();
+  });
+
+  it('holds the permit through body consumption and releases it when parsing fails', async () => {
+    let calls = 0;
+    const bodyReleases: Array<(body: string) => void> = [];
+    const fetchImpl: typeof fetch = async () => {
+      calls += 1;
+      const response = new Response('{}');
+      Object.defineProperty(response, 'text', {
+        value: () => new Promise<string>((resolve) => bodyReleases.push(resolve))
+      });
+      return response;
+    };
+    const { client } = build({ fetchImpl, maxRetries: 0 });
+    const firstWave = Array.from({ length: 12 }, (_, i) => client.get({ path: `/company/body-${i}` }));
+    while (bodyReleases.length < 12) await new Promise((resolve) => setTimeout(resolve, 0));
+    const thirteenth = client.get({ path: '/company/body-13' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls).toBe(12);
+
+    bodyReleases.shift()!('{}');
+    while (bodyReleases.length < 12) await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(calls).toBe(13);
+    for (const release of bodyReleases.splice(0)) release('{}');
+    await Promise.all([...firstWave, thirteenth]);
+
+    let attempts = 0;
+    const malformedThenGood: typeof fetch = async () => {
+      attempts += 1;
+      const response = new Response('{}');
+      Object.defineProperty(response, 'text', {
+        value: attempts === 1
+          ? async () => { throw new Error('body read failed'); }
+          : async () => '{}'
+      });
+      return response;
+    };
+    const { client: errorClient } = build({ fetchImpl: malformedThenGood, maxRetries: 0 });
+    await expect(errorClient.get({ path: '/company/body-error' })).rejects.toThrow('body read failed');
+    await expect(errorClient.get({ path: '/company/after-body-error' })).resolves.toBeDefined();
+    expect(attempts).toBe(2);
+  });
+});
+
+describe('CompaniesHouseClient — fresh cache query', () => {
+  it('uses the GET cache key and honors bypass and abort', async () => {
+    const fake = fakeFetchAlways({ body: PROFILE });
+    const { client } = build({ fetchImpl: fake.fetch, cacheEnabled: true });
+    await client.get({ path: '/company/00000006', query: { b: 2, a: 1 } });
+    expect(await client.hasFreshCache({ path: '/company/00000006', query: { a: 1, b: 2 } })).toBe(true);
+    expect(await client.hasFreshCache({ path: '/company/00000006', query: { a: 1, b: 2 }, bypassCache: true })).toBe(false);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(client.hasFreshCache({ path: '/company/00000006', signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
 

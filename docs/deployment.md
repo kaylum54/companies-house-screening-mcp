@@ -332,3 +332,21 @@ the misconfiguration detail goes.
   platform sets it and strips any client copy — arriving at a Node process it
   is just another header the caller typed, so it is gated by the same setting.
   The Workers deployment reads it from its own request and needs no setting.
+
+### Upstream concurrency
+
+From 0.5.0, a shared Companies House client and its session views allow at most
+12 active upstream operations. Queued cancellation removes the request before
+it spends API budget. The permit covers response-body consumption and is
+released before retry backoff. This limits bursts within a process or Worker
+isolate, not across the whole distributed deployment. The Durable Object still
+enforces the shared request budget across isolates.
+
+### Dependency security maintenance
+
+The development-only Miniflare dependency currently pins older `sharp` and
+`undici` patches. Scoped package overrides select 0.35.4 and 7.29.1 respectively
+to resolve the September 2026 advisories without downgrading the Worker test
+adapter. Remove these overrides when its upstream dependency pins include the
+fixes, then rerun the Worker suite. Check both full and production-only npm
+audits before releases.

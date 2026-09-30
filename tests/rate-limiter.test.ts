@@ -19,6 +19,30 @@ const build = (overrides: Partial<ConstructorParameters<typeof RateLimiter>[0]> 
 };
 
 describe('RateLimiter', () => {
+  it('aborts a limiter wait without acquiring another reservation', async () => {
+    let acquireCalls = 0;
+    const clock = { now: () => 0, sleep: async () => await new Promise<void>(() => undefined) };
+    const limiter = new RateLimiter({
+      clock,
+      jitterMs: 0,
+      store: {
+        acquire: async () => {
+          acquireCalls += 1;
+          return { granted: false, remaining: 0, retryInMs: 10_000, limit: 1, globalRemaining: 0 };
+        },
+        peek: async () => ({ granted: true, remaining: 1, retryInMs: 0, limit: 1, globalRemaining: 1 }),
+        penalise: async () => undefined,
+        observe: async () => undefined
+      }
+    });
+    const controller = new AbortController();
+    const pending = limiter.acquire('caller', controller.signal);
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(acquireCalls).toBe(1);
+  });
+
   it('applies the safety margin to the documented limit', () => {
     // The budget belongs to the API key, not to this process. Running to
     // exactly 600 guarantees a 429 for whatever else shares the key.

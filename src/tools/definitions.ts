@@ -82,9 +82,10 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       outputSchema: findCompanyOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ query, items_per_page, start_index, verbose }) =>
+    async ({ query, items_per_page, start_index, verbose }, extra) =>
       guard(context, 'find_company', async () => {
         const { data, meta } = await client.get<unknown>({
+          signal: extra.signal,
           path: '/search/companies',
           query: { q: query, items_per_page, start_index },
           resource: 'search',
@@ -110,9 +111,10 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       outputSchema: findOfficerOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ query, items_per_page, start_index, verbose }) =>
+    async ({ query, items_per_page, start_index, verbose }, extra) =>
       guard(context, 'find_officer', async () => {
         const { data, meta } = await client.get<unknown>({
+          signal: extra.signal,
           path: '/search/officers',
           query: { q: query, items_per_page, start_index },
           resource: 'search',
@@ -133,10 +135,11 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       outputSchema: getCompanyOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ company_number, verbose }) =>
+    async ({ company_number, verbose }, extra) =>
       guard(context, 'get_company', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
+          signal: extra.signal,
           path: `/company/${number}`,
           resource: 'company-profile',
           label: 'company',
@@ -162,10 +165,11 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       outputSchema: getOfficersOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ company_number, items_per_page, start_index, verbose }) =>
+    async ({ company_number, items_per_page, start_index, verbose }, extra) =>
       guard(context, 'get_officers', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
+          signal: extra.signal,
           path: `/company/${number}/officers`,
           query: { items_per_page, start_index },
           resource: 'officers',
@@ -198,10 +202,11 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       outputSchema: getFilingHistoryOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ company_number, category, items_per_page, start_index, verbose }) =>
+    async ({ company_number, category, items_per_page, start_index, verbose }, extra) =>
       guard(context, 'get_filing_history', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
+          signal: extra.signal,
           path: `/company/${number}/filing-history`,
           query: { category, items_per_page, start_index },
           resource: 'filing-history',
@@ -223,10 +228,11 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       outputSchema: getChargesOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ company_number, verbose }) =>
+    async ({ company_number, verbose }, extra) =>
       guard(context, 'get_charges', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
+          signal: extra.signal,
           path: `/company/${number}/charges`,
           resource: 'charges',
           label: 'charges for company',
@@ -252,10 +258,11 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       outputSchema: getPscOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ company_number, items_per_page, start_index, verbose }) =>
+    async ({ company_number, items_per_page, start_index, verbose }, extra) =>
       guard(context, 'get_psc', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
+          signal: extra.signal,
           path: `/company/${number}/persons-with-significant-control`,
           query: { items_per_page, start_index },
           resource: 'psc',
@@ -277,10 +284,11 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       outputSchema: getInsolvencyOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ company_number, verbose }) =>
+    async ({ company_number, verbose }, extra) =>
       guard(context, 'get_insolvency', async () => {
         const number = resolveCompanyNumber(company_number);
         const { data, meta } = await client.get<unknown>({
+          signal: extra.signal,
           path: `/company/${number}/insolvency`,
           resource: 'insolvency',
           label: 'insolvency history for company',
@@ -309,9 +317,10 @@ export function registerTools(server: McpServer, context: ToolContext): void {
       outputSchema: getOfficerAppointmentsOutput.shape,
       annotations: READ_ONLY
     },
-    async ({ officer_id, items_per_page, start_index, verbose }) =>
+    async ({ officer_id, items_per_page, start_index, verbose }, extra) =>
       guard(context, 'get_officer_appointments', async () => {
         const { data, meta } = await client.get<unknown>({
+          signal: extra.signal,
           path: `/officers/${encodeURIComponent(officer_id)}/appointments`,
           query: { items_per_page, start_index },
           resource: 'officer-appointments',
